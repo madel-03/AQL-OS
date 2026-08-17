@@ -577,8 +577,82 @@ function DirectivePanel() {
   );
 }
 
+/* ========== شريط الوكيل الصوتي ========== */
+function VoiceAgentBar({ onRefresh }) {
+  const { lang } = useLang();
+  const [listening, setListening] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [text, setText] = useState('');
+  const [last, setLast] = useState(null);
+
+  const run = async (cmd) => {
+    const command = (cmd || '').trim();
+    if (!command || busy) return;
+    setBusy(true);
+    setLast(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/agent`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ message: command, lang }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'error');
+      setLast(json);
+      jarvisSpeak(json.reply, lang, () => onRefresh && onRefresh(), localStorage.getItem('aql-voice') || 'en-GB-RyanNeural');
+    } catch (e) {
+      setLast({ reply: String(e.message), actions: [] });
+      onRefresh && onRefresh();
+    }
+    setBusy(false);
+  };
+
+  const listen = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR();
+    rec.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = (e) => { const t = e.results[0][0].transcript; setText(t); run(t); };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    setListening(true);
+    try { rec.start(); } catch (err) { setListening(false); }
+  };
+
+  return (
+    <div className="glass-panel hud-panel" style={{ padding: '1.2rem' }}>
+      <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <button type="button" onClick={listen} disabled={busy || listening}
+          style={{ padding: '12px 16px', background: listening ? 'rgba(239,68,68,0.2)' : 'rgba(0,229,255,0.1)', border: `1px solid ${listening ? 'rgba(239,68,68,0.5)' : 'rgba(0,229,255,0.4)'}`, color: listening ? '#fca5a5' : 'var(--cyan)', borderRadius: '6px', cursor: 'pointer', fontSize: '1.1rem', boxShadow: listening ? '0 0 18px rgba(239,68,68,0.4)' : 'none' }}>
+          {listening ? '🎙️ أسمعك...' : '🎤'}
+        </button>
+        <input value={text} onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') run(text); }}
+          placeholder={lang === 'ar' ? 'قل أو اكتب أمرًا: "وازن أسبوعي"، "أضف دراسة 10 ساعات"...' : 'Say or type: "balance my week", "add study 10h"...'}
+          style={{ ...fieldStyle, flex: 1, minWidth: '220px' }} />
+        <button onClick={() => run(text)} disabled={busy || !text.trim()}
+          style={{ padding: '12px 22px', background: 'linear-gradient(90deg,#0077ff,#00e5ff)', color: '#001018', border: 'none', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}>
+          {busy ? '⚙️ ينفّذ...' : '⚡ نفّذ'}
+        </button>
+      </div>
+      {last && (
+        <div style={{ marginTop: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {(last.actions || []).map((a, i) => (
+            <div key={i} style={{ fontSize: '0.8rem', color: '#00e676', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '4px', padding: '0.4rem 0.7rem' }}>
+              ⚙️ {a.result}
+            </div>
+          ))}
+          <p style={{ margin: 0, color: 'var(--text)', fontStyle: 'italic' }}>🎩 {last.reply}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ========== مركز القيادة ========== */
-function DashboardPage({ commitments, goInvestigate }) {
+function DashboardPage({ commitments, goInvestigate, onRefresh }) {
   useEffect(() => { fetch(`${API_URL}/api/health`).catch(() => {}); }, []);
   const { lang, t, hs } = useLang();
   const totalHours = commitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
@@ -659,6 +733,7 @@ function DashboardPage({ commitments, goInvestigate }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <BrainCore riskL={risk.label} load={totalHours ? highHours / totalHours : 0.3} rest={remaining / 168} />
+      <VoiceAgentBar onRefresh={onRefresh} />
       <div style={{ textAlign: 'center', marginBottom: '0.5rem', fontFamily: 'Orbitron, Tajawal', fontSize: '0.72rem', letterSpacing: '0.3em', color: risk.color, textShadow: `0 0 14px ${risk.color}` }}>
         {lang === 'ar'
           ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}`
@@ -1746,7 +1821,7 @@ function App() {
 
   return (
     <Layout page={page} setPage={setPage} displayName={displayName} onLogout={handleLogout}>
-      {page === 'dashboard' && <DashboardPage commitments={commitments} goInvestigate={() => setPage('investigate')} />}
+      {page === 'dashboard' && <DashboardPage commitments={commitments} goInvestigate={() => setPage('investigate')} onRefresh={fetchCommitments} />}
       {page === 'investigate' && <InvestigatePage commitments={commitments} onSaved={fetchCommitments} />}
       {page === 'commitments' && <CommitmentsPage commitments={commitments} refresh={fetchCommitments} />}
       {page === 'history' && <HistoryPage />}

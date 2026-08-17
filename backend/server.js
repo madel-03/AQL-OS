@@ -931,6 +931,124 @@ app.post('/api/wellness', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+/* ========== الوكيل المنفذ (Function Calling) ========== */
+const AGENT_TOOLS = [
+  { name: 'add_commitment', description: 'Add a new weekly time commitment', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' }, hours_per_week: { type: 'NUMBER' }, type: { type: 'STRING', description: 'study|work|health|personal|sleep' }, intensity: { type: 'STRING', description: 'low|medium|high' }, time_slot: { type: 'STRING', description: 'morning|afternoon|evening|late_night|mixed' } }, required: ['title', 'hours_per_week'] } },
+  { name: 'reduce_hours', description: 'Reduce weekly hours of an existing commitment (match by title)', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' }, new_hours: { type: 'NUMBER' } }, required: ['title', 'new_hours'] } },
+  { name: 'archive_commitment', description: 'Archive/remove an existing commitment (match by title)', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' } }, required: ['title'] } },
+  { name: 'create_goal', description: 'Create a strategic goal', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' } }, required: ['title'] } },
+  { name: 'add_expense', description: 'Record a financial expense', parameters: { type: 'OBJECT', properties: { amount: { type: 'NUMBER' }, category: { type: 'STRING' } }, required: ['amount'] } },
+  { name: 'add_home_task', description: 'Add a home task', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' } }, required: ['title'] } },
+];
+
+async function runAgentTool(userId, name, args = {}) {
+  try {
+    if (name === 'add_commitment') {
+      const { data, error } = await supabase.from('commitments').insert({
+        user_id: userId, title: String(args.title || 'التزام جديد'),
+        hours_per_week: Number(args.hours_per_week || 1),
+        type: ['study', 'work', 'health', 'personal', 'sleep'].includes(args.type) ? args.type : 'personal',
+        intensity: ['low', 'medium', 'high'].includes(args.intensity) ? args.intensity : 'medium',
+        time_slot: ['morning', 'afternoon', 'evening', 'late_night', 'mixed'].includes(args.time_slot) ? args.time_slot : 'mixed',
+        flexible: true, status: 'active',
+      }).select().single();
+      if (error) throw error;
+      return `added commitment "${data.title}" (${data.hours_per_week}h/week)`;
+    }
+    if (name === 'reduce_hours') {
+      const { data: row } = await supabase.from('commitments').select('*')
+        .eq('user_id', userId).eq('status', 'active')
+        .ilike('title', `%${String(args.title || '')}%`).maybeSingle();
+      if (!row) return `commitment "${args.title}" not found`;
+      const { error } = await supabase.from('commitments').update({ hours_per_week: Number(args.new_hours) }).eq('id', row.id);
+      if (error) throw error;
+      return `reduced "${row.title}" to ${args.new_hours}h/week`;
+    }
+    if (name === 'archive_commitment') {
+      const { data: row } = await supabase.from('commitments').select('*')
+        .eq('user_id', userId).eq('status', 'active')
+        .ilike('title', `%${String(args.title || '')}%`).maybeSingle();
+      if (!row) return `commitment "${args.title}" not found`;
+      const { error } = await supabase.from('commitments').update({ status: 'archived' }).eq('id', row.id);
+      if (error) throw error;
+      return `archived "${row.title}"`;
+    }
+    if (name === 'create_goal') {
+      const { data, error } = await supabase.from('goals').insert({ user_id: userId, title: String(args.title || 'هدف جديد') }).select().single();
+      if (error) throw error;
+      return `created goal "${data.title}"`;
+    }
+    if (name === 'add_expense') {
+      const { data, error } = await supabase.from('finance_entries').insert({ user_id: userId, type: 'expense', amount: Number(args.amount || 0), category: String(args.category || 'عام') }).select().single();
+      if (error) throw error;
+      return `recorded expense ${data.amount} (${data.category})`;
+    }
+    if (name === 'add_home_task') {
+      const { data, error } = await supabase.from('home_tasks').insert({ user_id: userId, title: String(args.title || 'مهمة') }).select().single();
+      if (error) throw error;
+      return `added home task "${data.title}"`;
+    }
+    return `unknown tool ${name}`;
+  } catch (e) {
+    return `tool ${name} failed: ${e.message}`;
+  }
+}
+
+async function agentGemini(payload) {
+  let lastError = null;
+  for (const model of MODEL_FALLBACKS) {
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      if (response.status === 503 || response.status === 429 || response.status === 404) { lastError = new Error(`Gemini ${response.status} on ${model}`); continue; }
+      if (!response.ok) throw new Error(`Gemini ${response.status}`);
+      return await response.json();
+    } catch (e) { lastError = e; }
+  }
+  throw lastError || new Error('All Gemini models failed');
+}
+
+app.post('/api/agent', requireAuth, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const message = (body.message || '').trim();
+    const lang = body.lang === 'en' ? 'en' : 'ar';
+    if (!message) return res.status(400).json({ error: 'No message' });
+    const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
+    const list = (commitments || []).map(normalizeCommitment);
+    const system = (lang === 'en'
+      ? `You are AQL, the user's JARVIS-style life OS agent. Address him as "sir". Execute his request using tools when needed, then reply in 2-4 sentences. `
+      : `أنت "عَقْل"، وكيل نظام الحياة بأسلوب جارفس. خاطبه بلقب "سيدي". نفّذ طلبه باستخدام الأدوات عند الحاجة ثم أرد بجملتين إلى أربع. `)
+      + `Current commitments: ${JSON.stringify(list)}`;
+    const contents = [{ role: 'user', parts: [{ text: message }] }];
+    const actions = [];
+    let reply = '';
+    for (let step = 0; step < 5; step++) {
+      const data = await agentGemini({
+        system_instruction: { parts: [{ text: system }] },
+        contents,
+        tools: [{ function_declarations: AGENT_TOOLS }],
+      });
+      const part = data.candidates?.[0]?.content?.parts?.[0];
+      const fc = part?.functionCall;
+      if (fc) {
+        const result = await runAgentTool(req.user.id, fc.name, fc.args || {});
+        actions.push({ tool: fc.name, result });
+        contents.push({ role: 'model', parts: [{ functionCall: fc }] });
+        contents.push({ role: 'user', parts: [{ functionResponse: { name: fc.name, response: { result } } }] });
+        continue;
+      }
+      reply = part?.text || '';
+      break;
+    }
+    if (!reply) reply = lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.';
+    res.json({ reply, actions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ========== التشغيل ========== */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
