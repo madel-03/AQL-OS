@@ -22,6 +22,7 @@ const NAV_ITEMS = [
   { id: 'chat', icon: '✦', label: 'اتصال مباشر' },
   { id: 'achievements', icon: '▲', label: 'شارات الأداء' },
   { id: 'profile', icon: '⬡', label: 'الهوية' },
+  { id: 'lifeos', icon: '🧬', label: 'Life OS' },
 ];
 
 async function getAuthHeaders() {
@@ -1730,6 +1731,201 @@ function LifeOSPage() {
     </div>
   );
 }
+/* ========== صفحة Life OS ========== */
+function LifeOSPage() {
+  const { lang, hs } = useLang();
+  const [tab, setTab] = useState('overview');
+  const [finance, setFinance] = useState({ entries: [], summary: { income: 0, expense: 0, balance: 0 } });
+  const [study, setStudy] = useState({ sessions: [], total_minutes: 0 });
+  const [home, setHome] = useState({ tasks: [] });
+  const [people, setPeople] = useState({ people: [] });
+  const [wellness, setWellness] = useState({ logs: [] });
+  const [loaded, setLoaded] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [finForm, setFinForm] = useState({ type: 'expense', amount: '', category: lang === 'ar' ? 'طعام' : 'Food', note: '' });
+  const [studyForm, setStudyForm] = useState({ subject: '', duration_minutes: 30, quality: 'medium' });
+  const [homeForm, setHomeForm] = useState({ title: '', room: '', priority: 'medium' });
+  const [relForm, setRelForm] = useState({ person_name: '', relation_type: 'family' });
+  const [wellForm, setWellForm] = useState({ mood: 7, energy: 7, sleep_hours: 7 });
+
+  const loadAll = useCallback(async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const [f, s, h, r, w] = await Promise.all([
+        fetch(`${API_URL}/api/finance`, { headers }),
+        fetch(`${API_URL}/api/study`, { headers }),
+        fetch(`${API_URL}/api/home`, { headers }),
+        fetch(`${API_URL}/api/relationships`, { headers }),
+        fetch(`${API_URL}/api/wellness`, { headers }),
+      ]);
+      if (f.ok) setFinance(await f.json());
+      if (s.ok) setStudy(await s.json());
+      if (h.ok) setHome(await h.json());
+      if (r.ok) setPeople(await r.json());
+      if (w.ok) setWellness(await w.json());
+    } catch (e) { /* نتجاهل */ }
+    setLoaded(true);
+  }, []);
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  const post = async (url, body) => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_URL}${url}`, { method: 'POST', headers, body: JSON.stringify(body) });
+      if (!res.ok) { const j = await res.json(); throw new Error(j.error || 'error'); }
+      setMsg(lang === 'ar' ? '✅ تم الحفظ' : '✅ Saved');
+      setTimeout(() => setMsg(''), 2000);
+      await loadAll();
+    } catch (e) { setMsg('⚠️ ' + e.message); }
+  };
+  const toggleHome = async (id, status) => {
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`${API_URL}/api/home/${id}`, { method: 'PATCH', headers, body: JSON.stringify({ status }) });
+      await loadAll();
+    } catch (e) { /* نتجاهل */ }
+  };
+
+  const L = (ar, en) => (lang === 'ar' ? ar : en);
+  const tabs = [
+    { id: 'overview', label: L('◈ نظرة شاملة', '◈ Overview') },
+    { id: 'finance', label: L('💰 المال', '💰 Finance') },
+    { id: 'study', label: L('📚 الدراسة', '📚 Study') },
+    { id: 'home', label: L('🏠 البيت', '🏠 Home') },
+    { id: 'relations', label: L('🤝 العلاقات', '🤝 Relations') },
+    { id: 'wellness', label: L('🧘 الصحة', '🧘 Wellness') },
+  ];
+  const panel = { padding: '1.3rem' };
+  const btn = { padding: '10px 16px', background: 'linear-gradient(90deg,#0077ff,#00e5ff)', color: '#001018', border: 'none', borderRadius: '3px', fontWeight: 800, cursor: 'pointer' };
+
+  if (!loaded) return <p style={{ color: 'var(--muted)' }}>⏳ {L('جاري تحميل حياتك...', 'Loading your life...')}</p>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        {tabs.map((tb) => (
+          <button key={tb.id} onClick={() => setTab(tb.id)} style={{
+            padding: '9px 16px', borderRadius: '3px', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+            border: tab === tb.id ? '1px solid var(--cyan)' : '1px solid rgba(0,229,255,0.15)',
+            background: tab === tb.id ? 'rgba(0,229,255,0.12)' : 'transparent',
+            color: tab === tb.id ? 'var(--cyan)' : 'var(--muted)',
+          }}>{tb.label}</button>
+        ))}
+      </div>
+      {msg && <div style={{ padding: '0.7rem 1rem', borderRadius: '4px', background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', color: '#00e676', fontSize: '0.9rem' }}>{msg}</div>}
+
+      {tab === 'overview' && (
+        <div className="glass-panel hud-panel" style={{ ...panel, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', justifyItems: 'center' }}>
+          <Gauge value={finance.summary.balance} max={Math.max(finance.summary.income, 1)} label={L('الرصيد', 'Balance')} color={finance.summary.balance >= 0 ? '#00e676' : '#ff2d78'} suffix="$" />
+          <Gauge value={Math.round(study.total_minutes / 60)} max={40} label={L('ساعات الدراسة', 'Study Hours')} color="#00e5ff" suffix={hs} />
+          <Gauge value={home.tasks.filter((t) => t.status !== 'done').length} max={20} label={L('مهام البيت', 'Home Tasks')} color="#f59e0b" />
+          <Gauge value={people.people.length} max={20} label={L('العلاقات', 'People')} color="#7c4dff" />
+          <Gauge value={wellness.logs[0]?.mood || 0} max={10} label={L('المزاج', 'Mood')} color="#00e676" suffix="/10" />
+        </div>
+      )}
+
+      {tab === 'finance' && (
+        <div className="glass-panel hud-panel" style={panel}>
+          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--muted)' }}>
+            <span>{L('الدخل:', 'Income:')} <strong style={{ color: '#00e676' }}>${finance.summary.income}</strong></span>
+            <span>{L('المصاريف:', 'Expenses:')} <strong style={{ color: '#ff2d78' }}>${finance.summary.expense}</strong></span>
+            <span>{L('الرصيد:', 'Balance:')} <strong style={{ color: finance.summary.balance >= 0 ? '#00e676' : '#ff2d78' }}>${finance.summary.balance}</strong></span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.8rem', marginBottom: '1rem' }}>
+            <select value={finForm.type} onChange={(e) => setFinForm({ ...finForm, type: e.target.value })} style={fieldStyle}>
+              <option value="expense">{L('مصروف', 'Expense')}</option>
+              <option value="income">{L('دخل', 'Income')}</option>
+            </select>
+            <input type="number" placeholder={L('المبلغ', 'Amount')} value={finForm.amount} onChange={(e) => setFinForm({ ...finForm, amount: e.target.value })} style={fieldStyle} />
+            <input placeholder={L('الفئة', 'Category')} value={finForm.category} onChange={(e) => setFinForm({ ...finForm, category: e.target.value })} style={fieldStyle} />
+            <button style={btn} onClick={() => { if (Number(finForm.amount) > 0) post('/api/finance', finForm); }}>➕</button>
+          </div>
+          {finance.entries.slice(0, 8).map((e) => (
+            <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid rgba(0,229,255,0.08)', fontSize: '0.85rem' }}>
+              <span style={{ color: 'var(--text)' }}>{e.category}{e.note ? ` — ${e.note}` : ''}</span>
+              <span style={{ color: e.type === 'income' ? '#00e676' : '#ff2d78', fontFamily: 'Orbitron' }}>{e.type === 'income' ? '+' : '-'}${e.amount}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'study' && (
+        <div className="glass-panel hud-panel" style={panel}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.8rem', marginBottom: '1rem' }}>
+            <input placeholder={L('المادة', 'Subject')} value={studyForm.subject} onChange={(e) => setStudyForm({ ...studyForm, subject: e.target.value })} style={fieldStyle} />
+            <input type="number" placeholder={L('الدقائق', 'Minutes')} value={studyForm.duration_minutes} onChange={(e) => setStudyForm({ ...studyForm, duration_minutes: e.target.value })} style={fieldStyle} />
+            <button style={btn} onClick={() => { if (studyForm.subject.trim()) post('/api/study', studyForm); }}>➕ {L('تسجيل جلسة', 'Log Session')}</button>
+          </div>
+          {study.sessions.slice(0, 8).map((s) => (
+            <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid rgba(0,229,255,0.08)', fontSize: '0.85rem' }}>
+              <span style={{ color: 'var(--text)' }}>{s.subject}</span>
+              <span style={{ color: '#00e5ff', fontFamily: 'Orbitron' }}>{s.duration_minutes}m</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'home' && (
+        <div className="glass-panel hud-panel" style={panel}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.8rem', marginBottom: '1rem' }}>
+            <input placeholder={L('المهمة', 'Task')} value={homeForm.title} onChange={(e) => setHomeForm({ ...homeForm, title: e.target.value })} style={fieldStyle} />
+            <input placeholder={L('الغرفة', 'Room')} value={homeForm.room} onChange={(e) => setHomeForm({ ...homeForm, room: e.target.value })} style={fieldStyle} />
+            <button style={btn} onClick={() => { if (homeForm.title.trim()) post('/api/home', homeForm); }}>➕</button>
+          </div>
+          {home.tasks.map((tk) => (
+            <div key={tk.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0', borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+              <span style={{ color: tk.status === 'done' ? 'var(--muted)' : 'var(--text)', textDecoration: tk.status === 'done' ? 'line-through' : 'none', fontSize: '0.9rem' }}>
+                {tk.priority === 'urgent' ? '🔴' : tk.priority === 'high' ? '🟠' : '🔵'} {tk.title}
+              </span>
+              <button onClick={() => toggleHome(tk.id, tk.status === 'done' ? 'pending' : 'done')}
+                style={{ background: 'none', border: `1px solid ${tk.status === 'done' ? '#00e676' : 'rgba(0,229,255,0.3)'}`, color: tk.status === 'done' ? '#00e676' : 'var(--muted)', borderRadius: '3px', padding: '3px 10px', cursor: 'pointer', fontSize: '0.75rem' }}>
+                {tk.status === 'done' ? '↩️' : '✓'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'relations' && (
+        <div className="glass-panel hud-panel" style={panel}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.8rem', marginBottom: '1rem' }}>
+            <input placeholder={L('الاسم', 'Name')} value={relForm.person_name} onChange={(e) => setRelForm({ ...relForm, person_name: e.target.value })} style={fieldStyle} />
+            <select value={relForm.relation_type} onChange={(e) => setRelForm({ ...relForm, relation_type: e.target.value })} style={fieldStyle}>
+              <option value="family">{L('عائلة', 'Family')}</option>
+              <option value="friend">{L('صديق', 'Friend')}</option>
+              <option value="colleague">{L('زميل', 'Colleague')}</option>
+            </select>
+            <button style={btn} onClick={() => { if (relForm.person_name.trim()) post('/api/relationships', relForm); }}>➕</button>
+          </div>
+          {people.people.map((p) => (
+            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid rgba(0,229,255,0.08)', fontSize: '0.9rem' }}>
+              <span style={{ color: 'var(--text)' }}>{p.relation_type === 'family' ? '👨👩‍👦' : p.relation_type === 'friend' ? '🤝' : '💼'} {p.person_name}</span>
+              <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>{L('كل', 'every')} {p.contact_frequency_days} {L('يوم', 'days')}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'wellness' && (
+        <div className="glass-panel hud-panel" style={panel}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.8rem', marginBottom: '1rem' }}>
+            <div><label style={labelStyle}>{L('المزاج', 'Mood')}: {wellForm.mood}/10</label>
+              <input type="range" min="1" max="10" value={wellForm.mood} onChange={(e) => setWellForm({ ...wellForm, mood: e.target.value })} style={{ width: '100%' }} /></div>
+            <div><label style={labelStyle}>{L('الطاقة', 'Energy')}: {wellForm.energy}/10</label>
+              <input type="range" min="1" max="10" value={wellForm.energy} onChange={(e) => setWellForm({ ...wellForm, energy: e.target.value })} style={{ width: '100%' }} /></div>
+            <div><label style={labelStyle}>{L('النوم (ساعات)', 'Sleep (hrs)')}</label>
+              <input type="number" min="0" max="14" step="0.5" value={wellForm.sleep_hours} onChange={(e) => setWellForm({ ...wellForm, sleep_hours: e.target.value })} style={fieldStyle} /></div>
+            <button style={btn} onClick={() => post('/api/wellness', wellForm)}>📝 {L('سجّل', 'Log')}</button>
+          </div>
+          {wellness.logs.slice(0, 7).map((w) => (
+            <div key={w.id} style={{ display: 'flex', gap: '1rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(0,229,255,0.08)', fontSize: '0.8rem', color: 'var(--muted)' }}>
+              <span>😊 {w.mood}/10</span><span>⚡ {w.energy}/10</span><span>😴 {w.sleep_hours}{hs}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 /* ========== التطبيق ========== */
 function App() {
   const [session, setSession] = useState(null);
@@ -1778,6 +1974,7 @@ function App() {
       {page === 'reports' && <ReportsPage />}
       {page === 'achievements' && <AchievementsPage />}
       {page === 'profile' && <ProfilePage displayName={displayName} email={session.user.email} onLogout={handleLogout} />}
+      {page === 'lifeos' && <LifeOSPage />}
     </Layout>
   );
 }
