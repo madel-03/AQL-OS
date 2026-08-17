@@ -189,6 +189,23 @@ function BrainPanels({ result }) {
     </>
   );
 }
+/* ========== زر اللغة العائم (قبل الدخول) ========== */
+function FloatingLangButton() {
+const { lang, setLang } = useLang();
+return (
+<button
+onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
+style={{
+position: 'fixed', top: '18px', right: '18px', zIndex: 50,
+background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.35)',
+color: '#7dd3fc', borderRadius: '999px', padding: '8px 18px',
+cursor: 'pointer', fontSize: '0.85rem', fontWeight: '700', backdropFilter: 'blur(8px)',
+}}
+>
+◐ {lang === 'ar' ? 'EN' : 'AR'}
+</button>
+);
+}
 
 /* ========== شاشة الدخول ========== */
 function AuthScreen() {
@@ -1746,7 +1763,7 @@ function App() {
   };
 
   if (!authReady) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>⏳ عَقْل يتحقق من الهوية...</div>;
-  if (!session) return <AuthScreen />;
+  if (!session) return (<><FloatingLangButton /><AuthScreen /></>);
 
   const displayName = session.user.user_metadata?.full_name?.trim() || session.user.email;
 
