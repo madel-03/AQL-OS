@@ -1042,9 +1042,15 @@ app.post('/api/agent', requireAuth, async (req, res) => {
     }
     if (!reply) reply = lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.';
     res.json({ reply, actions });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+} catch (err) {
+const lng = (req.body || {}).lang === 'en' ? 'en' : 'ar';
+res.status(200).json({
+reply: lng === 'en'
+? 'Pardon me, sir — my thinking quota is momentarily exhausted. Grant me a minute and I shall return at full capacity.'
+: 'عذرًا سيدي — طاقة التفكير المجانية نفدت لحظيًا. أمهلني دقيقة وسأعود بكامل جاهزيتي.',
+actions: [],
+});
+}
 });
 
 /* ========== التشغيل ========== */
