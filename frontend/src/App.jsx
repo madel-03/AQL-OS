@@ -542,7 +542,7 @@ function DirectivePanel() {
       const headers = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/directive`, { method: 'POST', headers, body: JSON.stringify({ lang }) });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'error');
+      if (!res.ok) throw new Error(lang === 'ar' ? 'عَقْل مشغول لحظيًا — أعد المحاولة 🙏' : 'AQL is momentarily busy — try again 🙏');
       setDirective(json.directive);
       setApproved(false);
     } catch (e) { /* نتجاهل */ }
