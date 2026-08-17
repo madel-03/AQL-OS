@@ -51,7 +51,7 @@ const CHAT_PERSONA = `أنت "عَقْل"، المحقق السلوكي الذك
 
 أنت الآن في محادثة حية مع المستخدم داخل المنصة.
 قواعد الرد:
-- استخدم معطيات ملف القضية الحقيقية المعطاة لك (الالتزامات، المقاييس، ذاكرة التحليلات) في ردودك.
+- استخدم معطيات ملف القضية الحقيقية المعطاة لك (الالتزامات، المقاييس، ذاكرة التحليلات، وملف الحياة الكاملة: المال، الدراسة، البيت، العلاقات، الصحة) في ردودك، وعلّق على أي مجال يحتاج انتباهًا.
 - أجب بالعربية، من جملتين إلى خمس جمل، بأسلوب خطابي ذكي.
 - استنتج ولاحظ واطرح أسئلة حادة عند الحاجة.
 - إذا خرج المستخدم عن موضوع توازن الوقت والطاقات، أعد التوجيه بذكاء نحو أنماطه السلوكية.
@@ -78,6 +78,36 @@ function riskLabel(totalHours) {
   if (totalHours > 90) return 'High';
   if (totalHours > 75) return 'Medium';
   return 'Low';
+}
+
+async function fetchLifeData(userId) {
+try {
+const [fin, stu, home, rel, well] = await Promise.all([
+supabase.from('finance_entries').select('type, amount, category').eq('user_id', userId).limit(50),
+supabase.from('study_sessions').select('duration_minutes').eq('user_id', userId).limit(30),
+supabase.from('home_tasks').select('title, status').eq('user_id', userId).limit(30),
+supabase.from('relationships').select('person_name, last_contact, contact_frequency_days').eq('user_id', userId).limit(30),
+supabase.from('wellness_logs').select('mood, energy, sleep_hours').eq('user_id', userId).order('log_date', { ascending: false }).limit(7),
+]);
+const finList = fin.data || [];
+const income = finList.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
+const expense = finList.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
+const studyMinutes = (stu.data || []).reduce((s, e) => s + Number(e.duration_minutes), 0);
+const pendingHome = (home.data || []).filter((t) => t.status !== 'done').length;
+const neglected = (rel.data || []).filter((p) => {
+if (!p.last_contact) return true;
+const days = (Date.now() - new Date(p.last_contact).getTime()) / 86400000;
+return days > (p.contact_frequency_days || 7);
+}).map((p) => p.person_name);
+const lastWell = (well.data || [])[0] || null;
+return {
+finance: { income, expense, balance: income - expense },
+study: { total_minutes: studyMinutes },
+home: { pending_tasks: pendingHome },
+relationships: { count: (rel.data || []).length, neglected },
+wellness: lastWell ? { mood: lastWell.mood, energy: lastWell.energy, sleep_hours: lastWell.sleep_hours } : null,
+};
+} catch (e) { return null; }
 }
 
 async function requireAuth(req, res, next) {
@@ -499,6 +529,8 @@ app.post('/api/simulate', requireAuth, async (req, res) => {
     const rigidHours = currentCommitments.filter((c) => !c.flexible).reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
     const lateHours = currentCommitments.filter((c) => c.timeSlot === 'late_night').reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
 
+
+    const life = await fetchLifeData(req.user.id);
     const { data: memory } = await supabase
       .from('analysis_logs')
       .select('burnout_risk, main_insight')
@@ -519,6 +551,7 @@ app.post('/api/simulate', requireAuth, async (req, res) => {
         late_night_hours: lateHours,
       },
       history: memory || [],
+      life: life || null,
     };
 
     let brain = null;
@@ -589,6 +622,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     const highHours = list.filter((c) => c.intensity === 'high').reduce((s, c) => s + Number(c.hours_per_week), 0);
     const rigidHours = list.filter((c) => !c.flexible).reduce((s, c) => s + Number(c.hours_per_week), 0);
 
+    const life = await fetchLifeData(req.user.id);
     const { data: logs } = await supabase
       .from('analysis_logs').select('burnout_risk, main_insight, created_at')
       .eq('user_id', req.user.id)
@@ -613,6 +647,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
             current_risk: riskLabel(totalHours),
           },
           recent_analyses: logs || [],
+          life: life || null,
         },
         history,
         userMessage: message,
