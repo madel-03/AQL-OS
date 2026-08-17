@@ -116,29 +116,35 @@ function playChunkLocal(chunk, lang) {
 }
 
 async function playChunkTTS(chunk, lang, voice) {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`${API_URL}/api/tts`, { method: 'POST', headers, body: JSON.stringify({ text: chunk, lang, voice }) });
-      if (res.status === 429) { await new Promise((r) => setTimeout(r, 1500)); continue; }
-      const json = await res.json();
-      if (!res.ok || !json.audio) return false;
-      const isMpeg = (json.mime || '').includes('mpeg');
-      const url = URL.createObjectURL(isMpeg ? b64ToBlob(json.audio, 'audio/mpeg') : pcmToWav(json.audio, Number(((json.mime || '').match(/rate=(\d+)/) || [])[1] || 24000)));
-      const ok = await new Promise((resolve) => {
-        jarvisAudio = new Audio(url);
-        jarvisAudio.onended = () => resolve(true);
-        jarvisAudio.onerror = () => resolve(false);
-        jarvisAudio.play().catch(() => resolve(false));
-      });
-      jarvisAudio = null;
-      URL.revokeObjectURL(url);
-      return ok;
-    } catch (e) {
-      await new Promise((r) => setTimeout(r, 800));
-    }
-  }
-  return false;
+for (let attempt = 0; attempt < 3; attempt++) {
+try {
+const headers = await getAuthHeaders();
+const ctrl = new AbortController();
+const timer = setTimeout(() => ctrl.abort(), 20000);
+const res = await fetch(`${API_URL}/api/tts`, {
+method: 'POST', headers, signal: ctrl.signal,
+body: JSON.stringify({ text: chunk, lang, voice }),
+});
+clearTimeout(timer);
+if (res.status === 429) { await new Promise((r) => setTimeout(r, 1500)); continue; }
+const json = await res.json();
+if (!res.ok || !json.audio) return false;
+const isMpeg = (json.mime || '').includes('mpeg');
+const url = URL.createObjectURL(isMpeg ? b64ToBlob(json.audio, 'audio/mpeg') : pcmToWav(json.audio, Number(((json.mime || '').match(/rate=(\d+)/) || [])[1] || 24000)));
+const ok = await new Promise((resolve) => {
+jarvisAudio = new Audio(url);
+jarvisAudio.onended = () => resolve(true);
+jarvisAudio.onerror = () => resolve(false);
+jarvisAudio.play().catch(() => resolve(false));
+});
+jarvisAudio = null;
+URL.revokeObjectURL(url);
+return ok;
+} catch (e) {
+await new Promise((r) => setTimeout(r, 800));
+}
+}
+return false;
 }
 
 function jarvisSpeak(text, lang, onEnd, voice) {
@@ -555,6 +561,7 @@ function DirectivePanel() {
 
 /* ========== مركز القيادة ========== */
 function DashboardPage({ commitments, goInvestigate }) {
+  useEffect(() => { fetch(`${API_URL}/api/health`).catch(() => {}); }, []);
   const { lang, t, hs } = useLang();
   const totalHours = commitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
   const remaining = Math.max(168 - totalHours, 0);
