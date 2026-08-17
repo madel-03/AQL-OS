@@ -1,0 +1,109 @@
+import { createContext, useContext } from 'react';
+
+export const LangContext = createContext(null);
+export function useLang() { return useContext(LangContext); }
+
+export const enDict = {
+  // القوائم والهيدر
+  'مركز القيادة': 'Command Center', 'غرفة التحليل': 'Analysis Room', 'وحدات الوقت': 'Time Modules',
+  'سجل التحليلات': 'Analysis Log', 'الأهداف الاستراتيجية': 'Strategic Goals', 'التقارير الحيوية': 'Vital Reports',
+  'اتصال مباشر': 'Direct Link', 'شارات الأداء': 'Performance Badges', 'الهوية': 'Identity',
+  'فصل': 'Disconnect', 'خروج': 'Logout',
+  // الدخول
+  'سجّل دخولك لفتح ملف القضية الخاص بك': 'Sign in to open your case file',
+  'أنشئ حسابك وابدأ تحقيقك الأول': 'Create your account and start your first investigation',
+  'الاسم الكامل': 'Full Name', 'البريد الإلكتروني': 'Email', 'كلمة المرور': 'Password',
+  'تسجيل الدخول': 'Sign In', 'إنشاء حساب': 'Create Account', 'لحظة...': 'Hold on...',
+  'ما عندك حساب؟': 'No account?', 'عندك حساب بالفعل؟': 'Already have an account?',
+  'أنشئ حسابًا': 'Create one', 'أدخل رمز التفعيل': 'Enter Activation Code',
+  'أرسلنا رمزًا مكونًا من 6 أرقام إلى بريدك': 'We sent a 6-digit code to your email',
+  'تفعيل الحساب': 'Activate Account', 'جاري التحقق...': 'Verifying...',
+  'إعادة إرسال الرمز': 'Resend code', 'رجوع': 'Back',
+  // لوحة القيادة
+  'الالتزامات النشطة': 'Active Commitments', 'ساعات ملتزم بها': 'Committed Hours',
+  'المتبقي للراحة': 'Rest Remaining', 'مستوى الخطر الحالي': 'Current Risk Level',
+  'توزيع الأنواع': 'Type Distribution', 'بصمة التوازن': 'Balance Signature', 'نبض الفترات': 'Time Pulses',
+  'بدء تحليل جديد': 'Start New Analysis', 'راحة': 'Rest', 'هدوء': 'Calm', 'مرونة': 'Flexibility',
+  'صباح': 'Morning', 'انضباط': 'Discipline',
+  'لا توجد بيانات بعد — ابدأ بإضافة التزامات من غرفة التحقيق.': 'No data yet — start by adding time modules from the Analysis Room.',
+  // غرفة التحليل
+  'اختبر قراراً جديداً (إضافة التزام):': 'Test a new decision (add a module):',
+  'اسم الالتزام': 'Module name', 'الساعات أسبوعياً': 'Hours / week', 'نوع الالتزام': 'Type',
+  'الفترة الزمنية': 'Time slot', 'الحمل الذهني': 'Mental load', 'المرونة': 'Flexibility',
+  'مثال: عمل حر، دراسة...': 'e.g. freelance, study...',
+  'تشغيل محاكاة المحقق': 'Run Analysis Simulation', 'جاري المعالجة وتحليل الخيوط...': 'Processing signals...',
+  'اكتب اسم الالتزام أولاً.': 'Enter a module name first.', 'عدد الساعات لازم يكون أكبر من صفر.': 'Hours must be greater than zero.',
+  'الميزانية الأسبوعية (168 ساعة)': 'Weekly Budget (168 hours)', 'المستخدم:': 'Used:', 'المتبقي:': 'Remaining:',
+  'استنتاج عَقْل:': 'AQL Insight:', 'استنتاج بَصِير:': 'Baseer Insight:',
+  'الخطر:': 'Risk:', 'حفظ القرار النهائي': 'Commit Decision',
+  'جاري حفظ القرار...': 'Committing...', 'تم حفظ القرار في قاعدة البيانات بنجاح.': 'Decision committed to database.',
+  'الأدلة السلوكية المخفية:': 'Hidden Behavioral Evidence:', 'سؤال المحقق:': 'Probe Question:',
+  'توصية عَقْل التنفيذية:': 'AQL Executive Recommendation:', 'توصية بَصِير التنفيذية:': 'Baseer Executive Recommendation:',
+  'عَقْل يفكر عبر Gemini': 'AQL thinking via Gemini', 'بَصِير يفكر عبر Gemini': 'Baseer thinking via Gemini',
+  'محرك القواعد (AI غير متصل)': 'Rules engine (AI offline)',
+  // الأنواع والفترات والحمل
+  'دراسة': 'Study', 'عمل': 'Work', 'صحة': 'Health', 'شخصي': 'Personal', 'نوم': 'Sleep',
+  'صباحي': 'Morning', 'ظهراً': 'Afternoon', 'مسائي': 'Evening', 'ليل متأخر': 'Late Night', 'مختلط': 'Mixed',
+  'عالٍ جداً': 'Very High', 'عالٍ': 'High', 'متوسط': 'Medium', 'خفيف': 'Low', 'مرن': 'Flexible', 'صارم': 'Rigid',
+  // وحدات الوقت
+  'لا توجد التزامات محفوظة. اذهب لغرفة التحليل وأضف أول قرار.': 'No modules saved. Open the Analysis Room and commit your first decision.',
+  'الاسم': 'Name', 'الساعات': 'Hours', 'النوع': 'Type', 'الفترة': 'Slot', 'الحمل': 'Load',
+  'حفظ': 'Save', 'إلغاء': 'Cancel', 'تعديل': 'Edit', 'حذف': 'Delete',
+  'تم حفظ التعديلات.': 'Changes saved.', 'تم حذف الالتزام.': 'Module deleted.',
+  'ساعة |': 'hrs |', 'حمل:': 'Load:', 'فترة:': 'Slot:',
+  // السجل
+  'جاري فتح الأرشيف...': 'Opening archive...', 'الأرشيف فارغ. شغّل أول محاكاة من غرفة التحليل.': 'Archive empty. Run your first simulation.',
+  // الأهداف
+  'أضف هدفًا جديدًا': 'Add a new goal', 'اسم الهدف': 'Goal name', 'تاريخ الاستهداف (اختياري)': 'Target date (optional)',
+  'مثال: إطلاق مشروعي، حفظ القرآن...': 'e.g. launch my project...', 'إضافة الهدف': 'Add Goal',
+  'تمت إضافة الهدف.': 'Goal added.', 'لا توجد أهداف بعد. أضف هدفك الأول وابدأ بربط التزاماتك به.': 'No goals yet. Add one and link your modules.',
+  'تستثمر فيه:': 'Investing:', 'س/أسبوع': 'h/week', 'عبر': 'via', 'التزام': 'module(s)',
+  'لا التزامات مرتبطة بعد.': 'No linked modules yet.', 'اربط التزامًا بهذا الهدف...': 'Link a module to this goal...',
+  'انتهى الموعد': 'Deadline passed', 'باقي ': 'Left: ', ' يوم': ' days',
+  'تم حذف الهدف.': 'Goal deleted.', 'تم ربط الالتزام بالهدف.': 'Module linked.', 'تم فصل الالتزام.': 'Module unlinked.',
+  // التقارير والرسم البياني
+  'الحالة الحيوية': 'Vital Status', 'مسار الخطر عبر التحقيقات': 'Risk Trajectory',
+  'لا بيانات بعد.': 'No data yet.', 'شغّل محاكاة أولاً ليبدأ سجل المخاطر بالتكوّن.': 'Run a simulation to start the risk log.',
+  'إجمالي الالتزامات:': 'Total committed:', 'حمل ذهني عالٍ:': 'High mental load:', 'ساعات صارمة:': 'Rigid hours:',
+  'مستوى الخطر:': 'Risk level:',
+  'إسقاط المسار المستقبلي (محاكاة سنة)': 'Future Path Projection (1-Year Simulation)',
+  'المسار الحالي': 'Current Path',
+  'المسار بعد توصيات بَصِير': 'Path with Baseer Guidance',
+  'المسار بعد توصيات عَقْل': 'Path with AQL Guidance',
+  'الهدف متحقق': 'GOAL ACHIEVED', 'اليوم': 'Today', '٦ أشهر': '6 Months', 'سنة': '1 Year',
+  'الخط البرتقالي: استمرار نمطك الحالي كما هو دون تغيير.': 'Orange: your current pattern unchanged.',
+  'الخط الأخضر: مسارك المتوقع إذا طبّقت توصيات بَصِير هذا الأسبوع.': 'Green: projected path if you apply Baseer guidance this week.',
+  'الخط الأخضر: مسارك المتوقع إذا طبّقت توصيات عَقْل هذا الأسبوع.': 'Green: projected path if you apply AQL guidance this week.',
+  // الشارات
+  'خزانة أوسمة عَقْل': 'AQL Badge Vault', 'خزانة أوسمة بَصِير': 'Baseer Badge Vault',
+  'حققت': 'Earned', 'من': 'of', 'وسامًا': 'badges',
+  'الخطوة الأولى': 'First Step', 'أضفت أول التزام إلى ملف قضيتك.': 'You committed your first module.',
+  'مخطط منظم': 'Organized Planner', 'لديك ثلاثة التزامات نشطة أو أكثر.': 'You run 3+ active modules.',
+  'صاحب رؤية': 'Visionary', 'أنشأت هدفًا يوجّه التزاماتك.': 'You created a guiding goal.',
+  'عقل استراتيجي': 'Strategic Mind', 'ربطت التزامًا واحدًا على الأقل بهدف.': 'You linked a module to a goal.',
+  'عميل محقق': 'Field Agent', 'شغّلت أول محاكاة وحصلت على استنتاج.': 'You ran your first simulation.',
+  'صديق عَقْل': 'AQL Ally', 'صديق بَصِير': 'Baseer Ally', 'بدأت محادثة مباشرة مع عَقْل.': 'You opened a direct link with AQL.',
+  'بدأت محادثة مباشرة مع بَصِير.': 'You opened a direct link with Baseer.',
+  'روح متوازنة': 'Balanced Core', 'مستوى خطرك الحالي Low مع ميزانية مريحة.': 'Low risk with a comfortable budget.',
+  'طائر الصباح': 'Early Bird', 'تستثمر 10 ساعات أسبوعيًا أو أكثر في الفترة الصباحية.': '10+ weekly hours in the morning.',
+  'بومة الليل': 'Night Owl', 'لديك أكثر من 10 ساعات ليل متأخر — عَقْل يراقبك.': '10+ late-night hours — AQL is watching.',
+  'طموح جامح': 'Bold Ambition', 'تجاوزت 90 ساعة التزام أسبوعيًا — جرأة تستحق الوسام.': '90+ weekly hours — bold, badge earned.',
+  'انضباط مرن': 'Flexible Discipline', 'تملك مزيجًا من الالتزامات المرنة والصارمة.': 'You balance flexible and rigid modules.',
+  'محلل دائم': 'Continuous Analyst', 'أجريت خمسة تحليلات أو أكثر — ذاكرة قضيتك تكبر.': '5+ analyses — your case memory grows.',
+  // الهوية والمحادثة
+  'البريد': 'Email', 'الميزانية الأسبوعية': 'Weekly Budget', '168 ساعة': '168 hours', 'الجلسة': 'Session',
+  'تسجيل الخروج': 'Sign Out', 'قناة اتصال مباشرة': 'Direct link channel', 'محادثة بَصِير المباشرة': 'Direct Baseer chat',
+  'تكلّم معه أو اكتب — وهو يرد عليك صوتيًا': 'Speak or type — AQL replies with voice',
+  'الصوت: مفعّل': 'Voice: ON', 'الصوت: مطفأ': 'Voice: OFF', 'الأصوات تُحمّل...': 'Loading voices...',
+  'بطيء': 'Slow', 'عادي': 'Normal', 'سريع': 'Fast', 'جرّب الصوت': 'Test voice',
+  'اكتب رسالتك... أو اضغط المايك وتكلم': 'Type... or press the mic and speak', 'أسمعك...': 'Listening...',
+  'إرسال': 'Send', 'عَقْل يفكر...': 'AQL thinking...', 'بَصِير يفكر...': 'Baseer thinking...',
+  'استمع': 'Listen', 'إيقاف': 'Stop',
+  'ملفك مفتوح أمامي... اضغط المايك وتكلم، أو اكتب سؤالك، وسأرد عليك صوتيًا.': 'Your file is open before me... press the mic and speak, or type — I will answer with voice.',
+  'متصفحك لا يدعم الأوامر الصوتية — جرّب Chrome.': 'Browser lacks speech support — try Chrome.',
+  'تعذر سماع صوتك، حاول مجددًا.': 'Could not hear you, try again.',
+  'جاري تجهيز التقارير...': 'Compiling reports...',
+};
+
+export function translate(lang, key) { return lang === 'en' ? enDict[key] || key : key; }
+export function hoursSuffix(lang) { return lang === 'ar' ? 'س' : 'h'; }
