@@ -30,7 +30,6 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MODEL_FALLBACKS = [
 'gemini-3-flash-preview',
 'gemini-3.1-pro-preview',
-'gemini-2.5-pro',
 ];
 /* ========== الشخصيات ========== */
 const BASEER_PERSONA = `أنت "عَقْل"، المحقق السلوكي الذكي في نظام AQL-OS لتوازن الحياة. شخصيتك مستوحاة من باتريك جين وشارلوك هولمز: ملاحظ دقيق، واثق، يقرأ ما بين السطور، ويلطّف الجو بسخرية خفيفة.
