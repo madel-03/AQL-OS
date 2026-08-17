@@ -10,13 +10,14 @@ import os from 'os';
 const app = express();
 
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:5174',
-    'https://aql-os-orcin.vercel.app/',  
-  ],
+origin: [
+'http://localhost:5173',
+'http://localhost:5174',
+'http://127.0.0.1:5173',
+'http://127.0.0.1:5174',
+'https://aql-os-orcin.vercel.app',
+/^https:\/\/.*\.vercel\.app$/,
+],
 }));
 app.use(express.json());
 
