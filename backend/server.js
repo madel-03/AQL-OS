@@ -248,36 +248,95 @@ async function askBaseerBrain(evidence, lang = 'ar') {
 }
 
 async function askBaseerChat({ context, history, userMessage }, lang = 'ar') {
-  const langNote = lang === 'en' ? '\nIMPORTANT: Respond FULLY in English, JARVIS style, address the user as "sir".' : '\nأسلوب الكلام: خاطب المستخدم بلقب "سيدي"، بأسلوب جارفس.';
+  const langNote = lang === 'en' 
+    ? '\nRespond in English. Style: JARVIS from Iron Man - address user as "sir", polished, calm, dry British wit.' 
+    : '\nالأسلوب: خاطب المستخدم بلقب "سيدي"، بأسلوب جارفس: مهذب رفيع، هدوء تام، وسخرية خفيفة.';
+  
+  const userContext = `
+Current situation:
+- Commitments: ${JSON.stringify(context.commitments?.map(c => c.title) || [])}
+- Total hours/week: ${context.metrics?.total_hours || 0}h
+- Risk level: ${context.metrics?.current_risk || 'Low'}
+- Finance: Balance ${context.life?.finance?.balance || 0}
+- Wellness: Mood ${context.life?.wellness?.mood || '-'}/10
+
+Recent conversation:
+${history.map(h => `${h.role === 'assistant' ? 'AQL' : 'User'}: ${h.content}`).join('\n')}
+
+User's message: ${userMessage}
+`;
+
+  // 1️⃣ Groq أولاً (أسرع وأقل ازدحام)
+  if (GROQ_API_KEY) {
+    try {
+      const systemPrompt = `You are AQL, a JARVIS-style life OS assistant. ${langNote}
+      
+Rules:
+- Be helpful and insightful (3-5 sentences)
+- Reference the user's actual data when relevant
+- Ask probing questions when appropriate
+- Maintain calm, professional tone
+- End with actionable advice or insight`;
+
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${GROQ_API_KEY}` 
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-70b-versatile',
+          temperature: 0.7,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContext },
+          ],
+        }),
+      });
+      
+      if (!response.ok) throw new Error('Groq ' + response.status);
+      
+      const data = await response.json();
+      const text = data.choices?.[0]?.message?.content || '';
+      
+      if (text.trim()) {
+        console.log(' Chat via Groq (fast)');
+        return text.trim();
+      }
+    } catch (err) {
+      console.log(' Groq chat failed, trying Gemini:', err.message);
+    }
+  }
+
+  // 2️⃣ Gemini احتياطي
+  const langNoteGemini = lang === 'en'
+    ? '\nIMPORTANT: Respond FULLY in English (5-7 sentences), JARVIS style, address as "sir".'
+    : '\nأسلوب الكلام: خاطب المستخدم بلقب "سيدي"، بأسلوب جارفس. أجب بـ 5-7 جمل.';
+    
   const contents = [
-    { role: 'user', parts: [{ text: `Current case file context:\n${JSON.stringify(context, null, 2)}` }] },
-    { role: 'model', parts: [{ text: 'I have reviewed the case file. Ask me anything, agent.' }] },
+    { role: 'user', parts: [{ text: `Context:\n${JSON.stringify(context, null, 2)}` }] },
+    { role: 'model', parts: [{ text: 'I\'ve reviewed your case. How can I assist, sir?' }] },
   ];
-  for (const m of history) contents.push({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] });
+  for (const m of history) {
+    contents.push({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] });
+  }
   contents.push({ role: 'user', parts: [{ text: userMessage }] });
+  
   try {
     const data = await geminiGenerate({
-      system_instruction: { parts: [{ text: CHAT_PERSONA + langNote }] },
+      system_instruction: { parts: [{ text: CHAT_PERSONA + langNoteGemini }] },
       contents,
       generationConfig: { temperature: 0.9 },
     });
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    if (!text.trim()) throw new Error('Empty Gemini response');
-    console.log(' محادثة عَقْل عبر Gemini');
+    if (!text.trim()) throw new Error('Empty response');
+    console.log('💬 Chat via Gemini');
     return text.trim();
   } catch (err) {
-    console.log('🧠 Gemini chat failed:', err.message);
+    console.error(' Gemini chat failed:', err.message);
   }
-  if (GROQ_API_KEY) {
-    try {
-      const gText = await groqChat(CHAT_PERSONA + langNote, `Case file:\n${JSON.stringify(context, null, 2)}\n\nConversation:\n${history.map((m) => `${m.role}: ${m.content}`).join('\n')}\n\nUser: ${userMessage}`);
-      console.log('🧠 محادثة عَقْل عبر Groq');
-      return gText.trim();
-    } catch (e) {
-      console.log(' Groq chat failed:', e.message);
-    }
-  }
-  throw new Error('All brains failed');
+  
+  throw new Error('All chat engines failed');
 }
 
 async function edgeSpeak(text, voiceName) {
