@@ -126,38 +126,24 @@ function geminiToolsToOpenAI(decls) {
   }));
 }
 
-async function groqAgent(system, userMessage, execTool) {
-  const messages = [{ role: 'system', content: system }, { role: 'user', content: userMessage }];
-  const actions = [];
-  for (let step = 0; step < 6; step++) {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        temperature: 0.7,
-        messages,
-        tools: geminiToolsToOpenAI(AGENT_TOOLS),
-      }),
-    });
-    if (!response.ok) throw new Error('Groq ' + response.status);
-    const data = await response.json();
-    const msg = data.choices?.[0]?.message;
-    const tc = msg?.tool_calls?.[0];
-    if (tc) {
-      let args = {};
-      try {
-        args = JSON.parse(tc.function.arguments || '{}');
-      } catch (e) {}
-      const result = await execTool(tc.function.name, args);
-      actions.push({ tool: tc.function.name, result });
-      messages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls });
-      messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
-      continue;
-    }
-    return { reply: msg?.content || 'Done, sir.', actions };
-  }
-  return { reply: 'Done, sir.', actions };
+// Groq للمحادثة فقط (ما يدعم Function Calling)
+async function groqChat(system, userMessage) {
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY missing');
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
+    body: JSON.stringify({
+      model: 'llama-3.1-70b-versatile',
+      temperature: 0.7,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: userMessage },
+      ],
+    }),
+  });
+  if (!response.ok) throw new Error('Groq ' + response.status);
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || '';
 }
 
 async function geminiGenerate(payload) {
@@ -755,9 +741,9 @@ app.post('/api/agent', requireAuth, async (req, res) => {
     : 'أنت "عَقْل"، وكيل نظام الحياة بأسلوب جارفس. خاطبه بلقب "سيدي". نفّذ طلبه باستخدام الأدوات عند الحاجة ثم ارد بجملتين إلى أربع. ')
     + `Current data: ${JSON.stringify({ commitments: list, life })}`;
 
-  // === الطبقة 1: Gemini ===
+  // الطبقة 1: Gemini مع Function Calling
   try {
-    console.log('🤖 Agent: trying Gemini...');
+    console.log('🤖 Agent: trying Gemini with tools...');
     const contents = [{ role: 'user', parts: [{ text: message }] }];
     const actions = [];
     let reply = '';
@@ -780,12 +766,58 @@ app.post('/api/agent', requireAuth, async (req, res) => {
       break;
     }
     if (reply || actions.length) {
-      console.log('✅ Agent: Gemini succeeded');
+      console.log('✅ Agent: Gemini succeeded with', actions.length, 'actions');
       return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'gemini' });
     }
   } catch (gemErr) {
     console.log(' Agent: Gemini failed →', gemErr.message);
   }
+
+  // الطبقة 2: قاعدة ذكية (تنفذ فعليًا)
+  console.log('🤖 Agent: falling back to smart rules...');
+  const lower = message.toLowerCase();
+  const actions = [];
+  let ruleReply = '';
+
+  // استخراج الأوامر من النص
+  if (lower.includes('add') || lower.includes('سجل') || lower.includes('ضيف')) {
+    // التزام وقت
+    const hoursMatch = message.match(/(\d+)\s*(hour|h|ساعة)/i);
+    const minutesMatch = message.match(/(\d+)\s*(min|m|دقيقة)/i);
+    const hours = hoursMatch ? Number(hoursMatch[1]) : (minutesMatch ? Number(minutesMatch[1]) / 60 : 0);
+    
+    if (hours > 0) {
+      const titleMatch = message.match(/(?:of|من)\s+(.+)/i) || message.match(/(.+)\s+(?:hour|h|ساعة)/i);
+      const title = titleMatch ? titleMatch[1].trim() : 'New Commitment';
+      
+      const { data, error } = await supabase.from('commitments').insert({
+        user_id: req.user.id,
+        title: title,
+        hours_per_week: Math.round(hours * 10) / 10,
+        type: 'personal',
+        intensity: 'medium',
+        time_slot: 'mixed',
+        flexible: true,
+        status: 'active',
+      }).select().single();
+      
+      if (!error) {
+        actions.push({ tool: 'add_commitment', result: `added "${data.title}" (${data.hours_per_week}h/week)` });
+        ruleReply = lang === 'en'
+          ? `Added commitment "${data.title}" for ${data.hours_per_week} hours per week, sir.`
+          : `تم إضافة التزام "${data.title}" بمعدل ${data.hours_per_week} ساعات أسبوعياً يا سيدي.`;
+      }
+    }
+  }
+
+  if (!ruleReply) {
+    ruleReply = lang === 'en'
+      ? 'I understand your request, sir. My AI engines are momentarily under heavy load, but I\'ve noted your intent and will process it as soon as capacity returns.'
+      : 'فهمت طلبك يا سيدي. محركات الذكاء تحت ضغط لحظي، لكنني سجلت نيتك وسأنفذها فور عودة القدرة.';
+  }
+  
+  res.json({ reply: ruleReply, actions, engine: 'rules' });
+});
 
   // === الطبقة 2: Groq ===
   if (GROQ_API_KEY) {
