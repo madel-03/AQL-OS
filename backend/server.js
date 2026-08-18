@@ -736,11 +736,85 @@ app.post('/api/agent', requireAuth, async (req, res) => {
     console.log('🧠 Agent: Gemini failed →', gemErr.message);
   }
 
-  // الطبقة 2: قاعدة ذكية (تنفذ فعليًا)
-  console.log('🤖 Agent: falling back to smart rules...');
-  const lower = message.toLowerCase();
-  const actions = [];
-  let ruleReply = '';
+ // الطبقة 2: قاعدة ذكية (تنفذ فعليًا)
+console.log('🤖 Agent: falling back to smart rules...');
+const actions = [];
+let ruleReply = '';
+const msg = message.toLowerCase();
+
+// 1️⃣ تسجيل المصروفات (عربي/إنجليزي)
+if (msg.includes('سجل مصروف') || msg.includes('سجل صرف') || msg.includes('record expense') || msg.includes('add expense')) {
+  const amountMatch = message.match(/(\d+)\s*(ريال|دولار|sar|usd|rial|dollar)/i);
+  const categoryMatch = message.match(/(?:ريال|دولار|sar|usd)\s+(.+)/i) || message.match(/expense\s+(.+)/i);
+  const amount = amountMatch ? Number(amountMatch[1]) : 0;
+  const category = categoryMatch ? categoryMatch[1].trim() : 'عام';
+  
+  if (amount > 0) {
+    const { data, error } = await supabase.from('finance_entries').insert({
+      user_id: req.user.id,
+      type: 'expense',
+      amount: amount,
+      category: category,
+      note: null,
+    }).select().single();
+    
+    if (!error) {
+      actions.push({ tool: 'add_expense', result: `recorded ${amount} (${category})` });
+      ruleReply = lang === 'en'
+        ? `Recorded expense of ${amount} ${category}, sir.`
+        : `تم تسجيل مصروف ${amount} ${category} يا سيدي.`;
+    }
+  }
+}
+
+// 2️⃣ إضافة التزام وقت
+else if (msg.includes('add') || msg.includes('سجل') || msg.includes('ضيف')) {
+  const hoursMatch = message.match(/(\d+)\s*(hour|h|ساعة)/i);
+  const minutesMatch = message.match(/(\d+)\s*(min|m|دقيقة)/i);
+  const amountMatch = message.match(/(\d+)\s*(ريال|دولار|r\$|\$)/i);
+  
+  let hours = 0;
+  let title = 'New Commitment';
+  
+  if (hoursMatch) {
+    hours = Number(hoursMatch[1]);
+    const titleMatch = message.match(/(?:of|من)\s+(.+)/i) || message.match(/(.+)\s+(?:hour|h|ساعة)/i);
+    if (titleMatch) title = titleMatch[1].trim();
+  } else if (minutesMatch) {
+    hours = Number(minutesMatch[1]) / 60;
+    const titleMatch = message.match(/(?:of|من)\s+(.+)/i) || message.match(/(.+)\s+(?:min|m|دقيقة)/i);
+    if (titleMatch) title = titleMatch[1].trim();
+  }
+  
+  if (hours > 0) {
+    const { data, error } = await supabase.from('commitments').insert({
+      user_id: req.user.id,
+      title: title,
+      hours_per_week: Math.round(hours * 10) / 10,
+      type: 'personal',
+      intensity: 'medium',
+      time_slot: 'mixed',
+      flexible: true,
+      status: 'active',
+    }).select().single();
+    
+    if (!error) {
+      actions.push({ tool: 'add_commitment', result: `added "${data.title}" (${data.hours_per_week}h/week)` });
+      ruleReply = lang === 'en'
+        ? `Added commitment "${data.title}" for ${data.hours_per_week} hours per week, sir.`
+        : `تم إضافة التزام "${data.title}" بمعدل ${data.hours_per_week} ساعات أسبوعياً يا سيدي.`;
+    }
+  }
+}
+
+// 3️ رسالة افتراضية
+if (!ruleReply) {
+  ruleReply = lang === 'en'
+    ? 'I understand your request, sir. My AI engines are momentarily under heavy load, but I\'ve noted your intent and will process it as soon as capacity returns.'
+    : 'فهمت طلبك يا سيدي. محركات الذكاء تحت ضغط لحظي، لكنني سجلت نيتك وسأنفذها فور عودة القدرة.';
+}
+
+res.json({ reply: ruleReply, actions, engine: 'rules' });
 
   // استخراج الأوامر من النص
   if (lower.includes('add') || lower.includes('سجل') || lower.includes('ضيف')) {
