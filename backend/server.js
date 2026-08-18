@@ -615,6 +615,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     const message = (body.message || '').trim();
     if (!message) return res.status(400).json({ error: 'اكتب رسالتك أولاً' });
     if (message.length > 500) return res.status(400).json({ error: 'الرسالة طويلة جدًا' });
+    
     const lang = body.lang === 'en' ? 'en' : 'ar';
     const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
     const list = (commitments || []).map(normalizeCommitment);
@@ -625,41 +626,61 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     const { data: historyRows } = await supabase.from('chat_messages').select('role, content').eq('user_id', req.user.id).order('created_at', { ascending: false }).limit(8);
     const history = (historyRows || []).reverse();
     const life = await fetchLifeData(req.user.id);
+    
     let reply;
     try {
-      reply = await askBaseerChat({ context: { commitments: list, metrics: { total_hours: totalHours, remaining_hours: Math.max(168 - totalHours, 0), high_intensity_hours: highHours, rigid_hours: rigidHours, current_risk: riskLabel(totalHours) }, recent_analyses: logs || [], life: life || null }, history, userMessage: message }, lang);
-   } catch (e) {
-  console.error('🧠 Chat fallback to rules:', e.message);
-  
-  // قاعدة ذكية للمحادثة
-  const msg = message.toLowerCase();
-  
-  if (msg.includes('حلل مزاج') || msg.includes('analyze mood') || msg.includes('كيف حالي')) {
-    const mood = life?.wellness?.mood || 5;
-    const energy = life?.wellness?.energy || 5;
-    reply = lang === 'en'
-      ? `Based on your last log, your mood is ${mood}/10 and energy is ${energy}/10, sir. ${mood >= 7 ? 'You\'re in great shape!' : 'Consider some rest if possible.'}`
-      : `بناءً على آخر تسجيل، مزاجك ${mood}/10 وطاقتك ${energy}/10 يا سيدي. ${mood >= 7 ? 'أنت في حالة ممتازة!' : 'فكر في الراحة لو ممكن.'}`;
-  }
-  else if (msg.includes('رصيدي') || msg.includes('my balance')) {
-    const balance = life?.finance?.balance || 0;
-    reply = lang === 'en'
-      ? `Your current balance is $${balance}, sir.`
-      : `رصيدك الحالي ${balance} ريال يا سيدي.`;
-  }
-  else if (msg.includes('التزاماتي') || msg.includes('my commitments')) {
-    const totalHours = list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
-    reply = lang === 'en'
-      ? `You have ${list.length} commitments totaling ${totalHours} hours per week, sir.`
-      : `عندك ${list.length} التزامات بمجموع ${totalHours} ساعة أسبوعياً يا سيدي.`;
-  }
-  else {
-    reply = lang === 'en'
-      ? 'I understand your request, sir. My AI engines are momentarily under heavy load, but I\'ve noted your intent and will respond as soon as capacity returns.'
-      : 'فهمت طلبك يا سيدي. محركات الذكاء تحت ضغط لحظي، لكنني سجلت نيتك وسأرد فور عودة القدرة.';
-  }
-}
-    await supabase.from('chat_messages').insert([{ user_id: req.user.id, role: 'user', content: message }, { user_id: req.user.id, role: 'assistant', content: reply }]);
+      reply = await askBaseerChat({
+        context: {
+          commitments: list,
+          metrics: {
+            total_hours: totalHours,
+            remaining_hours: Math.max(168 - totalHours, 0),
+            high_intensity_hours: highHours,
+            rigid_hours: rigidHours,
+            current_risk: riskLabel(totalHours),
+          },
+          recent_analyses: logs || [],
+          life: life || null,
+        },
+        history,
+        userMessage: message,
+      }, lang);
+    } catch (e) {
+      console.error(' Chat AI failed:', e.message);
+      
+      // قاعدة ذكية بسيطة
+      const msg = message.toLowerCase();
+      if (msg.includes('حلل') && (msg.includes('مزاج') || msg.includes('مood'))) {
+        const mood = life?.wellness?.mood || 5;
+        const energy = life?.wellness?.energy || 5;
+        reply = lang === 'en'
+          ? `Based on your last log, mood is ${mood}/10 and energy is ${energy}/10, sir.`
+          : `بناءً على آخر تسجيل، مزاجك ${mood}/10 وطاقتك ${energy}/10 يا سيدي.`;
+      }
+      else if (msg.includes('رصيد') || msg.includes('balance') || msg.includes('فلوس')) {
+        const balance = life?.finance?.balance || 0;
+        const income = life?.finance?.income || 0;
+        const expense = life?.finance?.expense || 0;
+        reply = lang === 'en'
+          ? `Balance: $${balance} (Income: $${income}, Expenses: $${expense}), sir.`
+          : `الرصيد: ${balance} ريال (دخل: ${income}, مصروف: ${expense}) يا سيدي.`;
+      }
+      else if (msg.includes('التزام') || msg.includes('commitment') || msg.includes('ساعة')) {
+        reply = lang === 'en'
+          ? `You have ${list.length} commitments totaling ${totalHours} hours/week, sir.`
+          : `عندك ${list.length} التزامات بمجموع ${totalHours} ساعة أسبوعياً يا سيدي.`;
+      }
+      else {
+        reply = lang === 'en'
+          ? 'I understand, sir. My AI is under heavy load but I\'ve noted your request.'
+          : 'فهمت طلبك يا سيدي. الذكاء تحت ضغط لكنني سجلت نيتك.';
+      }
+    }
+    
+    await supabase.from('chat_messages').insert([
+      { user_id: req.user.id, role: 'user', content: message },
+      { user_id: req.user.id, role: 'assistant', content: reply },
+    ]);
     res.json({ reply });
   } catch (err) {
     res.status(500).json({ error: err.message });
