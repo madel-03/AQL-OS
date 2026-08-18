@@ -88,44 +88,6 @@ function parseBrainJson(text) {
   return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-async function groqText(system, user, json = false) {
-  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY missing');
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      temperature: 0.8,
-      ...(json ? { response_format: { type: 'json_object' } } : {}),
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-    }),
-  });
-  if (!response.ok) throw new Error('Groq ' + response.status);
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
-}
-
-function geminiToolsToOpenAI(decls) {
-  const conv = (s) => {
-    if (!s || typeof s !== 'object') return s;
-    const out = { type: String(s.type).toLowerCase() };
-    if (s.description) out.description = s.description;
-    if (s.properties) {
-      const p = {};
-      for (const k of Object.keys(s.properties)) p[k] = conv(s.properties[k]);
-      out.properties = p;
-    }
-    return out;
-  };
-  return (decls || []).map((t) => ({
-    type: 'function',
-    function: { name: t.name, description: t.description, parameters: conv(t.parameters) },
-  }));
-}
-
 // Groq للمحادثة فقط (ما يدعم Function Calling)
 async function groqChat(system, userMessage) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY missing');
@@ -133,7 +95,7 @@ async function groqChat(system, userMessage) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
     body: JSON.stringify({
-      model: 'llama-3.1-70b-versatile',
+      model: GROQ_MODEL,
       temperature: 0.7,
       messages: [
         { role: 'system', content: system },
@@ -275,7 +237,7 @@ async function askBaseerBrain(evidence, lang = 'ar') {
   }
   if (GROQ_API_KEY) {
     try {
-      const gText = await groqText(BASEER_PERSONA + langNote, JSON.stringify(evidence, null, 2), true);
+      const gText = await groqChat(BASEER_PERSONA + langNote, JSON.stringify(evidence, null, 2));
       console.log('🧠 عَقْل فكر عبر Groq');
       return parseBrainJson(gText);
     } catch (e) {
@@ -301,18 +263,18 @@ async function askBaseerChat({ context, history, userMessage }, lang = 'ar') {
     });
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     if (!text.trim()) throw new Error('Empty Gemini response');
-    console.log('🧠 محادثة عَقْل عبر Gemini');
+    console.log(' محادثة عَقْل عبر Gemini');
     return text.trim();
   } catch (err) {
     console.log('🧠 Gemini chat failed:', err.message);
   }
   if (GROQ_API_KEY) {
     try {
-      const gText = await groqText(CHAT_PERSONA + langNote, `Case file:\n${JSON.stringify(context, null, 2)}\n\nConversation:\n${history.map((m) => `${m.role}: ${m.content}`).join('\n')}\n\nUser: ${userMessage}`);
+      const gText = await groqChat(CHAT_PERSONA + langNote, `Case file:\n${JSON.stringify(context, null, 2)}\n\nConversation:\n${history.map((m) => `${m.role}: ${m.content}`).join('\n')}\n\nUser: ${userMessage}`);
       console.log('🧠 محادثة عَقْل عبر Groq');
       return gText.trim();
     } catch (e) {
-      console.log('🧠 Groq chat failed:', e.message);
+      console.log(' Groq chat failed:', e.message);
     }
   }
   throw new Error('All brains failed');
@@ -692,7 +654,7 @@ app.post('/api/directive', requireAuth, async (req, res) => {
     } catch (e) {}
     if (!result && GROQ_API_KEY) {
       try {
-        result = parseBrainJson(await groqText('Return JSON only.', prompt, true));
+        result = parseBrainJson(await groqChat('Return JSON only.', prompt));
       } catch (e) {}
     }
     if (!result) {
@@ -724,6 +686,7 @@ app.post('/api/tts', requireAuth, async (req, res) => {
   }
 });
 
+// الوكيل: Gemini للـ Function Calling + قاعدة ذكية احتياط
 app.post('/api/agent', requireAuth, async (req, res) => {
   const body = req.body || {};
   const message = (body.message || '').trim();
@@ -770,7 +733,7 @@ app.post('/api/agent', requireAuth, async (req, res) => {
       return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'gemini' });
     }
   } catch (gemErr) {
-    console.log(' Agent: Gemini failed →', gemErr.message);
+    console.log('🧠 Agent: Gemini failed →', gemErr.message);
   }
 
   // الطبقة 2: قاعدة ذكية (تنفذ فعليًا)
@@ -816,51 +779,6 @@ app.post('/api/agent', requireAuth, async (req, res) => {
       : 'فهمت طلبك يا سيدي. محركات الذكاء تحت ضغط لحظي، لكنني سجلت نيتك وسأنفذها فور عودة القدرة.';
   }
   
-  res.json({ reply: ruleReply, actions, engine: 'rules' });
-});
-
-  // === الطبقة 2: Groq ===
-  if (GROQ_API_KEY) {
-    try {
-      console.log('🤖 Agent: trying Groq...');
-      const out = await groqAgent(system, message, (name, args) => runAgentTool(req.user.id, name, args));
-      console.log('✅ Agent: Groq succeeded →', out.actions.length, 'actions');
-      return res.json({ reply: out.reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions: out.actions, engine: 'groq' });
-    } catch (gErr) {
-      console.log('❌ Agent: Groq failed →', gErr.message);
-    }
-  } else {
-    console.log('⚠️ Agent: GROQ_API_KEY is empty in environment');
-  }
-
-  // === الطبقة 3: قاعدة ذكية (آخر ملجأ) ===
-  console.log('🤖 Agent: falling back to rule-based');
-  const lower = message.toLowerCase();
-  let ruleReply = '';
-  const actions = [];
-  if (lower.includes('add') || lower.includes('سجل') || lower.includes('ضيف')) {
-    if (lower.includes('gaming') || lower.includes('game') || lower.includes('لعب')) {
-      const hours = Number(message.match(/(\d+)\s*(hour|h)/i)?.[1] || 0);
-      if (hours > 0) {
-        const { data, error } = await supabase.from('commitments').insert({
-          user_id: req.user.id, title: 'Gaming', hours_per_week: hours,
-          type: 'personal', intensity: 'medium', time_slot: 'evening',
-          flexible: true, status: 'active',
-        }).select().single();
-        if (!error) {
-          actions.push({ tool: 'add_commitment', result: `added "${data.title}" (${data.hours_per_week}h/week)` });
-          ruleReply = lang === 'en'
-            ? `Added gaming commitment of ${hours} hours per week, sir. I've logged it under personal activities.`
-            : `تم إضافة التزام الألعاب بمعدل ${hours} ساعات أسبوعياً يا سيدي.`;
-        }
-      }
-    }
-  }
-  if (!ruleReply) {
-    ruleReply = lang === 'en'
-      ? 'I understand your request, sir. My AI engines are momentarily under heavy load, but I\'ve noted your intent and will process it as soon as capacity returns.'
-      : 'فهمت طلبك يا سيدي. محركات الذكاء تحت ضغط لحظي، لكنني سجلت نيتك وسأنفذها فور عودة القدرة.';
-  }
   res.json({ reply: ruleReply, actions, engine: 'rules' });
 });
 
