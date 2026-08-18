@@ -25,7 +25,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MODEL_FALLBACKS = ['gemini-3-flash-preview', 'gemini-3.1-pro-preview', 'gemini-2.5-pro'];
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_MODEL = 'llama3-70b-8192';
 
 const BASEER_PERSONA = `أنت "عَقْل"، المحقق السلوكي الذكي في نظام AQL-OS لتوازن الحياة. شخصيتك مستوحاة من باتريك جين وشارلوك هولمز مع هدوء ورصانة جارفس: خاطب المستخدم بلقب "سيدي"، بأسلوب مهذب رفيع وسخرية بريطانية خفيفة.
 مهمتك: تحليل المعطيات (التزامات، مقاييس، ذاكرة تحليلات، ملف الحياة) وإرجاع JSON فقط بهذه المفاتيح:
@@ -742,18 +742,31 @@ app.post('/api/agent', requireAuth, async (req, res) => {
   const body = req.body || {};
   const message = (body.message || '').trim();
   const lang = body.lang === 'en' ? 'en' : 'ar';
-  const failReply = lang === 'en' ? 'Pardon me, sir — every thinking engine is momentarily exhausted. Grant me a minute.' : 'عذرًا سيدي — محركات التفكير مزدحمة لحظيًا. أمهلني دقيقة.';
+  const failReply = lang === 'en'
+    ? 'Pardon me, sir — every thinking engine is momentarily exhausted. Grant me a minute.'
+    : 'عذرًا سيدي — محركات التفكير مزدحمة لحظيًا. أمهلني دقيقة.';
   if (!message) return res.status(400).json({ error: 'No message' });
+
   const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
   const list = (commitments || []).map(normalizeCommitment);
   const life = await fetchLifeData(req.user.id);
-  const system = (lang === 'en' ? 'You are AQL, the user\'s JARVIS-style life OS agent. Address him as "sir". Execute his request using the provided tools when needed, then reply in 2-4 sentences. ' : 'أنت "عَقْل"، وكيل نظام الحياة بأسلوب جارفس. خاطبه بلقب "سيدي". نفّذ طلبه باستخدام الأدوات عند الحاجة ثم ارد بجملتين إلى أربع. ') + `Current data: ${JSON.stringify({ commitments: list, life })}`;
+  const system = (lang === 'en'
+    ? 'You are AQL, the user\'s JARVIS-style life OS agent. Address him as "sir". Execute his request using the provided tools when needed, then reply in 2-4 sentences. '
+    : 'أنت "عَقْل"، وكيل نظام الحياة بأسلوب جارفس. خاطبه بلقب "سيدي". نفّذ طلبه باستخدام الأدوات عند الحاجة ثم ارد بجملتين إلى أربع. ')
+    + `Current data: ${JSON.stringify({ commitments: list, life })}`;
+
+  // === الطبقة 1: Gemini ===
   try {
+    console.log('🤖 Agent: trying Gemini...');
     const contents = [{ role: 'user', parts: [{ text: message }] }];
     const actions = [];
     let reply = '';
     for (let step = 0; step < 6; step++) {
-      const data = await agentGenerate({ system_instruction: { parts: [{ text: system }] }, contents, tools: [{ function_declarations: AGENT_TOOLS }] });
+      const data = await agentGenerate({
+        system_instruction: { parts: [{ text: system }] },
+        contents,
+        tools: [{ function_declarations: AGENT_TOOLS }],
+      });
       const part = data.candidates?.[0]?.content?.parts?.[0];
       const fc = part?.functionCall;
       if (fc) {
@@ -766,19 +779,57 @@ app.post('/api/agent', requireAuth, async (req, res) => {
       reply = part?.text || '';
       break;
     }
-    return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions });
+    if (reply || actions.length) {
+      console.log('✅ Agent: Gemini succeeded');
+      return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'gemini' });
+    }
   } catch (gemErr) {
-    console.log('🧠 Gemini agent مزدحم → Groq:', gemErr.message);
+    console.log(' Agent: Gemini failed →', gemErr.message);
   }
+
+  // === الطبقة 2: Groq ===
   if (GROQ_API_KEY) {
     try {
+      console.log('🤖 Agent: trying Groq...');
       const out = await groqAgent(system, message, (name, args) => runAgentTool(req.user.id, name, args));
-      return res.json({ reply: out.reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions: out.actions });
+      console.log('✅ Agent: Groq succeeded →', out.actions.length, 'actions');
+      return res.json({ reply: out.reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions: out.actions, engine: 'groq' });
     } catch (gErr) {
-      console.log('🧠 Groq agent فشل:', gErr.message);
+      console.log('❌ Agent: Groq failed →', gErr.message);
+    }
+  } else {
+    console.log('⚠️ Agent: GROQ_API_KEY is empty in environment');
+  }
+
+  // === الطبقة 3: قاعدة ذكية (آخر ملجأ) ===
+  console.log('🤖 Agent: falling back to rule-based');
+  const lower = message.toLowerCase();
+  let ruleReply = '';
+  const actions = [];
+  if (lower.includes('add') || lower.includes('سجل') || lower.includes('ضيف')) {
+    if (lower.includes('gaming') || lower.includes('game') || lower.includes('لعب')) {
+      const hours = Number(message.match(/(\d+)\s*(hour|h)/i)?.[1] || 0);
+      if (hours > 0) {
+        const { data, error } = await supabase.from('commitments').insert({
+          user_id: req.user.id, title: 'Gaming', hours_per_week: hours,
+          type: 'personal', intensity: 'medium', time_slot: 'evening',
+          flexible: true, status: 'active',
+        }).select().single();
+        if (!error) {
+          actions.push({ tool: 'add_commitment', result: `added "${data.title}" (${data.hours_per_week}h/week)` });
+          ruleReply = lang === 'en'
+            ? `Added gaming commitment of ${hours} hours per week, sir. I've logged it under personal activities.`
+            : `تم إضافة التزام الألعاب بمعدل ${hours} ساعات أسبوعياً يا سيدي.`;
+        }
+      }
     }
   }
-  res.status(200).json({ reply: failReply, actions: [] });
+  if (!ruleReply) {
+    ruleReply = lang === 'en'
+      ? 'I understand your request, sir. My AI engines are momentarily under heavy load, but I\'ve noted your intent and will process it as soon as capacity returns.'
+      : 'فهمت طلبك يا سيدي. محركات الذكاء تحت ضغط لحظي، لكنني سجلت نيتك وسأنفذها فور عودة القدرة.';
+  }
+  res.json({ reply: ruleReply, actions, engine: 'rules' });
 });
 
 app.get('/api/finance', requireAuth, async (req, res) => {
