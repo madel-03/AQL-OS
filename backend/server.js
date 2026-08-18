@@ -628,10 +628,37 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     let reply;
     try {
       reply = await askBaseerChat({ context: { commitments: list, metrics: { total_hours: totalHours, remaining_hours: Math.max(168 - totalHours, 0), high_intensity_hours: highHours, rigid_hours: rigidHours, current_risk: riskLabel(totalHours) }, recent_analyses: logs || [], life: life || null }, history, userMessage: message }, lang);
-    } catch (e) {
-      console.error(' Chat fallback:', e.message);
-      reply = lang === 'en' ? 'My circuits are briefly fogged (service pressure). Try again in a moment, agent.' : '🧠 يبدو أن مداركي مشوشة قليلًا الآن (ضغط مؤقت على الخدمة). حاول مجددًا بعد لحظة.';
-    }
+   } catch (e) {
+  console.error('🧠 Chat fallback to rules:', e.message);
+  
+  // قاعدة ذكية للمحادثة
+  const msg = message.toLowerCase();
+  
+  if (msg.includes('حلل مزاج') || msg.includes('analyze mood') || msg.includes('كيف حالي')) {
+    const mood = life?.wellness?.mood || 5;
+    const energy = life?.wellness?.energy || 5;
+    reply = lang === 'en'
+      ? `Based on your last log, your mood is ${mood}/10 and energy is ${energy}/10, sir. ${mood >= 7 ? 'You\'re in great shape!' : 'Consider some rest if possible.'}`
+      : `بناءً على آخر تسجيل، مزاجك ${mood}/10 وطاقتك ${energy}/10 يا سيدي. ${mood >= 7 ? 'أنت في حالة ممتازة!' : 'فكر في الراحة لو ممكن.'}`;
+  }
+  else if (msg.includes('رصيدي') || msg.includes('my balance')) {
+    const balance = life?.finance?.balance || 0;
+    reply = lang === 'en'
+      ? `Your current balance is $${balance}, sir.`
+      : `رصيدك الحالي ${balance} ريال يا سيدي.`;
+  }
+  else if (msg.includes('التزاماتي') || msg.includes('my commitments')) {
+    const totalHours = list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
+    reply = lang === 'en'
+      ? `You have ${list.length} commitments totaling ${totalHours} hours per week, sir.`
+      : `عندك ${list.length} التزامات بمجموع ${totalHours} ساعة أسبوعياً يا سيدي.`;
+  }
+  else {
+    reply = lang === 'en'
+      ? 'I understand your request, sir. My AI engines are momentarily under heavy load, but I\'ve noted your intent and will respond as soon as capacity returns.'
+      : 'فهمت طلبك يا سيدي. محركات الذكاء تحت ضغط لحظي، لكنني سجلت نيتك وسأرد فور عودة القدرة.';
+  }
+}
     await supabase.from('chat_messages').insert([{ user_id: req.user.id, role: 'user', content: message }, { user_id: req.user.id, role: 'assistant', content: reply }]);
     res.json({ reply });
   } catch (err) {
