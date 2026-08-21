@@ -683,116 +683,121 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
     const list = (commitments || []).map(normalizeCommitment);
     const totalHours = list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
+    const remainingHours = 168 - totalHours;
     const life = await fetchLifeData(req.user.id);
+    const msg = message.toLowerCase();
     
-    let reply;
-    let usedAI = false;
+    let reply = '';
     
-    // محاولة استخدام الذكاء الاصطناعي (بدون ما ننتظر طويلاً)
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000); // 3 ثواني فقط
+    // === القواعد الذكية الشاملة ===
+    
+    // 1. تحليل المزاج والحالة
+    if (msg.includes('حلل') || msg.includes('analyze') || msg.includes('حالي') || msg.includes('how am i')) {
+      const mood = life?.wellness?.mood || 5;
+      const energy = life?.wellness?.energy || 5;
+      const sleep = life?.wellness?.sleep_hours || 0;
+      const risk = riskLabel(totalHours);
       
-      const context = {
-        commitments: list,
-        metrics: {
-          total_hours: totalHours,
-          remaining_hours: Math.max(168 - totalHours, 0),
-          current_risk: riskLabel(totalHours),
-        },
-        life: life || null,
-      };
-      
-      // Groq أولاً (أسرع)
-      if (GROQ_API_KEY) {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json', 
-            'Authorization': `Bearer ${GROQ_API_KEY}` 
-          },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            temperature: 0.7,
-            messages: [
-              { role: 'system', content: lang === 'en' 
-                ? 'You are AQL, a JARVIS-style assistant. Address user as "sir". Be helpful and concise (2-4 sentences).' 
-                : 'أنت "عَقْل"، مساعد بأسلوب جارفس. خاطب المستخدم بلقب "سيدي". كن مفيداً ومختصراً (2-4 جمل).'
-              },
-              { role: 'user', content: `Context: ${JSON.stringify(context)}\n\nUser: ${message}` },
-            ],
-          }),
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeout);
-        
-        if (response.ok) {
-          const data = await response.json();
-          const aiReply = data.choices?.[0]?.message?.content || '';
-          if (aiReply.trim()) {
-            reply = aiReply.trim();
-            usedAI = true;
-            console.log('💬 Chat via Groq (fast)');
-          }
-        }
-      }
-    } catch (e) {
-      console.log(' AI timeout/error, using rules:', e.message);
+      reply = lang === 'en' ? 
+        `Here's your current status, sir:\n• Mood: ${mood}/10 ${mood >= 7 ? '😊 Great' : mood >= 4 ? '😐 Okay' : '😔 Low'}\n• Energy: ${energy}/10\n• Sleep: ${sleep}h ${sleep >= 7 ? '✅' : '️ Need more'}\n• Weekly load: ${totalHours}h (${risk})\n${totalHours > 90 ? '️ Recommendation: Consider reducing commitments by 10-15 hours.' : '✅ Your schedule is manageable.'}` :
+        `حالتك الحالية يا سيدي:\n• المزاج: ${mood}/10 ${mood >= 7 ? '😊 ممتاز' : mood >= 4 ? '😐 مقبول' : '😔 منخفض'}\n• الطاقة: ${energy}/10\n• النوم: ${sleep}س ${sleep >= 7 ? '✅' : '⚠️ تحتاج أكثر'}\n• الحمل الأسبوعي: ${totalHours}س (${risk})\n${totalHours > 90 ? '️ نصيحة: فكّر في تقليل الالتزامات بـ 10-15 ساعة.' : '✅ جدولك متوازن.'}`;
     }
     
-    // إذا الذكاء ما اشتغل، نستخدم القواعد الذكية
-    if (!usedAI) {
-      const msg = message.toLowerCase();
+    // 2. الرصيد والمالية
+    else if (msg.includes('رصيد') || msg.includes('فلوس') || msg.includes('balance') || msg.includes('money') || msg.includes('مصروف')) {
+      const balance = life?.finance?.balance || 0;
+      const income = life?.finance?.income || 0;
+      const expense = life?.finance?.expense || 0;
+      const percentage = income > 0 ? Math.round((expense / income) * 100) : 0;
       
-      if (msg.includes('حلل') && (msg.includes('مزاج') || msg.includes('مood'))) {
-        const mood = life?.wellness?.mood || 5;
-        const energy = life?.wellness?.energy || 5;
-        reply = lang === 'en'
-          ? `Based on your last log, mood is ${mood}/10 and energy is ${energy}/10, sir. ${mood >= 7 ? 'You\'re doing great!' : 'Consider resting if possible.'}`
-          : `بناءً على آخر تسجيل، مزاجك ${mood}/10 وطاقتك ${energy}/10 يا سيدي. ${mood >= 7 ? 'أنت بخير!' : 'فكر بالراحة.'}`;
-      }
-      else if (msg.includes('رصيد') || msg.includes('balance') || msg.includes('فلوس') || msg.includes('مصروف')) {
-        const balance = life?.finance?.balance || 0;
-        const income = life?.finance?.income || 0;
-        const expense = life?.finance?.expense || 0;
-        reply = lang === 'en'
-          ? `Balance: $${balance} (Income: $${income}, Expenses: $${expense}), sir.`
-          : `الرصيد: ${balance} ريال (دخل: ${income}, مصروف: ${expense}) يا سيدي.`;
-      }
-      else if (msg.includes('التزام') || msg.includes('commitment') || msg.includes('ساعة') || msg.includes('وقت')) {
-        const highIntensity = list.filter(c => c.intensity === 'high').length;
-        reply = lang === 'en'
-          ? `You have ${list.length} commitments totaling ${totalHours} hours/week (${highIntensity} high-intensity), sir. ${totalHours > 90 ? 'This is quite heavy - consider reducing some commitments.' : 'Your schedule looks manageable.'}`
-          : `عندك ${list.length} التزامات بمجموع ${totalHours} ساعة أسبوعياً (${highIntensity} عالية الحمل) يا سيدي. ${totalHours > 90 ? 'هذا حمل ثقيل - فكّر في تقليل بعض الالتزامات.' : 'جدولك معقول.'}`;
-      }
-      else if (msg.includes('دراسة') || msg.includes('study')) {
-        const studyHours = life?.study?.total_minutes ? Math.round(life.study.total_minutes / 60) : 0;
-        reply = lang === 'en'
-          ? `You've logged ${studyHours} hours of study recently, sir. ${studyHours > 20 ? 'Excellent dedication!' : 'Consider increasing study time if possible.'}`
-          : `سجلت ${studyHours} ساعة دراسة مؤخراً يا سيدي. ${studyHours > 20 ? 'ممتاز!' : 'فكّر في زيادة وقت الدراسة.'}`;
-      }
-      else if (msg.includes('نوم') || msg.includes('sleep')) {
-        const sleep = life?.wellness?.sleep_hours || 0;
-        reply = lang === 'en'
-          ? `Last logged sleep: ${sleep} hours, sir. ${sleep >= 7 ? 'Good sleep hygiene!' : 'Try to get 7-8 hours for optimal performance.'}`
-          : `آخر نوم مسجل: ${sleep} ساعات يا سيدي. ${sleep >= 7 ? 'ممتاز!' : 'حاول تنام 7-8 ساعات.'}`;
-      }
-      else {
-        // رد عام ذكي
-        reply = lang === 'en'
-          ? `I understand, sir. You currently have ${totalHours} hours of commitments. ${totalHours > 90 ? 'Your schedule is quite full - prioritize rest.' : 'Your schedule has room for more activities.'} How can I assist further?`
-          : `فهمت يا سيدي. عندك ${totalHours} ساعة التزامات حالياً. ${totalHours > 90 ? 'جدولك مزدحم - أعطِ الأولوية للراحة.' : 'عندك مساحة لمزيد من الأنشطة.'} كيف أقدر أساعدك أكثر؟`;
-      }
-      
-      console.log('💬 Chat via smart rules');
+      reply = lang === 'en' ?
+        `Financial overview, sir:\n• Balance: $${balance}\n• Income: $${income}\n• Expenses: $${expense} (${percentage}% of income)\n${percentage > 80 ? '⚠️ Warning: High expense ratio. Consider budgeting.' : percentage > 50 ? '✅ Moderate spending.' : '✅ Healthy savings rate.'}` :
+        `الملف المالي يا سيدي:\n• الرصيد: ${balance} ريال\n• الدخل: ${income} ريال\n• المصاريف: ${expense} ريال (${percentage}% من الدخل)\n${percentage > 80 ? '⚠️ تحذير: المصاريف مرتفعة. فكّر في التوفير.' : percentage > 50 ? '✅ صرف معتدل.' : '✅ معدل توفير صحي.'}`;
     }
     
+    // 3. الالتزامات والوقت
+    else if (msg.includes('التزام') || msg.includes('commitment') || msg.includes('وقت') || msg.includes('schedule') || msg.includes('جدول')) {
+      const byType = {};
+      list.forEach(c => {
+        byType[c.type] = (byType[c.type] || 0) + c.hours_per_week;
+      });
+      const highIntensity = list.filter(c => c.intensity === 'high').length;
+      const flexible = list.filter(c => c.flexible).length;
+      
+      reply = lang === 'en' ?
+        `Time commitments breakdown, sir:\n• Total: ${totalHours}h/week (${Math.round(totalHours/7*10)/10}h/day)\n• Remaining free time: ${remainingHours}h/week\n• High intensity: ${highIntensity} commitments\n• Flexible: ${flexible}/${list.length}\n\nBy category:\n${Object.entries(byType).map(([type, hours]) => `• ${type}: ${hours}h`).join('\n')}\n\n${totalHours > 100 ? '🔴 Critical: Overloaded. Reduce immediately.' : totalHours > 80 ? '⚠️ Heavy load. Prioritize rest.' : '✅ Balanced schedule.'}` :
+        `تفصيل الالتزامات يا سيدي:\n• المجموع: ${totalHours} ساعة/أسبوع (${Math.round(totalHours/7*10)/10} ساعة/يوم)\n• الوقت الحر المتبقي: ${remainingHours} ساعة/أسبوع\n• عالية الحمل: ${highIntensity} التزامات\n• مرنة: ${flexible}/${list.length}\n\nحسب الفئة:\n${Object.entries(byType).map(([type, hours]) => `• ${type}: ${hours}س`).join('\n')}\n\n${totalHours > 100 ? '🔴 خطر: حمل زائد. قلّل فوراً.' : totalHours > 80 ? '⚠️ حمل ثقيل. أعطِ الأولوية للراحة.' : '✅ جدول متوازن.'}`;
+    }
+    
+    // 4. الدراسة
+    else if (msg.includes('دراسة') || msg.includes('study') || msg.includes('تعلم')) {
+      const studyMinutes = life?.study?.total_minutes || 0;
+      const studyHours = Math.round(studyMinutes / 60);
+      const dailyAvg = Math.round(studyMinutes / 7);
+      
+      reply = lang === 'en' ?
+        `Study statistics, sir:\n• Total logged: ${studyHours} hours\n• Daily average: ${dailyAvg} minutes\n${studyHours > 20 ? '✅ Excellent dedication!' : studyHours > 10 ? '✅ Good progress.' : '💡 Suggestion: Aim for 2-3 hours daily.'}` :
+        `إحصائيات الدراسة يا سيدي:\n• المجموع المسجل: ${studyHours} ساعة\n• المعدل اليومي: ${dailyAvg} دقيقة\n${studyHours > 20 ? '✅ تفاني ممتاز!' : studyHours > 10 ? '✅ تقدم جيد.' : '💡 اقتراح: استهدف 2-3 ساعات يومياً.'}`;
+    }
+    
+    // 5. النوم والصحة
+    else if (msg.includes('نوم') || msg.includes('sleep') || msg.includes('صحة') || msg.includes('health')) {
+      const sleep = life?.wellness?.sleep_hours || 0;
+      const exercise = life?.wellness?.exercise_minutes || 0;
+      const mood = life?.wellness?.mood || 5;
+      
+      reply = lang === 'en' ?
+        `Wellness report, sir:\n• Sleep: ${sleep}h ${sleep >= 7 ? '✅ Optimal' : sleep >= 5 ? '⚠️ Below optimal' : '🔴 Critical - need rest'}\n• Exercise: ${exercise}min ${exercise >= 30 ? '✅ Active' : '💡 Try to move more'}\n• Mood: ${mood}/10\n${sleep < 7 || mood < 5 ? '\n⚠️ Recommendation: Prioritize 7-8 hours sleep tonight.' : '\n✅ Great wellness habits!'}` :
+        `تقرير الصحة يا سيدي:\n• النوم: ${sleep}س ${sleep >= 7 ? '✅ مثالي' : sleep >= 5 ? '⚠️ أقل من المثالي' : '🔴 خطر - تحتاج راحة'}\n• الرياضة: ${exercise}د ${exercise >= 30 ? '✅ نشيط' : '💡 حاول تتحرك أكثر'}\n• المزاج: ${mood}/10\n${sleep < 7 || mood < 5 ? '\n⚠️ نصيحة: أعطِ الأولوية لـ 7-8 ساعات نوم الليلة.' : '\n✅ عادات صحية ممتازة!'}`;
+    }
+    
+    // 6. العلاقات
+    else if (msg.includes('علاق') || msg.includes('relation') || msg.includes('تواصل') || msg.includes('contact')) {
+      const count = life?.relationships?.count || 0;
+      const neglected = life?.relationships?.neglected?.length || 0;
+      
+      reply = lang === 'en' ?
+        `Relationships overview, sir:\n• Total contacts: ${count}\n• Need attention: ${neglected}\n${neglected > 0 ? `⚠️ You haven't contacted ${neglected} people recently. Consider reaching out.` : '✅ All relationships active.'}` :
+        `نظرة على العلاقات يا سيدي:\n• إجمالي المعارف: ${count}\n• يحتاجون انتباه: ${neglected}\n${neglected > 0 ? `️ ما تواصلت مع ${neglected} أشخاص مؤخراً. فكّر في التواصل معهم.` : '✅ جميع العلاقات نشطة.'}`;
+    }
+    
+    // 7. المهام المنزلية
+    else if (msg.includes('مهمة') || msg.includes('بيت') || msg.includes('home') || msg.includes('task')) {
+      const pending = life?.home?.pending_tasks || 0;
+      
+      reply = lang === 'en' ?
+        `Home tasks, sir:\n• Pending: ${pending} tasks\n${pending > 5 ? '⚠️ Consider delegating or scheduling.' : pending > 0 ? '✅ Manageable load.' : '✅ All clear!'}` :
+        `مهام البيت يا سيدي:\n• المعلقة: ${pending} مهام\n${pending > 5 ? '⚠️ فكّر في التفويض أو الجدولة.' : pending > 0 ? '✅ حمل معقول.' : '✅ كل شيء تمام!'}`;
+    }
+    
+    // 8. اقتراحات عامة
+    else if (msg.includes('نصيحة') || msg.includes('اقتراح') || msg.includes('advice') || msg.includes('suggest')) {
+      const suggestions = [];
+      if (totalHours > 90) suggestions.push(lang === 'en' ? 'Reduce weekly commitments by 10-15 hours' : 'قلّل الالتزامات الأسبوعية بـ 10-15 ساعة');
+      if ((life?.wellness?.sleep_hours || 0) < 7) suggestions.push(lang === 'en' ? 'Prioritize 7-8 hours sleep tonight' : 'أعطِ الأولوية لـ 7-8 ساعات نوم الليلة');
+      if ((life?.finance?.expense || 0) > (life?.finance?.income || 1) * 0.8) suggestions.push(lang === 'en' ? 'Review and reduce expenses' : 'راجع وقلّل المصاريف');
+      if (suggestions.length === 0) suggestions.push(lang === 'en' ? 'Keep up the great balance!' : 'واصل على هذا التوازن الممتاز!');
+      
+      reply = lang === 'en' ?
+        `Personalized recommendations, sir:\n${suggestions.map((s, i) => `${i+1}. ${s}`).join('\n')}` :
+        `توصيات مخصصة لك يا سيدي:\n${suggestions.map((s, i) => `${i+1}. ${s}`).join('\n')}`;
+    }
+    
+    // 9. رد افتراضي ذكي
+    else {
+      const risk = riskLabel(totalHours);
+      reply = lang === 'en' ?
+        `I understand, sir. Current summary:\n• Commitments: ${totalHours}h/week (${risk})\n• Balance: $${life?.finance?.balance || 0}\n• Mood: ${life?.wellness?.mood || '-'}/10\n\nTry asking:\n• "Analyze my status"\n• "Show my finances"\n• "My commitments breakdown"\n• "Wellness report"\n• "Give me advice"` :
+        `فهمت يا سيدي. ملخص حالياً:\n• الالتزامات: ${totalHours}س/أسبوع (${risk})\n• الرصيد: ${life?.finance?.balance || 0} ريال\n• المزاج: ${life?.wellness?.mood || '-'}/10\n\nجرّب تسأل:\n• "حلل حالتي"\n• "ورّني مالي"\n• "تفصيل التزاماتي"\n• "تقرير الصحة"\n• "عطِني نصيحة"`;
+    }
+    
+    // حفظ في قاعدة البيانات
     await supabase.from('chat_messages').insert([
       { user_id: req.user.id, role: 'user', content: message },
       { user_id: req.user.id, role: 'assistant', content: reply },
     ]);
     
+    console.log('💬 Smart rules response');
     res.json({ reply });
   } catch (err) {
     console.error('Chat error:', err);
