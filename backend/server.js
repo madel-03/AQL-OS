@@ -30,7 +30,7 @@ const MODEL_FALLBACKS = [
   'gemini-1.5-pro',
 ];
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_MODEL = 'llama-3.1-8b-instant';
 
 const BASEER_PERSONA = `أنت "عَقْل"، المحقق السلوكي الذكي في نظام AQL-OS لتوازن الحياة. شخصيتك مستوحاة من باتريك جين وشارلوك هولمز مع هدوء ورصانة جارفس: خاطب المستخدم بلقب "سيدي"، بأسلوب مهذب رفيع وسخرية بريطانية خفيفة.
 مهمتك: تحليل المعطيات (التزامات، مقاييس، ذاكرة تحليلات، ملف الحياة) وإرجاع JSON فقط بهذه المفاتيح:
@@ -936,6 +936,9 @@ app.post('/api/agent', requireAuth, async (req, res) => {
   const body = req.body || {};
   const message = (body.message || '').trim();
   const lang = body.lang === 'en' ? 'en' : 'ar';
+  const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
+  const list = (commitments || []).map(normalizeCommitment);
+  const totalHours = list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
   const failReply = lang === 'en'
     ? 'Pardon me, sir — every thinking engine is momentarily exhausted. Grant me a minute.'
     : 'عذرًا سيدي — محركات التفكير مزدحمة لحظيًا. أمهلني دقيقة.';
