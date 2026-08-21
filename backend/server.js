@@ -6,6 +6,7 @@ import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { AGENT_TOOLS, getGroqTools, runAgentTool } from './agent-tools.js'; // استيراد الأدوات
 
 const app = express();
 app.use(cors({
@@ -93,7 +94,6 @@ function parseBrainJson(text) {
   return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-// Groq للمحادثة فقط (ما يدعم Function Calling)
 async function groqChat(system, userMessage) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY missing');
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -235,7 +235,7 @@ async function askBaseerBrain(evidence, lang = 'ar') {
     });
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     if (!text.trim()) throw new Error('Empty Gemini response');
-    console.log(' عَقْل فكر عبر Gemini');
+    console.log('🧠 عَقْل فكر عبر Gemini');
     return parseBrainJson(text);
   } catch (err) {
     console.log('🧠 Gemini brain failed:', err.message);
@@ -271,11 +271,9 @@ ${history.map(h => `${h.role === 'assistant' ? 'AQL' : 'User'}: ${h.content}`).j
 User's message: ${userMessage}
 `;
 
-  // 1️⃣ Groq أولاً (أسرع وأقل ازدحام)
   if (GROQ_API_KEY) {
     try {
       const systemPrompt = `You are AQL, a JARVIS-style life OS assistant. ${langNote}
-      
 Rules:
 - Be helpful and insightful (3-5 sentences)
 - Reference the user's actual data when relevant
@@ -300,20 +298,18 @@ Rules:
       });
       
       if (!response.ok) throw new Error('Groq ' + response.status);
-      
       const data = await response.json();
       const text = data.choices?.[0]?.message?.content || '';
       
       if (text.trim()) {
-        console.log(' Chat via Groq (fast)');
+        console.log('💬 Chat via Groq (fast)');
         return text.trim();
       }
     } catch (err) {
-      console.log(' Groq chat failed, trying Gemini:', err.message);
+      console.log('💬 Groq chat failed, trying Gemini:', err.message);
     }
   }
 
-  // 2️⃣ Gemini احتياطي
   const langNoteGemini = lang === 'en'
     ? '\nIMPORTANT: Respond FULLY in English (5-7 sentences), JARVIS style, address as "sir".'
     : '\nأسلوب الكلام: خاطب المستخدم بلقب "سيدي"، بأسلوب جارفس. أجب بـ 5-7 جمل.';
@@ -338,9 +334,8 @@ Rules:
     console.log('💬 Chat via Gemini');
     return text.trim();
   } catch (err) {
-    console.error(' Gemini chat failed:', err.message);
+    console.error('💬 Gemini chat failed:', err.message);
   }
-  
   throw new Error('All chat engines failed');
 }
 
@@ -368,150 +363,6 @@ async function edgeSpeak(text, voiceName) {
   throw lastErr || new Error('Edge TTS failed');
 }
 
-const AGENT_TOOLS = [
-  { name: 'add_commitment', description: 'Add a new weekly time commitment', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' }, hours_per_week: { type: 'NUMBER' }, type: { type: 'STRING', description: 'study|work|health|personal|sleep' }, intensity: { type: 'STRING', description: 'low|medium|high' }, time_slot: { type: 'STRING', description: 'morning|afternoon|evening|late_night|mixed' } }, required: ['title', 'hours_per_week'] } },
-  { name: 'reduce_hours', description: 'Reduce weekly hours of an existing commitment (match by title)', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' }, new_hours: { type: 'NUMBER' } }, required: ['title', 'new_hours'] } },
-  { name: 'archive_commitment', description: 'Archive/remove an existing commitment (match by title)', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' } }, required: ['title'] } },
-  { name: 'create_goal', description: 'Create a strategic goal', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' } }, required: ['title'] } },
-  { name: 'add_expense', description: 'Record a financial expense or income', parameters: { type: 'OBJECT', properties: { amount: { type: 'NUMBER' }, kind: { type: 'STRING', description: 'expense|income' }, category: { type: 'STRING' } }, required: ['amount'] } },
-  { name: 'add_home_task', description: 'Add a home task', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' }, priority: { type: 'STRING', description: 'low|medium|high|urgent' } }, required: ['title'] } },
-  { name: 'log_study', description: 'Log a study session', parameters: { type: 'OBJECT', properties: { subject: { type: 'STRING' }, duration_minutes: { type: 'NUMBER' } }, required: ['subject', 'duration_minutes'] } },
-  { name: 'mark_contact', description: 'Mark that the user contacted a person today', parameters: { type: 'OBJECT', properties: { person_name: { type: 'STRING' } }, required: ['person_name'] } },
-];
-
-async function runAgentTool(userId, name, args = {}) {
-  try {
-    if (name === 'add_commitment') {
-      const { data, error } = await supabase.from('commitments').insert({ user_id: userId, title: String(args.title || 'التزام جديد'), hours_per_week: Number(args.hours_per_week || 1), type: ['study', 'work', 'health', 'personal', 'sleep'].includes(args.type) ? args.type : 'personal', intensity: ['low', 'medium', 'high'].includes(args.intensity) ? args.intensity : 'medium', time_slot: ['morning', 'afternoon', 'evening', 'late_night', 'mixed'].includes(args.time_slot) ? args.time_slot : 'mixed', flexible: true, status: 'active' }).select().single();
-      if (error) throw error;
-      return `added commitment "${data.title}" (${data.hours_per_week}h/week)`;
-    }
-    if (name === 'reduce_hours') {
-      const { data: row } = await supabase.from('commitments').select('*').eq('user_id', userId).eq('status', 'active').ilike('title', `%${String(args.title || '')}%`).maybeSingle();
-      if (!row) return `commitment "${args.title}" not found`;
-      const { error } = await supabase.from('commitments').update({ hours_per_week: Number(args.new_hours) }).eq('id', row.id);
-      if (error) throw error;
-      return `reduced "${row.title}" to ${args.new_hours}h/week`;
-    }
-    if (name === 'archive_commitment') {
-      const { data: row } = await supabase.from('commitments').select('*').eq('user_id', userId).eq('status', 'active').ilike('title', `%${String(args.title || '')}%`).maybeSingle();
-      if (!row) return `commitment "${args.title}" not found`;
-      const { error } = await supabase.from('commitments').update({ status: 'archived' }).eq('id', row.id);
-      if (error) throw error;
-      return `archived "${row.title}"`;
-    }
-    if (name === 'create_goal') {
-      const { data, error } = await supabase.from('goals').insert({ user_id: userId, title: String(args.title || 'هدف جديد') }).select().single();
-      if (error) throw error;
-      return `created goal "${data.title}"`;
-    }
-    if (name === 'add_expense') {
-      const { data, error } = await supabase.from('finance_entries').insert({ user_id: userId, type: args.kind === 'income' ? 'income' : 'expense', amount: Number(args.amount || 0), category: String(args.category || 'عام') }).select().single();
-      if (error) throw error;
-      return `recorded ${args.kind === 'income' ? 'income' : 'expense'} of ${args.amount} (${args.category || 'عام'})`;
-    }
-    if (name === 'add_home_task') {
-      const { data, error } = await supabase.from('home_tasks').insert({ user_id: userId, title: String(args.title || 'مهمة'), priority: String(args.priority || 'medium') }).select().single();
-      if (error) throw error;
-      return `added home task "${args.title}"`;
-    }
-    if (name === 'log_study') {
-      const { data, error } = await supabase.from('study_sessions').insert({ user_id: userId, subject: String(args.subject || 'دراسة'), duration_minutes: Number(args.duration_minutes || 0) }).select().single();
-      if (error) throw error;
-      return `logged ${args.duration_minutes}min study of "${args.subject}"`;
-    }
-    if (name === 'mark_contact') {
-      const { data: row } = await supabase.from('relationships').select('id').eq('user_id', userId).ilike('person_name', `%${String(args.person_name || '')}%`).maybeSingle();
-      if (!row) return `person "${args.person_name}" not found in relationships`;
-      const { error } = await supabase.from('relationships').update({ last_contact: new Date().toISOString().slice(0, 10) }).eq('id', row.id);
-      if (error) throw error;
-      return `marked contact with "${args.person_name}" today`;
-    }
-    return `unknown tool ${name}`;
-  } catch (e) {
-    return `tool ${name} failed: ${e.message}`;
-  }
-}
-
-async function groqAgent(system, userMessage, execTool) {
-  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY missing');
-  
-  // تحويل tools من صيغة Gemini إلى صيغة OpenAI/Groq
-  const groqTools = AGENT_TOOLS.map(tool => ({
-    type: 'function',
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: {
-        type: 'object',
-        properties: tool.parameters.properties,
-        required: tool.parameters.required || [],
-      },
-    },
-  }));
-
-  const messages = [
-    { role: 'system', content: system },
-    { role: 'user', content: userMessage },
-  ];
-  
-  const actions = [];
-  
-  for (let step = 0; step < 6; step++) {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json', 
-        'Authorization': `Bearer ${GROQ_API_KEY}` 
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        temperature: 0.7,
-        messages,
-        tools: groqTools,
-        tool_choice: 'auto',
-      }),
-    });
-    
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Groq ${response.status}: ${errText}`);
-    }
-    
-    const data = await response.json();
-    const msg = data.choices?.[0]?.message;
-    const tc = msg?.tool_calls?.[0];
-    
-    if (tc) {
-      let args = {};
-      try { 
-        args = JSON.parse(tc.function.arguments || '{}'); 
-      } catch (e) { 
-        console.log('Failed to parse args:', tc.function.arguments);
-      }
-      
-      const result = await execTool(tc.function.name, args);
-      actions.push({ tool: tc.function.name, result });
-      
-      messages.push({ 
-        role: 'assistant', 
-        content: null, 
-        tool_calls: msg.tool_calls 
-      });
-      messages.push({ 
-        role: 'tool', 
-        tool_call_id: tc.id, 
-        content: result 
-      });
-      continue;
-    }
-    
-    return { reply: msg?.content || 'Done, sir.', actions };
-  }
-  
-  return { reply: 'Done, sir.', actions };
-}
-
 async function agentGenerate(payload) {
   let lastError = null;
   for (const model of MODEL_FALLBACKS) {
@@ -533,6 +384,10 @@ async function agentGenerate(payload) {
   }
   throw lastError || new Error('All Gemini models failed');
 }
+
+// ----------------------------------------------------
+// Endpoints
+// ----------------------------------------------------
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'AQL-OS backend' }));
 
@@ -720,7 +575,7 @@ app.post('/api/simulate', requireAuth, async (req, res) => {
     try {
       brain = await askBaseerBrain(evidence, lang);
     } catch (e) {
-      console.log(' Brain fallback to rules:', e.message);
+      console.log('🧠 Brain fallback to rules:', e.message);
     }
     const base = ruleBasedAnalysis(currentCommitments, newCommitment);
     const simulationResults = {
@@ -768,109 +623,71 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     
     let reply = '';
     
-    // === القواعد الذكية الشاملة ===
-    
-    // 1. تحليل المزاج والحالة
     if (msg.includes('حلل') || msg.includes('analyze') || msg.includes('حالي') || msg.includes('how am i')) {
       const mood = life?.wellness?.mood || 5;
       const energy = life?.wellness?.energy || 5;
       const sleep = life?.wellness?.sleep_hours || 0;
       const risk = riskLabel(totalHours);
-      
       reply = lang === 'en' ? 
-        `Here's your current status, sir:\n• Mood: ${mood}/10 ${mood >= 7 ? '😊 Great' : mood >= 4 ? '😐 Okay' : '😔 Low'}\n• Energy: ${energy}/10\n• Sleep: ${sleep}h ${sleep >= 7 ? '✅' : '️ Need more'}\n• Weekly load: ${totalHours}h (${risk})\n${totalHours > 90 ? '️ Recommendation: Consider reducing commitments by 10-15 hours.' : '✅ Your schedule is manageable.'}` :
-        `حالتك الحالية يا سيدي:\n• المزاج: ${mood}/10 ${mood >= 7 ? '😊 ممتاز' : mood >= 4 ? '😐 مقبول' : '😔 منخفض'}\n• الطاقة: ${energy}/10\n• النوم: ${sleep}س ${sleep >= 7 ? '✅' : '⚠️ تحتاج أكثر'}\n• الحمل الأسبوعي: ${totalHours}س (${risk})\n${totalHours > 90 ? '️ نصيحة: فكّر في تقليل الالتزامات بـ 10-15 ساعة.' : '✅ جدولك متوازن.'}`;
-    }
-    
-    // 2. الرصيد والمالية
-    else if (msg.includes('رصيد') || msg.includes('فلوس') || msg.includes('balance') || msg.includes('money') || msg.includes('مصروف')) {
+        `Here's your current status, sir:\n• Mood: ${mood}/10 ${mood >= 7 ? '😊 Great' : mood >= 4 ? '😐 Okay' : '😔 Low'}\n• Energy: ${energy}/10\n• Sleep: ${sleep}h ${sleep >= 7 ? '✅' : '⚠️ Need more'}\n• Weekly load: ${totalHours}h (${risk})\n${totalHours > 90 ? '⚠️ Recommendation: Consider reducing commitments by 10-15 hours.' : '✅ Your schedule is manageable.'}` :
+        `حالتك الحالية يا سيدي:\n• المزاج: ${mood}/10 ${mood >= 7 ? '😊 ممتاز' : mood >= 4 ? '😐 مقبول' : '😔 منخفض'}\n• الطاقة: ${energy}/10\n• النوم: ${sleep}س ${sleep >= 7 ? '✅' : '⚠️ تحتاج أكثر'}\n• الحمل الأسبوعي: ${totalHours}س (${risk})\n${totalHours > 90 ? '⚠️ نصيحة: فكّر في تقليل الالتزامات بـ 10-15 ساعة.' : '✅ جدولك متوازن.'}`;
+    } else if (msg.includes('رصيد') || msg.includes('فلوس') || msg.includes('balance') || msg.includes('money') || msg.includes('مصروف')) {
       const balance = life?.finance?.balance || 0;
       const income = life?.finance?.income || 0;
       const expense = life?.finance?.expense || 0;
       const percentage = income > 0 ? Math.round((expense / income) * 100) : 0;
-      
       reply = lang === 'en' ?
         `Financial overview, sir:\n• Balance: $${balance}\n• Income: $${income}\n• Expenses: $${expense} (${percentage}% of income)\n${percentage > 80 ? '⚠️ Warning: High expense ratio. Consider budgeting.' : percentage > 50 ? '✅ Moderate spending.' : '✅ Healthy savings rate.'}` :
         `الملف المالي يا سيدي:\n• الرصيد: ${balance} ريال\n• الدخل: ${income} ريال\n• المصاريف: ${expense} ريال (${percentage}% من الدخل)\n${percentage > 80 ? '⚠️ تحذير: المصاريف مرتفعة. فكّر في التوفير.' : percentage > 50 ? '✅ صرف معتدل.' : '✅ معدل توفير صحي.'}`;
-    }
-    
-    // 3. الالتزامات والوقت
-    else if (msg.includes('التزام') || msg.includes('commitment') || msg.includes('وقت') || msg.includes('schedule') || msg.includes('جدول')) {
+    } else if (msg.includes('التزام') || msg.includes('commitment') || msg.includes('وقت') || msg.includes('schedule') || msg.includes('جدول')) {
       const byType = {};
-      list.forEach(c => {
-        byType[c.type] = (byType[c.type] || 0) + c.hours_per_week;
-      });
+      list.forEach(c => { byType[c.type] = (byType[c.type] || 0) + c.hours_per_week; });
       const highIntensity = list.filter(c => c.intensity === 'high').length;
       const flexible = list.filter(c => c.flexible).length;
-      
       reply = lang === 'en' ?
         `Time commitments breakdown, sir:\n• Total: ${totalHours}h/week (${Math.round(totalHours/7*10)/10}h/day)\n• Remaining free time: ${remainingHours}h/week\n• High intensity: ${highIntensity} commitments\n• Flexible: ${flexible}/${list.length}\n\nBy category:\n${Object.entries(byType).map(([type, hours]) => `• ${type}: ${hours}h`).join('\n')}\n\n${totalHours > 100 ? '🔴 Critical: Overloaded. Reduce immediately.' : totalHours > 80 ? '⚠️ Heavy load. Prioritize rest.' : '✅ Balanced schedule.'}` :
         `تفصيل الالتزامات يا سيدي:\n• المجموع: ${totalHours} ساعة/أسبوع (${Math.round(totalHours/7*10)/10} ساعة/يوم)\n• الوقت الحر المتبقي: ${remainingHours} ساعة/أسبوع\n• عالية الحمل: ${highIntensity} التزامات\n• مرنة: ${flexible}/${list.length}\n\nحسب الفئة:\n${Object.entries(byType).map(([type, hours]) => `• ${type}: ${hours}س`).join('\n')}\n\n${totalHours > 100 ? '🔴 خطر: حمل زائد. قلّل فوراً.' : totalHours > 80 ? '⚠️ حمل ثقيل. أعطِ الأولوية للراحة.' : '✅ جدول متوازن.'}`;
-    }
-    
-    // 4. الدراسة
-    else if (msg.includes('دراسة') || msg.includes('study') || msg.includes('تعلم')) {
+    } else if (msg.includes('دراسة') || msg.includes('study') || msg.includes('تعلم')) {
       const studyMinutes = life?.study?.total_minutes || 0;
       const studyHours = Math.round(studyMinutes / 60);
       const dailyAvg = Math.round(studyMinutes / 7);
-      
       reply = lang === 'en' ?
         `Study statistics, sir:\n• Total logged: ${studyHours} hours\n• Daily average: ${dailyAvg} minutes\n${studyHours > 20 ? '✅ Excellent dedication!' : studyHours > 10 ? '✅ Good progress.' : '💡 Suggestion: Aim for 2-3 hours daily.'}` :
         `إحصائيات الدراسة يا سيدي:\n• المجموع المسجل: ${studyHours} ساعة\n• المعدل اليومي: ${dailyAvg} دقيقة\n${studyHours > 20 ? '✅ تفاني ممتاز!' : studyHours > 10 ? '✅ تقدم جيد.' : '💡 اقتراح: استهدف 2-3 ساعات يومياً.'}`;
-    }
-    
-    // 5. النوم والصحة
-    else if (msg.includes('نوم') || msg.includes('sleep') || msg.includes('صحة') || msg.includes('health')) {
+    } else if (msg.includes('نوم') || msg.includes('sleep') || msg.includes('صحة') || msg.includes('health')) {
       const sleep = life?.wellness?.sleep_hours || 0;
       const exercise = life?.wellness?.exercise_minutes || 0;
       const mood = life?.wellness?.mood || 5;
-      
       reply = lang === 'en' ?
         `Wellness report, sir:\n• Sleep: ${sleep}h ${sleep >= 7 ? '✅ Optimal' : sleep >= 5 ? '⚠️ Below optimal' : '🔴 Critical - need rest'}\n• Exercise: ${exercise}min ${exercise >= 30 ? '✅ Active' : '💡 Try to move more'}\n• Mood: ${mood}/10\n${sleep < 7 || mood < 5 ? '\n⚠️ Recommendation: Prioritize 7-8 hours sleep tonight.' : '\n✅ Great wellness habits!'}` :
         `تقرير الصحة يا سيدي:\n• النوم: ${sleep}س ${sleep >= 7 ? '✅ مثالي' : sleep >= 5 ? '⚠️ أقل من المثالي' : '🔴 خطر - تحتاج راحة'}\n• الرياضة: ${exercise}د ${exercise >= 30 ? '✅ نشيط' : '💡 حاول تتحرك أكثر'}\n• المزاج: ${mood}/10\n${sleep < 7 || mood < 5 ? '\n⚠️ نصيحة: أعطِ الأولوية لـ 7-8 ساعات نوم الليلة.' : '\n✅ عادات صحية ممتازة!'}`;
-    }
-    
-    // 6. العلاقات
-    else if (msg.includes('علاق') || msg.includes('relation') || msg.includes('تواصل') || msg.includes('contact')) {
+    } else if (msg.includes('علاق') || msg.includes('relation') || msg.includes('تواصل') || msg.includes('contact')) {
       const count = life?.relationships?.count || 0;
       const neglected = life?.relationships?.neglected?.length || 0;
-      
       reply = lang === 'en' ?
         `Relationships overview, sir:\n• Total contacts: ${count}\n• Need attention: ${neglected}\n${neglected > 0 ? `⚠️ You haven't contacted ${neglected} people recently. Consider reaching out.` : '✅ All relationships active.'}` :
-        `نظرة على العلاقات يا سيدي:\n• إجمالي المعارف: ${count}\n• يحتاجون انتباه: ${neglected}\n${neglected > 0 ? `️ ما تواصلت مع ${neglected} أشخاص مؤخراً. فكّر في التواصل معهم.` : '✅ جميع العلاقات نشطة.'}`;
-    }
-    
-    // 7. المهام المنزلية
-    else if (msg.includes('مهمة') || msg.includes('بيت') || msg.includes('home') || msg.includes('task')) {
+        `نظرة على العلاقات يا سيدي:\n• إجمالي المعارف: ${count}\n• يحتاجون انتباه: ${neglected}\n${neglected > 0 ? `⚠️ ما تواصلت مع ${neglected} أشخاص مؤخراً. فكّر في التواصل معهم.` : '✅ جميع العلاقات نشطة.'}`;
+    } else if (msg.includes('مهمة') || msg.includes('بيت') || msg.includes('home') || msg.includes('task')) {
       const pending = life?.home?.pending_tasks || 0;
-      
       reply = lang === 'en' ?
         `Home tasks, sir:\n• Pending: ${pending} tasks\n${pending > 5 ? '⚠️ Consider delegating or scheduling.' : pending > 0 ? '✅ Manageable load.' : '✅ All clear!'}` :
         `مهام البيت يا سيدي:\n• المعلقة: ${pending} مهام\n${pending > 5 ? '⚠️ فكّر في التفويض أو الجدولة.' : pending > 0 ? '✅ حمل معقول.' : '✅ كل شيء تمام!'}`;
-    }
-    
-    // 8. اقتراحات عامة
-    else if (msg.includes('نصيحة') || msg.includes('اقتراح') || msg.includes('advice') || msg.includes('suggest')) {
+    } else if (msg.includes('نصيحة') || msg.includes('اقتراح') || msg.includes('advice') || msg.includes('suggest')) {
       const suggestions = [];
       if (totalHours > 90) suggestions.push(lang === 'en' ? 'Reduce weekly commitments by 10-15 hours' : 'قلّل الالتزامات الأسبوعية بـ 10-15 ساعة');
       if ((life?.wellness?.sleep_hours || 0) < 7) suggestions.push(lang === 'en' ? 'Prioritize 7-8 hours sleep tonight' : 'أعطِ الأولوية لـ 7-8 ساعات نوم الليلة');
       if ((life?.finance?.expense || 0) > (life?.finance?.income || 1) * 0.8) suggestions.push(lang === 'en' ? 'Review and reduce expenses' : 'راجع وقلّل المصاريف');
       if (suggestions.length === 0) suggestions.push(lang === 'en' ? 'Keep up the great balance!' : 'واصل على هذا التوازن الممتاز!');
-      
       reply = lang === 'en' ?
         `Personalized recommendations, sir:\n${suggestions.map((s, i) => `${i+1}. ${s}`).join('\n')}` :
         `توصيات مخصصة لك يا سيدي:\n${suggestions.map((s, i) => `${i+1}. ${s}`).join('\n')}`;
-    }
-    
-    // 9. رد افتراضي ذكي
-    else {
+    } else {
       const risk = riskLabel(totalHours);
       reply = lang === 'en' ?
         `I understand, sir. Current summary:\n• Commitments: ${totalHours}h/week (${risk})\n• Balance: $${life?.finance?.balance || 0}\n• Mood: ${life?.wellness?.mood || '-'}/10\n\nTry asking:\n• "Analyze my status"\n• "Show my finances"\n• "My commitments breakdown"\n• "Wellness report"\n• "Give me advice"` :
         `فهمت يا سيدي. ملخص حالياً:\n• الالتزامات: ${totalHours}س/أسبوع (${risk})\n• الرصيد: ${life?.finance?.balance || 0} ريال\n• المزاج: ${life?.wellness?.mood || '-'}/10\n\nجرّب تسأل:\n• "حلل حالتي"\n• "ورّني مالي"\n• "تفصيل التزاماتي"\n• "تقرير الصحة"\n• "عطِني نصيحة"`;
     }
     
-    // حفظ في قاعدة البيانات
     await supabase.from('chat_messages').insert([
       { user_id: req.user.id, role: 'user', content: message },
       { user_id: req.user.id, role: 'assistant', content: reply },
@@ -936,17 +753,15 @@ app.post('/api/agent', requireAuth, async (req, res) => {
   const body = req.body || {};
   const message = (body.message || '').trim();
   const lang = body.lang === 'en' ? 'en' : 'ar';
+  
+  if (!message) return res.status(400).json({ error: 'No message' });
+
+  // الاستعلام عن البيانات مرة واحدة فقط
   const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
   const list = (commitments || []).map(normalizeCommitment);
   const totalHours = list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
-  const failReply = lang === 'en'
-    ? 'Pardon me, sir — every thinking engine is momentarily exhausted. Grant me a minute.'
-    : 'عذرًا سيدي — محركات التفكير مزدحمة لحظيًا. أمهلني دقيقة.';
-  if (!message) return res.status(400).json({ error: 'No message' });
-
-  const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
-  const list = (commitments || []).map(normalizeCommitment);
   const life = await fetchLifeData(req.user.id);
+  
   const system = (lang === 'en'
     ? 'You are AQL, the user\'s JARVIS-style life OS agent. Address him as "sir". Execute his request using the provided tools when needed, then reply in 2-4 sentences. '
     : 'أنت "عَقْل"، وكيل نظام الحياة بأسلوب جارفس. خاطبه بلقب "سيدي". نفّذ طلبه باستخدام الأدوات عند الحاجة ثم ارد بجملتين إلى أربع. ')
@@ -967,7 +782,8 @@ app.post('/api/agent', requireAuth, async (req, res) => {
       const part = data.candidates?.[0]?.content?.parts?.[0];
       const fc = part?.functionCall;
       if (fc) {
-        const result = await runAgentTool(req.user.id, fc.name, fc.args || {});
+        // استخدام الدالة الديناميكية وتمرير supabase
+        const result = await runAgentTool(req.user.id, fc.name, fc.args || {}, { supabase });
         actions.push({ tool: fc.name, result });
         contents.push({ role: 'model', parts: [{ functionCall: fc }] });
         contents.push({ role: 'user', parts: [{ functionResponse: { name: fc.name, response: { result } } }] });
@@ -988,18 +804,7 @@ app.post('/api/agent', requireAuth, async (req, res) => {
   if (GROQ_API_KEY) {
     try {
       console.log('🤖 Agent: trying Groq with tools...');
-      const groqTools = AGENT_TOOLS.map(tool => ({
-        type: 'function',
-        function: {
-          name: tool.name,
-          description: tool.description,
-          parameters: {
-            type: 'object',
-            properties: tool.parameters.properties,
-            required: tool.parameters.required || [],
-          },
-        },
-      }));
+      const groqTools = getGroqTools(); // جلب الخصائص بالصيغة التلقائية
       const messages = [
         { role: 'system', content: system },
         { role: 'user', content: message },
@@ -1021,8 +826,13 @@ app.post('/api/agent', requireAuth, async (req, res) => {
         const tc = msg?.tool_calls?.[0];
         if (tc) {
           let args = {};
-          try { args = JSON.parse(tc.function.arguments || '{}'); } catch (e) {}
-          const result = await runAgentTool(req.user.id, tc.function.name, args);
+          try { 
+            args = JSON.parse(tc.function.arguments || '{}'); 
+          } catch (e) {
+            console.log('⚠️ Groq tool arguments parsing failed:', tc.function.arguments);
+          }
+          // استخدام الدالة الديناميكية وتمرير supabase
+          const result = await runAgentTool(req.user.id, tc.function.name, args, { supabase });
           actions.push({ tool: tc.function.name, result });
           messages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls });
           messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
