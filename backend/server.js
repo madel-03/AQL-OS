@@ -616,8 +616,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     const lang = body.lang === 'en' ? 'en' : 'ar';
     const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
     const list = (commitments || []).map(normalizeCommitment);
-    const totalHours = list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
-    const remainingHours = 168 - totalHours;
+    const totalHours = Math.round(list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;    const remainingHours = 168 - totalHours;
     const life = await fetchLifeData(req.user.id);
     const msg = message.toLowerCase();
     
@@ -856,7 +855,21 @@ app.post('/api/agent', requireAuth, async (req, res) => {
   const actions = [];
   let ruleReply = '';
 
-  if (lower.includes('add') || lower.includes('سجل') || lower.includes('ضيف')) {
+  // 💰 1. شرط تحليل وعرض المصاريف والماليات أولاً
+  if (lower.includes('مصروف') || lower.includes('مال') || lower.includes('فلوس') || lower.includes('finance') || lower.includes('expense') || lower.includes('تحليل')) {
+    const finList = await supabase.from('finance_entries').select('*').eq('user_id', req.user.id);
+    const entries = finList.data || [];
+    const totalIncome = entries.filter(e => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
+    const totalExpense = entries.filter(e => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
+    const balance = totalIncome - totalExpense;
+
+    ruleReply = lang === 'en'
+      ? `Financial analysis, sir:\n• Total Income: $${totalIncome}\n• Total Expenses: $${totalExpense}\n• Net Balance: $${balance}\n${totalExpense > totalIncome ? '⚠️ Warning: Expenses exceed income.' : '✅ Your financial flow is stable.'}`
+      : `تحليل المصاريف يا سيدي:\n• إجمالي الدخل: ${totalIncome} ريال\n• إجمالي المصاريف: ${totalExpense} ريال\n• صافي الرصيد: ${balance} ريال\n${totalExpense > totalIncome ? '⚠️ تنبيه: المصاريف تتجاوز الدخل.' : '✅ وضعك المالي مستقر.'}`;
+  }
+  
+  // ➕ 2. شروط الإضافة والتسجيل
+  else if (lower.includes('add') || lower.includes('سجل') || lower.includes('ضيف')) {
     if (lower.includes('مصروف') || lower.includes('expense') || lower.includes('صرف')) {
       const amountMatch = message.match(/(\d+)/);
       const categoryMatch = message.match(/(?:ريال|دولار|sar|usd)\s+(.+)/i) || message.match(/expense\s+(.+)/i);
