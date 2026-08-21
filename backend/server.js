@@ -433,6 +433,85 @@ async function runAgentTool(userId, name, args = {}) {
   }
 }
 
+async function groqAgent(system, userMessage, execTool) {
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY missing');
+  
+  // تحويل tools من صيغة Gemini إلى صيغة OpenAI/Groq
+  const groqTools = AGENT_TOOLS.map(tool => ({
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: {
+        type: 'object',
+        properties: tool.parameters.properties,
+        required: tool.parameters.required || [],
+      },
+    },
+  }));
+
+  const messages = [
+    { role: 'system', content: system },
+    { role: 'user', content: userMessage },
+  ];
+  
+  const actions = [];
+  
+  for (let step = 0; step < 6; step++) {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${GROQ_API_KEY}` 
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        temperature: 0.7,
+        messages,
+        tools: groqTools,
+        tool_choice: 'auto',
+      }),
+    });
+    
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Groq ${response.status}: ${errText}`);
+    }
+    
+    const data = await response.json();
+    const msg = data.choices?.[0]?.message;
+    const tc = msg?.tool_calls?.[0];
+    
+    if (tc) {
+      let args = {};
+      try { 
+        args = JSON.parse(tc.function.arguments || '{}'); 
+      } catch (e) { 
+        console.log('Failed to parse args:', tc.function.arguments);
+      }
+      
+      const result = await execTool(tc.function.name, args);
+      actions.push({ tool: tc.function.name, result });
+      
+      messages.push({ 
+        role: 'assistant', 
+        content: null, 
+        tool_calls: msg.tool_calls 
+      });
+      messages.push({ 
+        role: 'tool', 
+        tool_call_id: tc.id, 
+        content: result 
+      });
+      continue;
+    }
+    
+    return { reply: msg?.content || 'Done, sir.', actions };
+  }
+  
+  return { reply: 'Done, sir.', actions };
+}
+
 async function agentGenerate(payload) {
   let lastError = null;
   for (const model of MODEL_FALLBACKS) {
@@ -870,7 +949,7 @@ app.post('/api/agent', requireAuth, async (req, res) => {
     : 'أنت "عَقْل"، وكيل نظام الحياة بأسلوب جارفس. خاطبه بلقب "سيدي". نفّذ طلبه باستخدام الأدوات عند الحاجة ثم ارد بجملتين إلى أربع. ')
     + `Current data: ${JSON.stringify({ commitments: list, life })}`;
 
-  // الطبقة 1: Gemini مع Function Calling
+  // === الطبقة 1: Gemini مع Function Calling ===
   try {
     console.log('🤖 Agent: trying Gemini with tools...');
     const contents = [{ role: 'user', parts: [{ text: message }] }];
@@ -902,123 +981,116 @@ app.post('/api/agent', requireAuth, async (req, res) => {
     console.log('🧠 Agent: Gemini failed →', gemErr.message);
   }
 
- // الطبقة 2: قاعدة ذكية (تنفذ فعليًا)
-console.log('🤖 Agent: falling back to smart rules...');
-const actions = [];
-let ruleReply = '';
-const msg = message.toLowerCase();
-
-// 1️⃣ تسجيل المصروفات (عربي/إنجليزي)
-if (msg.includes('سجل مصروف') || msg.includes('سجل صرف') || msg.includes('record expense') || msg.includes('add expense')) {
-  const amountMatch = message.match(/(\d+)\s*(ريال|دولار|sar|usd|rial|dollar)/i);
-  const categoryMatch = message.match(/(?:ريال|دولار|sar|usd)\s+(.+)/i) || message.match(/expense\s+(.+)/i);
-  const amount = amountMatch ? Number(amountMatch[1]) : 0;
-  const category = categoryMatch ? categoryMatch[1].trim() : 'عام';
-  
-  if (amount > 0) {
-    const { data, error } = await supabase.from('finance_entries').insert({
-      user_id: req.user.id,
-      type: 'expense',
-      amount: amount,
-      category: category,
-      note: null,
-    }).select().single();
-    
-    if (!error) {
-      actions.push({ tool: 'add_expense', result: `recorded ${amount} (${category})` });
-      ruleReply = lang === 'en'
-        ? `Recorded expense of ${amount} ${category}, sir.`
-        : `تم تسجيل مصروف ${amount} ${category} يا سيدي.`;
+  // === الطبقة 2: Groq مع Function Calling (صيغة OpenAI) ===
+  if (GROQ_API_KEY) {
+    try {
+      console.log('🤖 Agent: trying Groq with tools...');
+      const groqTools = AGENT_TOOLS.map(tool => ({
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: {
+            type: 'object',
+            properties: tool.parameters.properties,
+            required: tool.parameters.required || [],
+          },
+        },
+      }));
+      const messages = [
+        { role: 'system', content: system },
+        { role: 'user', content: message },
+      ];
+      const actions = [];
+      let reply = '';
+      for (let step = 0; step < 6; step++) {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
+          body: JSON.stringify({ model: GROQ_MODEL, temperature: 0.7, messages, tools: groqTools, tool_choice: 'auto' }),
+        });
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Groq ${response.status}: ${errText}`);
+        }
+        const data = await response.json();
+        const msg = data.choices?.[0]?.message;
+        const tc = msg?.tool_calls?.[0];
+        if (tc) {
+          let args = {};
+          try { args = JSON.parse(tc.function.arguments || '{}'); } catch (e) {}
+          const result = await runAgentTool(req.user.id, tc.function.name, args);
+          actions.push({ tool: tc.function.name, result });
+          messages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls });
+          messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+          continue;
+        }
+        reply = msg?.content || '';
+        break;
+      }
+      if (reply || actions.length) {
+        console.log('✅ Agent: Groq succeeded with', actions.length, 'actions');
+        return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'groq' });
+      }
+    } catch (gErr) {
+      console.log('❌ Agent: Groq failed →', gErr.message);
     }
   }
-}
 
-// 2️⃣ إضافة التزام وقت
-else if (msg.includes('add') || msg.includes('سجل') || msg.includes('ضيف')) {
-  const hoursMatch = message.match(/(\d+)\s*(hour|h|ساعة)/i);
-  const minutesMatch = message.match(/(\d+)\s*(min|m|دقيقة)/i);
-  const amountMatch = message.match(/(\d+)\s*(ريال|دولار|r\$|\$)/i);
-  
-  let hours = 0;
-  let title = 'New Commitment';
-  
-  if (hoursMatch) {
-    hours = Number(hoursMatch[1]);
-    const titleMatch = message.match(/(?:of|من)\s+(.+)/i) || message.match(/(.+)\s+(?:hour|h|ساعة)/i);
-    if (titleMatch) title = titleMatch[1].trim();
-  } else if (minutesMatch) {
-    hours = Number(minutesMatch[1]) / 60;
-    const titleMatch = message.match(/(?:of|من)\s+(.+)/i) || message.match(/(.+)\s+(?:min|m|دقيقة)/i);
-    if (titleMatch) title = titleMatch[1].trim();
-  }
-  
-  if (hours > 0) {
-    const { data, error } = await supabase.from('commitments').insert({
-      user_id: req.user.id,
-      title: title,
-      hours_per_week: Math.round(hours * 10) / 10,
-      type: 'personal',
-      intensity: 'medium',
-      time_slot: 'mixed',
-      flexible: true,
-      status: 'active',
-    }).select().single();
-    
-    if (!error) {
-      actions.push({ tool: 'add_commitment', result: `added "${data.title}" (${data.hours_per_week}h/week)` });
-      ruleReply = lang === 'en'
-        ? `Added commitment "${data.title}" for ${data.hours_per_week} hours per week, sir.`
-        : `تم إضافة التزام "${data.title}" بمعدل ${data.hours_per_week} ساعات أسبوعياً يا سيدي.`;
-    }
-  }
-}
+  // === الطبقة 3: قاعدة ذكية (آخر ملجأ) ===
+  console.log('🤖 Agent: falling back to smart rules...');
+  const lower = message.toLowerCase();
+  const actions = [];
+  let ruleReply = '';
 
-// 3️ رسالة افتراضية
-if (!ruleReply) {
-  ruleReply = lang === 'en'
-    ? 'I understand your request, sir. My AI engines are momentarily under heavy load, but I\'ve noted your intent and will process it as soon as capacity returns.'
-    : 'فهمت طلبك يا سيدي. محركات الذكاء تحت ضغط لحظي، لكنني سجلت نيتك وسأنفذها فور عودة القدرة.';
-}
-
-res.json({ reply: ruleReply, actions, engine: 'rules' });
-
-  // استخراج الأوامر من النص
   if (lower.includes('add') || lower.includes('سجل') || lower.includes('ضيف')) {
-    // التزام وقت
-    const hoursMatch = message.match(/(\d+)\s*(hour|h|ساعة)/i);
-    const minutesMatch = message.match(/(\d+)\s*(min|m|دقيقة)/i);
-    const hours = hoursMatch ? Number(hoursMatch[1]) : (minutesMatch ? Number(minutesMatch[1]) / 60 : 0);
-    
-    if (hours > 0) {
-      const titleMatch = message.match(/(?:of|من)\s+(.+)/i) || message.match(/(.+)\s+(?:hour|h|ساعة)/i);
-      const title = titleMatch ? titleMatch[1].trim() : 'New Commitment';
-      
-      const { data, error } = await supabase.from('commitments').insert({
-        user_id: req.user.id,
-        title: title,
-        hours_per_week: Math.round(hours * 10) / 10,
-        type: 'personal',
-        intensity: 'medium',
-        time_slot: 'mixed',
-        flexible: true,
-        status: 'active',
-      }).select().single();
-      
-      if (!error) {
-        actions.push({ tool: 'add_commitment', result: `added "${data.title}" (${data.hours_per_week}h/week)` });
-        ruleReply = lang === 'en'
-          ? `Added commitment "${data.title}" for ${data.hours_per_week} hours per week, sir.`
-          : `تم إضافة التزام "${data.title}" بمعدل ${data.hours_per_week} ساعات أسبوعياً يا سيدي.`;
+    if (lower.includes('مصروف') || lower.includes('expense') || lower.includes('صرف')) {
+      const amountMatch = message.match(/(\d+)/);
+      const categoryMatch = message.match(/(?:ريال|دولار|sar|usd)\s+(.+)/i) || message.match(/expense\s+(.+)/i);
+      const amount = amountMatch ? Number(amountMatch[1]) : 0;
+      const category = categoryMatch ? categoryMatch[1].trim() : 'عام';
+      if (amount > 0) {
+        const { data, error } = await supabase.from('finance_entries').insert({
+          user_id: req.user.id, type: 'expense', amount, category, note: null,
+        }).select().single();
+        if (!error) {
+          actions.push({ tool: 'add_expense', result: `recorded ${amount} (${category})` });
+          ruleReply = lang === 'en' ? `Recorded expense of ${amount} ${category}, sir.` : `تم تسجيل مصروف ${amount} ${category} يا سيدي.`;
+        }
+      }
+    } else {
+      const hoursMatch = message.match(/(\d+)\s*(hour|h|ساعة)/i);
+      const minutesMatch = message.match(/(\d+)\s*(min|m|دقيقة)/i);
+      let hours = 0;
+      let title = 'New Commitment';
+      if (hoursMatch) {
+        hours = Number(hoursMatch[1]);
+        const titleMatch = message.match(/(?:of|من)\s+(.+)/i) || message.match(/(.+)\s+(?:hour|h|ساعة)/i);
+        if (titleMatch) title = titleMatch[1].trim();
+      } else if (minutesMatch) {
+        hours = Number(minutesMatch[1]) / 60;
+        const titleMatch = message.match(/(?:of|من)\s+(.+)/i) || message.match(/(.+)\s+(?:min|m|دقيقة)/i);
+        if (titleMatch) title = titleMatch[1].trim();
+      }
+      if (hours > 0) {
+        const { data, error } = await supabase.from('commitments').insert({
+          user_id: req.user.id, title, hours_per_week: Math.round(hours * 10) / 10,
+          type: 'personal', intensity: 'medium', time_slot: 'mixed', flexible: true, status: 'active',
+        }).select().single();
+        if (!error) {
+          actions.push({ tool: 'add_commitment', result: `added "${data.title}" (${data.hours_per_week}h/week)` });
+          ruleReply = lang === 'en' ? `Added "${data.title}" for ${data.hours_per_week} hours/week, sir.` : `تم إضافة "${data.title}" بمعدل ${data.hours_per_week} ساعات أسبوعياً يا سيدي.`;
+        }
       }
     }
   }
 
   if (!ruleReply) {
     ruleReply = lang === 'en'
-      ? 'I understand your request, sir. My AI engines are momentarily under heavy load, but I\'ve noted your intent and will process it as soon as capacity returns.'
-      : 'فهمت طلبك يا سيدي. محركات الذكاء تحت ضغط لحظي، لكنني سجلت نيتك وسأنفذها فور عودة القدرة.';
+      ? `I understand, sir. You have ${list.length} commitments (${totalHours}h/week). How can I assist?`
+      : `فهمت يا سيدي. عندك ${list.length} التزامات (${totalHours}س/أسبوع). كيف أساعدك؟`;
   }
-  
+
   res.json({ reply: ruleReply, actions, engine: 'rules' });
 });
 
