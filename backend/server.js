@@ -678,50 +678,81 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     const body = req.body || {};
     const message = (body.message || '').trim();
     if (!message) return res.status(400).json({ error: 'اكتب رسالتك أولاً' });
-    if (message.length > 500) return res.status(400).json({ error: 'الرسالة طويلة جدًا' });
     
     const lang = body.lang === 'en' ? 'en' : 'ar';
     const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
     const list = (commitments || []).map(normalizeCommitment);
     const totalHours = list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
-    const highHours = list.filter((c) => c.intensity === 'high').reduce((s, c) => s + Number(c.hours_per_week), 0);
-    const rigidHours = list.filter((c) => !c.flexible).reduce((s, c) => s + Number(c.hours_per_week), 0);
-    const { data: logs } = await supabase.from('analysis_logs').select('burnout_risk, main_insight, created_at').eq('user_id', req.user.id).order('created_at', { ascending: false }).limit(3);
-    const { data: historyRows } = await supabase.from('chat_messages').select('role, content').eq('user_id', req.user.id).order('created_at', { ascending: false }).limit(8);
-    const history = (historyRows || []).reverse();
     const life = await fetchLifeData(req.user.id);
     
     let reply;
+    let usedAI = false;
+    
+    // محاولة استخدام الذكاء الاصطناعي (بدون ما ننتظر طويلاً)
     try {
-      reply = await askBaseerChat({
-        context: {
-          commitments: list,
-          metrics: {
-            total_hours: totalHours,
-            remaining_hours: Math.max(168 - totalHours, 0),
-            high_intensity_hours: highHours,
-            rigid_hours: rigidHours,
-            current_risk: riskLabel(totalHours),
-          },
-          recent_analyses: logs || [],
-          life: life || null,
-        },
-        history,
-        userMessage: message,
-      }, lang);
-    } catch (e) {
-      console.error(' Chat AI failed:', e.message);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000); // 3 ثواني فقط
       
-      // قاعدة ذكية بسيطة
+      const context = {
+        commitments: list,
+        metrics: {
+          total_hours: totalHours,
+          remaining_hours: Math.max(168 - totalHours, 0),
+          current_risk: riskLabel(totalHours),
+        },
+        life: life || null,
+      };
+      
+      // Groq أولاً (أسرع)
+      if (GROQ_API_KEY) {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${GROQ_API_KEY}` 
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            temperature: 0.7,
+            messages: [
+              { role: 'system', content: lang === 'en' 
+                ? 'You are AQL, a JARVIS-style assistant. Address user as "sir". Be helpful and concise (2-4 sentences).' 
+                : 'أنت "عَقْل"، مساعد بأسلوب جارفس. خاطب المستخدم بلقب "سيدي". كن مفيداً ومختصراً (2-4 جمل).'
+              },
+              { role: 'user', content: `Context: ${JSON.stringify(context)}\n\nUser: ${message}` },
+            ],
+          }),
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeout);
+        
+        if (response.ok) {
+          const data = await response.json();
+          const aiReply = data.choices?.[0]?.message?.content || '';
+          if (aiReply.trim()) {
+            reply = aiReply.trim();
+            usedAI = true;
+            console.log('💬 Chat via Groq (fast)');
+          }
+        }
+      }
+    } catch (e) {
+      console.log(' AI timeout/error, using rules:', e.message);
+    }
+    
+    // إذا الذكاء ما اشتغل، نستخدم القواعد الذكية
+    if (!usedAI) {
       const msg = message.toLowerCase();
+      
       if (msg.includes('حلل') && (msg.includes('مزاج') || msg.includes('مood'))) {
         const mood = life?.wellness?.mood || 5;
         const energy = life?.wellness?.energy || 5;
         reply = lang === 'en'
-          ? `Based on your last log, mood is ${mood}/10 and energy is ${energy}/10, sir.`
-          : `بناءً على آخر تسجيل، مزاجك ${mood}/10 وطاقتك ${energy}/10 يا سيدي.`;
+          ? `Based on your last log, mood is ${mood}/10 and energy is ${energy}/10, sir. ${mood >= 7 ? 'You\'re doing great!' : 'Consider resting if possible.'}`
+          : `بناءً على آخر تسجيل، مزاجك ${mood}/10 وطاقتك ${energy}/10 يا سيدي. ${mood >= 7 ? 'أنت بخير!' : 'فكر بالراحة.'}`;
       }
-      else if (msg.includes('رصيد') || msg.includes('balance') || msg.includes('فلوس')) {
+      else if (msg.includes('رصيد') || msg.includes('balance') || msg.includes('فلوس') || msg.includes('مصروف')) {
         const balance = life?.finance?.balance || 0;
         const income = life?.finance?.income || 0;
         const expense = life?.finance?.expense || 0;
@@ -729,24 +760,42 @@ app.post('/api/chat', requireAuth, async (req, res) => {
           ? `Balance: $${balance} (Income: $${income}, Expenses: $${expense}), sir.`
           : `الرصيد: ${balance} ريال (دخل: ${income}, مصروف: ${expense}) يا سيدي.`;
       }
-      else if (msg.includes('التزام') || msg.includes('commitment') || msg.includes('ساعة')) {
+      else if (msg.includes('التزام') || msg.includes('commitment') || msg.includes('ساعة') || msg.includes('وقت')) {
+        const highIntensity = list.filter(c => c.intensity === 'high').length;
         reply = lang === 'en'
-          ? `You have ${list.length} commitments totaling ${totalHours} hours/week, sir.`
-          : `عندك ${list.length} التزامات بمجموع ${totalHours} ساعة أسبوعياً يا سيدي.`;
+          ? `You have ${list.length} commitments totaling ${totalHours} hours/week (${highIntensity} high-intensity), sir. ${totalHours > 90 ? 'This is quite heavy - consider reducing some commitments.' : 'Your schedule looks manageable.'}`
+          : `عندك ${list.length} التزامات بمجموع ${totalHours} ساعة أسبوعياً (${highIntensity} عالية الحمل) يا سيدي. ${totalHours > 90 ? 'هذا حمل ثقيل - فكّر في تقليل بعض الالتزامات.' : 'جدولك معقول.'}`;
+      }
+      else if (msg.includes('دراسة') || msg.includes('study')) {
+        const studyHours = life?.study?.total_minutes ? Math.round(life.study.total_minutes / 60) : 0;
+        reply = lang === 'en'
+          ? `You've logged ${studyHours} hours of study recently, sir. ${studyHours > 20 ? 'Excellent dedication!' : 'Consider increasing study time if possible.'}`
+          : `سجلت ${studyHours} ساعة دراسة مؤخراً يا سيدي. ${studyHours > 20 ? 'ممتاز!' : 'فكّر في زيادة وقت الدراسة.'}`;
+      }
+      else if (msg.includes('نوم') || msg.includes('sleep')) {
+        const sleep = life?.wellness?.sleep_hours || 0;
+        reply = lang === 'en'
+          ? `Last logged sleep: ${sleep} hours, sir. ${sleep >= 7 ? 'Good sleep hygiene!' : 'Try to get 7-8 hours for optimal performance.'}`
+          : `آخر نوم مسجل: ${sleep} ساعات يا سيدي. ${sleep >= 7 ? 'ممتاز!' : 'حاول تنام 7-8 ساعات.'}`;
       }
       else {
+        // رد عام ذكي
         reply = lang === 'en'
-          ? 'I understand, sir. My AI is under heavy load but I\'ve noted your request.'
-          : 'فهمت طلبك يا سيدي. الذكاء تحت ضغط لكنني سجلت نيتك.';
+          ? `I understand, sir. You currently have ${totalHours} hours of commitments. ${totalHours > 90 ? 'Your schedule is quite full - prioritize rest.' : 'Your schedule has room for more activities.'} How can I assist further?`
+          : `فهمت يا سيدي. عندك ${totalHours} ساعة التزامات حالياً. ${totalHours > 90 ? 'جدولك مزدحم - أعطِ الأولوية للراحة.' : 'عندك مساحة لمزيد من الأنشطة.'} كيف أقدر أساعدك أكثر؟`;
       }
+      
+      console.log('💬 Chat via smart rules');
     }
     
     await supabase.from('chat_messages').insert([
       { user_id: req.user.id, role: 'user', content: message },
       { user_id: req.user.id, role: 'assistant', content: reply },
     ]);
+    
     res.json({ reply });
   } catch (err) {
+    console.error('Chat error:', err);
     res.status(500).json({ error: err.message });
   }
 });
