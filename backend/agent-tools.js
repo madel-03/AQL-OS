@@ -184,16 +184,23 @@ export const toolsRegistry = [
 
 export const AGENT_TOOLS = toolsRegistry.map((t) => t.declaration);
 
-export const getOpenAITools = () => toolsRegistry.map((tool) => ({
+const lowerSchema = (s) => {
+  if (!s || typeof s !== 'object') return s;
+  const out = { ...s };
+  if (out.type) out.type = String(out.type).toLowerCase();
+  if (out.properties) {
+    const p = {};
+    for (const k of Object.keys(out.properties)) p[k] = lowerSchema(out.properties[k]);
+    out.properties = p;
+  }
+  return out;
+};
+export const getOpenAITools = () => toolsRegistry.map(tool => ({
   type: 'function',
   function: {
     name: tool.declaration.name,
     description: tool.declaration.description,
-    parameters: {
-      type: 'object',
-      properties: tool.declaration.parameters.properties,
-      required: tool.declaration.parameters.required || [],
-    },
+    parameters: lowerSchema(tool.declaration.parameters),
   },
 }));
 

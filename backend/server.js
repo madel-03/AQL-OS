@@ -753,6 +753,24 @@ app.post('/api/agent', requireAuth, async (req, res) => {
     console.log('❌ Gemini agent failed:', gemErr.message);
   }
 
+  // === 🛟 الطبقة 4: رد حر بدون أدوات (مثل المحادثة) ===
+if (!reply && !actions.length) {
+  try {
+    console.log('🤖 Agent: trying Gemini without tools...');
+    const data = await geminiGenerate({
+      system_instruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts: [{ text: message }] }],
+      generationConfig: { temperature: 0.8 },
+    });
+    reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (reply) console.log('✅ Agent: Gemini text reply succeeded');
+  } catch (tErr) {
+    console.log('❌ Agent text reply failed:', tErr.message);
+  }
+}
+if (reply || actions.length) {
+  return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'gemini-text' });
+}
   // ⚠️ بروتوكول الطوارئ لو انقطعت كل المزودات السحابية
   const emergencyReply = lang === 'en'
     ? 'Pardon me, sir — all cognitive engines are momentarily unreachable. Standing by for reconnection.'
