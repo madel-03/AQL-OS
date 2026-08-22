@@ -8,6 +8,7 @@ import path from 'path';
 import os from 'os';
 import { AGENT_TOOLS, getOpenAITools, runAgentTool } from './agent-tools.js';
 
+
 const app = express();
 app.use(cors({
   origin: [
@@ -302,3 +303,29 @@ app.post('/api/agent', requireAuth, async (req, res) => {
 // باقي المسارات تبقى كما هي...
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+
+
+export const AGENT_TOOLS = toolsRegistry.map(t => t.declaration);
+
+export const getOpenAITools = () => toolsRegistry.map(tool => ({
+  type: 'function',
+  function: {
+    name: tool.declaration.name,
+    description: tool.declaration.description,
+    parameters: {
+      type: 'object',
+      properties: tool.declaration.parameters.properties,
+      required: tool.declaration.parameters.required || [],
+    },
+  },
+}));
+
+export const runAgentTool = async (userId, name, args, context) => {
+  const tool = toolsRegistry.find(t => t.declaration.name === name);
+  if (!tool) return `unknown tool ${name}`;
+  try {
+    return await tool.execute(userId, args, context);
+  } catch (e) {
+    return `tool ${name} failed: ${e.message}`;
+  }
+};
