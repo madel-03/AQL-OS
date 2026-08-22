@@ -25,10 +25,9 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 // 1️⃣ المفاتيح والموديلات مرتبة حسب الأولوية
 const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY || '';
-const CEREBRAS_MODEL = 'llama-4-scout-17b-16e-instruct';
-
+const CEREBRAS_MODEL = 'llama-3.3-70b';
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_MODEL = 'llama-3.1-70b-versatile';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MODEL_FALLBACKS = [
@@ -123,22 +122,22 @@ async function cerebrasChat(system, messages, tools = null) {
 // 🌐 2. Groq Chat Helper (الثاني الاحتياطي)
 async function groqChat(system, messages, tools = null) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY missing');
-  const body = {
-    model: GROQ_MODEL,
-    temperature: 0.7,
-    messages: [{ role: 'system', content: system }, ...messages],
-  };
-  if (tools) {
-    body.tools = tools;
-    body.tool_choice = 'auto';
+  let lastErr = null;
+  for (const model of GROQ_MODELS) {
+    try {
+      const body = { model, temperature: 0.7, messages: [{ role: 'system', content: system }, ...messages] };
+      if (tools) { body.tools = tools; body.tool_choice = 'auto'; }
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) { lastErr = new Error('Groq ' + response.status + ' on ' + model); continue; }
+      console.log('🧠 Groq via ' + model);
+      return await response.json();
+    } catch (e) { lastErr = e; }
   }
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error('Groq ' + response.status);
-  return await response.json();
+  throw lastErr || new Error('All Groq models failed');
 }
 
 // 🌐 3. Gemini Helper (الثالث والأخير)
@@ -153,8 +152,9 @@ async function geminiGenerate(payload) {
         body: JSON.stringify(payload),
       });
       if (response.status === 503 || response.status === 429 || response.status === 404) {
-        lastError = new Error(`Gemini ${response.status} on ${model}`);
-        continue;
+      lastError = new Error(`Gemini ${response.status} on ${model}`);
+      if (response.status === 429) await new Promise((r) => setTimeout(r, 1200));
+      continue;
       }
       if (!response.ok) {
         const t = await response.text();
