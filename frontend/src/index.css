@@ -427,3 +427,16 @@ button:disabled { opacity:.7; cursor:not-allowed; }
   .rail-scan { display: none; }
   .app-sidebar.rail, .app-sidebar.rail:hover, .app-sidebar.rail.rail-open { width: 100% !important; height: auto !important; position: static !important; }
 }
+/* ========== الرادار الحي ========== */
+.radar-sweep { position: absolute; inset: 5%; border-radius: 50%; background: conic-gradient(from 0deg, rgba(0,229,255,0.35), transparent 70deg, transparent 360deg); animation: radarSpin 4s linear infinite; pointer-events: none; }
+@keyframes radarSpin { to { transform: rotate(360deg); } }
+.blip { animation: blipPulse 2s ease-in-out infinite; }
+@keyframes blipPulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
+/* حالة التفكير المرئية */
+.core-thinking { animation: corePulse 0.9s var(--ease) infinite; filter: drop-shadow(0 0 20px rgba(0,229,255,0.45)); }
+@keyframes corePulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.02); } }
+.think-wave { display: flex; gap: 3px; align-items: flex-end; height: 24px; margin-top: 8px; }
+.think-wave span { width: 3px; height: 100%; background: var(--cyan); transform-origin: bottom; animation: wave 0.7s ease-in-out infinite; }
+@keyframes wave { 0%,100% { transform: scaleY(0.15); } 50% { transform: scaleY(1); } }
+.hud-grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+.hud-box { padding: 1rem; display: flex; flex-direction: column; gap: 0.8rem; }

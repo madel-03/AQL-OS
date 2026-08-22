@@ -812,9 +812,54 @@ function AnimatedRadar({ risk }) {
   );
 }
 
+/* ========== كرة الحياة + الرادار الحي ========== */
+function GlobeSVG() {
+  const dots = Array.from({ length: 40 }, (_, i) => {
+    const a = (i / 40) * Math.PI * 2;
+    const r = 34 + ((i * 37) % 12);
+    return { x: 50 + Math.cos(a) * r, y: 50 + Math.sin(a) * r * 0.9 };
+  });
+  return (
+    <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
+      <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(0,229,255,0.3)" />
+      <ellipse cx="50" cy="50" rx="46" ry="16" fill="none" stroke="rgba(0,229,255,0.18)" />
+      <ellipse cx="50" cy="50" rx="46" ry="30" fill="none" stroke="rgba(0,229,255,0.12)" />
+      <ellipse cx="50" cy="50" rx="18" ry="46" fill="none" stroke="rgba(0,229,255,0.15)" />
+      <ellipse cx="50" cy="50" rx="32" ry="46" fill="none" stroke="rgba(0,229,255,0.1)" />
+      {dots.map((d, i) => <circle key={i} cx={d.x} cy={d.y} r="1.2" fill="var(--cyan)" opacity={0.4 + ((i * 29) % 50) / 100} />)}
+    </svg>
+  );
+}
+function VitalRadar({ riskPct, riskColor, loads }) {
+  const rMain = 14 + (riskPct / 100) * 62;
+  const aMain = -Math.PI / 4;
+  const mx = 90 + Math.cos(aMain) * rMain;
+  const my = 90 + Math.sin(aMain) * rMain;
+  return (
+    <div style={{ position: 'relative', width: 210, height: 210, margin: '0 auto' }}>
+      <div className="radar-sweep" />
+      <svg viewBox="0 0 180 180" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+        <circle cx="90" cy="90" r="78" fill="none" stroke="rgba(0,229,255,0.25)" strokeWidth="1" />
+        <circle cx="90" cy="90" r="52" fill="none" stroke="rgba(0,229,255,0.15)" strokeWidth="1" strokeDasharray="3 6" />
+        <circle cx="90" cy="90" r="26" fill="none" stroke="rgba(0,229,255,0.12)" strokeWidth="1" strokeDasharray="2 5" />
+        <line x1="90" y1="12" x2="90" y2="168" stroke="rgba(0,229,255,0.1)" />
+        <line x1="12" y1="90" x2="168" y2="90" stroke="rgba(0,229,255,0.1)" />
+        <line x1="90" y1="90" x2={mx} y2={my} stroke={riskColor} strokeWidth="1" opacity="0.6" />
+        <circle cx={mx} cy={my} r="4" fill={riskColor} className="blip" />
+        {loads.map((d, i) => {
+          const a = (i / Math.max(loads.length, 1)) * Math.PI * 2 - Math.PI / 2;
+          const r = 14 + d.value * 60;
+          return <circle key={i} cx={90 + Math.cos(a) * r} cy={90 + Math.sin(a) * r} r="2.5" fill={d.color} className="blip" style={{ animationDelay: `${i * 0.3}s` }} />;
+        })}
+      </svg>
+    </div>
+  );
+}
+/* ========== غرفة الوعي — العقل الحي ========== */
 function MindChamber({ commitments }) {
   const { lang, hs } = useLang();
   const [life, setLife] = useState(null);
+  const [logs, setLogs] = useState([]);
   const [fullThought, setFullThought] = useState(lang === 'ar' ? 'أُوقظ وعيي... أقرأ ملفاتك يا سيدي.' : 'Waking my consciousness... reading your files, sir.');
   const [typed, setTyped] = useState('');
   const [command, setCommand] = useState('');
@@ -822,20 +867,22 @@ function MindChamber({ commitments }) {
   const [listening, setListening] = useState(false);
   const [actions, setActions] = useState([]);
   const [activeDomain, setActiveDomain] = useState(null);
+  const [lastEngine, setLastEngine] = useState(null);
 
   useEffect(() => {
     (async () => {
       try {
         const headers = await getAuthHeaders();
-        const [f, w, r, h, s] = await Promise.all([
+        const [f, w, r, h, s, lg] = await Promise.all([
           fetch(`${API_URL}/api/finance`, { headers }), fetch(`${API_URL}/api/wellness`, { headers }),
           fetch(`${API_URL}/api/relationships`, { headers }), fetch(`${API_URL}/api/home`, { headers }),
-          fetch(`${API_URL}/api/study`, { headers }),
+          fetch(`${API_URL}/api/study`, { headers }), fetch(`${API_URL}/api/analysis-logs`, { headers }),
         ]);
         const fj = f.ok ? await f.json() : null; const wj = w.ok ? await w.json() : null;
         const rj = r.ok ? await r.json() : null; const hj = h.ok ? await h.json() : null;
-        const sj = s.ok ? await s.json() : null;
-        setLife({ finance: fj?.summary || null, wellness: wj?.logs?.[0] || null, relationships: rj?.people || [], home: hj?.tasks || [], studyMinutes: sj?.total_minutes || 0 });
+        const sj = s.ok ? await s.json() : null; const lgj = lg.ok ? await lg.json() : null;
+        setLife({ finance: fj || null, wellness: wj?.logs?.[0] || null, relationships: rj?.people || [], home: hj?.tasks || [], studyMinutes: sj?.total_minutes || 0 });
+        setLogs(lgj?.logs || []);
       } catch (e) { /* نتجاهل */ }
     })();
   }, [commitments]);
@@ -844,16 +891,36 @@ function MindChamber({ commitments }) {
   const remaining = Math.max(168 - totalHours, 0);
   const risk = riskOf(totalHours);
   const riskPct = risk.label === 'Critical' ? 95 : risk.label === 'High' ? 70 : risk.label === 'Medium' ? 45 : 15;
+  const highHours = commitments.filter((c) => c.intensity === 'high').reduce((s, c) => s + Number(c.hours_per_week), 0);
   const neglectedCount = (people) => (people || []).filter((p) => !p.last_contact || (Date.now() - new Date(p.last_contact).getTime()) / 86400000 > (p.contact_frequency_days || 7)).length;
+  const RISK_ORDER = ['Low', 'Medium', 'High', 'Critical'];
 
+  /* اتجاهات عبر الزمن (بادرة + ذاكرة) */
+  const spendTrend = (() => {
+    const entries = life?.finance?.entries || [];
+    const now = Date.now();
+    const last7 = entries.filter((e) => e.type === 'expense' && now - new Date(e.entry_date).getTime() < 7 * 86400000).reduce((s, e) => s + Number(e.amount), 0);
+    const prev7 = entries.filter((e) => e.type === 'expense' && now - new Date(e.entry_date).getTime() >= 7 * 86400000 && now - new Date(e.entry_date).getTime() < 14 * 86400000).reduce((s, e) => s + Number(e.amount), 0);
+    if (prev7 <= 0) return null;
+    return Math.round(((last7 - prev7) / prev7) * 100);
+  })();
+  const riskTrend = logs.length >= 2 ? RISK_ORDER.indexOf(logs[0].burnout_risk) - RISK_ORDER.indexOf(logs[1].burnout_risk) : 0;
+
+  /* البادرة: تيار الوعي يفتح بملاحظات استباقية */
   useEffect(() => {
     if (!life) return;
+    const bal = Math.round(life.finance?.summary?.balance || 0);
     const negl = neglectedCount(life.relationships);
     const pending = (life.home || []).filter((x) => x.status !== 'done').length;
-    const bal = Math.round(life.finance?.balance || 0);
-    setFullThought(lang === 'ar'
-      ? `سيدي، وعيي مكتمل. أسبوعك يحمل ${totalHours} ساعة (خطر: ${risk.label})، رصيدك ${bal}. ${negl ? negl + ' من علاقاتك تنتظر اتصالك. ' : ''}${pending ? pending + ' مهام منزلية معلّقة. ' : ''}المس أي عقدة لأفكّر فيها، أو أمرني وسأنفّذ.`
-      : `Sir, consciousness complete. Week carries ${totalHours}h (risk: ${risk.label}), balance ${bal}. ${negl ? negl + ' relationships await your call. ' : ''}${pending ? pending + ' home tasks pending. ' : ''}Touch a node, or command me.`);
+    const notes = [lang === 'ar'
+      ? `سيدي، وعيي مكتمل. أسبوعك يحمل ${totalHours} ساعة (خطر: ${risk.label})، رصيدك ${bal}.`
+      : `Sir, consciousness complete. Week carries ${totalHours}h (risk: ${risk.label}), balance ${bal}.`];
+    if (spendTrend !== null && spendTrend >= 20) notes.push(lang === 'ar' ? `لاحظت أن مصروفك زاد ${spendTrend}% مقارنة بالأسبوع الماضي.` : `I noticed your spending rose ${spendTrend}% versus last week.`);
+    if (riskTrend > 0) notes.push(lang === 'ar' ? 'مستوى خطرك ارتفع منذ آخر تحليل — أوصي بالمراجعة.' : 'Your risk climbed since the last analysis — a review is advisable.');
+    else if (riskTrend < 0) notes.push(lang === 'ar' ? 'تحسّن ملحوظ منذ آخر تحليل — أحسنت يا سيدي.' : 'Marked improvement since the last analysis — well done, sir.');
+    if (negl) notes.push(lang === 'ar' ? `${negl} من علاقاتك تنتظر اتصالك.` : `${negl} relationships await your call.`);
+    if (pending) notes.push(lang === 'ar' ? `${pending} مهام منزلية معلّقة.` : `${pending} home tasks pending.`);
+    setFullThought(notes.join(' '));
   }, [life, lang]);
 
   useEffect(() => {
@@ -865,33 +932,43 @@ function MindChamber({ commitments }) {
   const CALM = 'rgba(0,229,255,0.5)'; const WARN = '#ffb020'; const DANGER = '#ff4d4d';
   const domainStatus = (id) => {
     if (!life) return { color: CALM, w: 1, hot: false };
-    if (id === 'time') { if (risk.label === 'Critical' || risk.label === 'High') return { color: DANGER, hot: true }; if (risk.label === 'Medium') return { color: WARN, hot: true }; return { color: CALM, hot: false }; }
-    if (id === 'finance') return (life.finance?.balance || 0) < 0 ? { color: DANGER, hot: true } : { color: CALM, hot: false };
-    if (id === 'home') return (life.home || []).filter((x) => x.status !== 'done').length > 5 ? { color: WARN, hot: true } : { color: CALM, hot: false };
-    if (id === 'relations') return neglectedCount(life.relationships) > 0 ? { color: WARN, hot: true } : { color: CALM, hot: false };
-    if (id === 'health') { const w = life.wellness; return w && ((w.sleep_hours || 0) < 7 || (w.mood || 10) < 5) ? { color: WARN, hot: true } : { color: CALM, hot: false }; }
-    return { color: CALM, hot: false };
+    if (id === 'time') { if (risk.label === 'Critical' || risk.label === 'High' || totalHours > 168) return { color: totalHours > 168 ? WARN : DANGER, w: 2, hot: true }; if (risk.label === 'Medium') return { color: WARN, w: 1.5, hot: true }; return { color: CALM, w: 1, hot: false }; }
+    if (id === 'finance') return (life.finance?.summary?.balance || 0) < 0 ? { color: DANGER, w: 2, hot: true } : { color: CALM, w: 1, hot: false };
+    if (id === 'home') return (life.home || []).filter((x) => x.status !== 'done').length > 5 ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false };
+    if (id === 'relations') return neglectedCount(life.relationships) > 0 ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false };
+    if (id === 'health') { const w = life.wellness; return w && ((w.sleep_hours || 0) < 7 || (w.mood || 10) < 5) ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false }; }
+    return { color: CALM, w: 1, hot: false };
   };
-
   const domains = [
-    { id: 'time', icon: '⏳', label: lang === 'ar' ? 'الوقت' : 'Time' },
-    { id: 'finance', icon: '💰', label: lang === 'ar' ? 'المال' : 'Finance' },
-    { id: 'study', icon: '📚', label: lang === 'ar' ? 'الدراسة' : 'Study' },
-    { id: 'home', icon: '🏠', label: lang === 'ar' ? 'البيت' : 'Home' },
-    { id: 'relations', icon: '🤝', label: lang === 'ar' ? 'العلاقات' : 'Relations' },
-    { id: 'health', icon: '🧘', label: lang === 'ar' ? 'الصحة' : 'Health' },
+    { id: 'time', icon: '⏳', label: lang === 'ar' ? 'الوقت' : 'Time', angle: -90 },
+    { id: 'finance', icon: '💰', label: lang === 'ar' ? 'المال' : 'Finance', angle: -30 },
+    { id: 'study', icon: '📚', label: lang === 'ar' ? 'الدراسة' : 'Study', angle: 30 },
+    { id: 'home', icon: '🏠', label: lang === 'ar' ? 'البيت' : 'Home', angle: 90 },
+    { id: 'relations', icon: '🤝', label: lang === 'ar' ? 'العلاقات' : 'Relations', angle: 150 },
+    { id: 'health', icon: '🧘', label: lang === 'ar' ? 'الصحة' : 'Health', angle: 210 },
   ];
+  const domainLoads = life ? domains.map((d) => {
+    const st = domainStatus(d.id);
+    let v = 0.2;
+    if (d.id === 'time') v = Math.min(totalHours / 168, 1);
+    if (d.id === 'finance') { const s = life.finance?.summary; v = s ? (s.balance < 0 ? 0.9 : s.income > 0 ? Math.min(s.expense / s.income, 1) : 0.5) : 0.3; }
+    if (d.id === 'home') v = Math.min((life.home || []).filter((x) => x.status !== 'done').length / 10, 1);
+    if (d.id === 'relations') { const c = (life.relationships || []).length || 1; v = Math.min(neglectedCount(life.relationships) / c, 1); }
+    if (d.id === 'health') v = life.wellness ? Math.min(1 - (life.wellness.mood || 5) / 10, 1) : 0.3;
+    if (d.id === 'study') v = Math.min((life.studyMinutes || 0) / 600, 1);
+    return { value: v, color: st.color };
+  }) : [];
 
   const domainThought = (id) => {
     if (!life) return '';
-    const bal = Math.round(life.finance?.balance || 0);
+    const bal = Math.round(life.finance?.summary?.balance || 0);
     const negl = neglectedCount(life.relationships);
     const pending = (life.home || []).filter((x) => x.status !== 'done').length;
     const w = life.wellness;
     if (lang === 'ar') {
       switch (id) {
         case 'time': return `أفكّر في وقتك يا سيدي: ${totalHours} ساعة ملتزم بها، و${remaining} ساعة حرة. ${risk.label === 'Low' ? 'توازن جميل.' : 'أرصد ضغطًا — دعني أخفّف عنك.'}`;
-        case 'finance': return bal < 0 ? `رصيدك سالب (${bal}) يا سيدي. أوصي بفرملة فورية للمصاريف.` : `رصيدك ${bal} يا سيدي. انضباطك المالي ${bal > 0 ? 'مقبول' : 'على الحافة'}.`;
+        case 'finance': return bal < 0 ? `رصيدك سالب (${bal}) يا سيدي. أوصي بفرملة فورية.` : `رصيدك ${bal} يا سيدي. انضباطك المالي ${bal > 0 ? 'مقبول' : 'على الحافة'}.`;
         case 'study': return `سجلت ${Math.round((life.studyMinutes || 0) / 60)} ساعة دراسة يا سيدي. ${(life.studyMinutes || 0) > 600 ? 'وتيرة ممتازة.' : 'يمكنني رفع استثمارك المعرفي إن أمرت.'}`;
         case 'home': return pending > 0 ? `لديك ${pending} مهام منزلية معلّقة يا سيدي. الفوضى تتراكم بصمت.` : 'المنزل تحت السيطرة يا سيدي.';
         case 'relations': return negl > 0 ? `${negl} من علاقاتك تنتظر اتصالك يا سيدي. العلاقات رأس مال صامت.` : 'جميع علاقاتك نشطة يا سيدي. أحسنت.';
@@ -907,9 +984,7 @@ function MindChamber({ commitments }) {
       default: return w ? `Mood ${w.mood}/10, energy ${w.energy}/10, sleep ${w.sleep_hours}h, sir. ${(w.sleep_hours || 0) < 7 ? 'I recommend a strict sleep protocol tonight.' : 'The body holds firm.'}` : 'No wellness data yet, sir.';
     }
   };
-
   const focusDomain = (d) => { setActiveDomain(d.id); const line = domainThought(d.id); setFullThought(line); jarvisSpeak(line, lang); };
-
   const sendCommand = async (text) => {
     const cmd = (text || '').trim();
     if (!cmd || busy) return;
@@ -921,12 +996,12 @@ function MindChamber({ commitments }) {
       const json = await res.json();
       const reply = json.reply || (lang === 'ar' ? 'تعذّر الوصول لمحركاتي يا سيدي.' : 'My engines are unreachable, sir.');
       setActions(json.actions || []);
+      setLastEngine(json.engine || 'rules');
       setFullThought(reply);
       jarvisSpeak(reply, lang);
     } catch (e) { setFullThought(lang === 'ar' ? 'حدث خلل لحظي يا سيدي.' : 'A momentary glitch, sir.'); }
     setBusy(false);
   };
-
   const startListening = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
@@ -940,70 +1015,115 @@ function MindChamber({ commitments }) {
     setListening(true);
     try { rec.start(); } catch (e) { setListening(false); }
   };
-
-  const bal = Math.round(life?.finance?.balance || 0);
-  const energyBars = [
-    { label: 'TIME', pct: Math.min(totalHours / 168, 1) },
-    { label: 'FIN', pct: life ? Math.max(0, Math.min(1, (bal + 2000) / 4000)) : 0 },
-    { label: 'REST', pct: Math.max(0, Math.min(1, remaining / 168)) },
-    { label: 'MOOD', pct: (life?.wellness?.mood || 5) / 10 },
-  ];
+  const engineMeta = lastEngine === 'gemini' || lastEngine === 'cerebras'
+    ? { color: '#c4b5fd', label: lang === 'ar' ? 'تفكير عميق' : 'DEEP THINK' }
+    : lastEngine === 'groq'
+      ? { color: '#4dd8ff', label: lang === 'ar' ? 'تحليل سريع' : 'FAST ANALYSIS' }
+      : { color: '#7d9bb8', label: lang === 'ar' ? 'استجابة فورية' : 'INSTANT' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
       <div className="hud-grid4">
+        {/* LIFE SCAN: كرة + أعصاب متصلة */}
         <div className="glass-panel hud-panel hud-box">
-          <div className="panel-title mono">◈ {lang === 'ar' ? 'مسح الحياة // LIFE SCAN' : 'LIFE SCAN'}</div>
-          <AnimatedGlobe />
-          <div className="hex-nodes">
+          <div className="holo-label">◈ {lang === 'ar' ? 'مسح الحياة' : 'LIFE SCAN'}</div>
+          <div className={busy ? 'core-thinking' : ''} style={{ position: 'relative', width: '100%', maxWidth: 320, aspectRatio: '1 / 1', margin: '0 auto' }}>
+            <svg className="neural-links" viewBox="0 0 100 100" preserveAspectRatio="none">
+              {domains.map((d) => {
+                const rad = (d.angle * Math.PI) / 180;
+                const x = 50 + 46 * Math.cos(rad); const y = 50 + 46 * Math.sin(rad);
+                const st = domainStatus(d.id);
+                return <line key={d.id} x1="50" y1="50" x2={x} y2={y} stroke={st.color} strokeWidth={st.w} vectorEffect="non-scaling-stroke" className={st.hot ? 'nl-hot' : 'nl-calm'} style={{ color: st.color }} />;
+              })}
+            </svg>
+            <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: '60%', height: '60%' }}>
+              <GlobeSVG />
+            </div>
             {domains.map((d) => {
+              const rad = (d.angle * Math.PI) / 180;
+              const x = 50 + 46 * Math.cos(rad); const y = 50 + 46 * Math.sin(rad);
               const st = domainStatus(d.id);
               return (
                 <button key={d.id} className="mind-node" onClick={() => focusDomain(d)}
-                  style={{ borderColor: st.hot ? st.color : undefined, color: st.hot ? st.color : undefined, boxShadow: activeDomain === d.id ? `0 0 18px ${st.color}` : undefined }}>
-                  <span>{d.icon}</span><span>{d.label}</span>
+                  style={{ left: `${x}%`, top: `${y}%`, borderColor: st.hot ? st.color : undefined, color: st.hot ? st.color : undefined, boxShadow: activeDomain === d.id ? `0 0 22px ${st.color}` : undefined, padding: '6px 10px', fontSize: '0.68rem' }}>
+                  <span>{d.icon}</span>
+                  <span>{d.label}</span>
                 </button>
               );
             })}
           </div>
         </div>
+        {/* VITAL RADAR: بيانات حقيقية */}
         <div className="glass-panel hud-panel hud-box">
-          <div className="panel-title mono">◈ {lang === 'ar' ? 'الرادار الحيوي // VITAL RADAR' : 'VITAL RADAR'}</div>
-          <AnimatedRadar risk={risk} />
+          <div className="holo-label">◈ {lang === 'ar' ? 'الرادار الحيوي' : 'VITAL RADAR'}</div>
+          <VitalRadar riskPct={riskPct} riskColor={risk.color} loads={domainLoads} />
+          <div className="mono" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: 'var(--muted)' }}>
+            <span>AZ 217.4°</span>
+            <span>RNG {totalHours}{hs}</span>
+            <span style={{ color: risk.color }}>SIG {risk.label.toUpperCase()}</span>
+          </div>
         </div>
+        {/* ENERGY */}
         <div className="glass-panel hud-panel hud-box">
-          <div className="panel-title mono">◈ {lang === 'ar' ? 'مستويات الطاقة // ENERGY' : 'ENERGY'}</div>
-          <div className="energy-wrap">
-            {energyBars.map((b, i) => (
-              <div key={b.label} className="energy-col">
-                <div className="energy-stack">
-                  {Array.from({ length: 14 }, (_, si) => {
-                    const lit = (13 - si) / 14 <= b.pct;
-                    return <span key={si} className={lit ? 'eseg lit' : 'eseg'} style={{ animationDelay: `${(si + i) * 0.08}s` }} />;
-                  })}
+          <div className="holo-label">◈ {lang === 'ar' ? 'الطاقة' : 'ENERGY'}</div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1.4rem', paddingTop: '0.6rem' }}>
+            {[
+              { l: 'TIME', v: Math.min(totalHours / 168, 1) },
+              { l: 'FIN', v: life?.finance?.summary ? Math.max(0, Math.min(1, (life.finance.summary.balance + 2000) / 4000)) : 0 },
+              { l: 'REST', v: Math.max(0, Math.min(1, remaining / 80)) },
+              { l: 'MOOD', v: (life?.wellness?.mood || 5) / 10 },
+            ].map((b) => (
+              <div key={b.l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column-reverse', gap: 3, height: 110 }}>
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <span key={i} style={{ width: 12, height: 6, background: (i / 12) <= b.v ? 'linear-gradient(90deg,#2979ff,#00e5ff)' : 'rgba(0,229,255,0.08)', boxShadow: (i / 12) <= b.v ? '0 0 8px rgba(0,229,255,0.5)' : 'none' }} />
+                  ))}
                 </div>
-                <span className="mono energy-lbl">{b.label}</span>
-                <span className="mono energy-pct">{Math.round(b.pct * 100)}%</span>
+                <span className="mono" style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>{b.l}</span>
+                <span className="mono" style={{ fontSize: '0.62rem', color: 'var(--cyan)' }}>{Math.round(b.v * 100)}%</span>
               </div>
             ))}
           </div>
         </div>
+        {/* CORE */}
         <div className="glass-panel hud-panel hud-box">
-          <div className="panel-title mono">◈ {lang === 'ar' ? 'المقاييس // CORE' : 'CORE'}</div>
+          <div className="holo-label">◈ {lang === 'ar' ? 'النواة' : 'CORE'}</div>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '1.2rem', flexWrap: 'wrap' }}>
             <Gauge value={Math.round(totalHours)} max={168} label={lang === 'ar' ? 'ساعات' : 'Hours'} color="#00e5ff" suffix={hs} />
             <Gauge value={riskPct} max={100} label={lang === 'ar' ? 'الخطر' : 'Risk'} color={risk.color} suffix="%" />
           </div>
-          <div className="sys-line" style={{ color: risk.color, position: 'static', marginTop: '0.8rem' }}>
+          <div className="sys-line" style={{ color: risk.color }}>
             {lang === 'ar' ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}` : `SYSTEM: ${risk.label === 'Low' ? 'STABLE' : risk.label === 'Medium' ? 'STRAINED' : 'CRITICAL'}`}
             <span className="mono"> // {totalHours}{hs} / 168{hs}</span>
           </div>
         </div>
       </div>
-
+      {/* ذاكرة عَقْل المرئية */}
+      {logs.length > 0 && (
+        <div className="hud-corners" style={{ padding: '0.8rem 1.1rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <span className="stream-head mono">{lang === 'ar' ? 'ذاكرة عَقْل' : 'AQL MEMORY'}</span>
+          {logs.slice(0, 3).map((log, i) => {
+            const prev = logs[i + 1];
+            const li = RISK_ORDER.indexOf(log.burnout_risk);
+            const pi = prev ? RISK_ORDER.indexOf(prev.burnout_risk) : li;
+            const arrow = li > pi ? '▲' : li < pi ? '▼' : '•';
+            const col = log.burnout_risk === 'Critical' || log.burnout_risk === 'High' ? '#ff4d4d' : log.burnout_risk === 'Medium' ? '#ffb020' : '#00e676';
+            return (
+              <span key={log.id} className="mono" style={{ fontSize: '0.62rem', padding: '4px 10px', border: `1px solid ${col}55`, color: col, borderRadius: 999 }}>
+                {new Date(log.created_at).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en')} · {log.burnout_risk} {arrow}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {/* تيار الوعي + مؤشر مستوى الوعي */}
       <div className="hud-corners" style={{ padding: '1.1rem 1.3rem', minHeight: 96 }}>
-        <div className="stream-head mono">{lang === 'ar' ? 'تيار الوعي' : 'CONSCIOUSNESS STREAM'}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="stream-head mono">{lang === 'ar' ? 'تيار الوعي' : 'CONSCIOUSNESS STREAM'}</div>
+          {lastEngine && <span className="mono" style={{ fontSize: '0.6rem', color: engineMeta.color }}>◉ {engineMeta.label}</span>}
+        </div>
         <p style={{ margin: '0.45rem 0 0', color: 'var(--text)', lineHeight: 1.9, fontSize: '1.02rem' }}>{typed}<span className="caret">▌</span></p>
+        {busy && <div className="think-wave">{Array.from({ length: 24 }).map((_, i) => <span key={i} style={{ animationDelay: `${i * 0.05}s` }} />)}</div>}
         {actions.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             {actions.map((a, i) => (
@@ -1012,7 +1132,6 @@ function MindChamber({ commitments }) {
           </div>
         )}
       </div>
-
       <form onSubmit={(e) => { e.preventDefault(); sendCommand(command); setCommand(''); }} style={{ display: 'flex', gap: 8 }}>
         <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder={lang === 'ar' ? 'خاطب عقلك... «وازن أسبوعي»، «سجل مصروف 50»' : 'Address your mind... "balance my week"'} style={{ ...fieldStyle, flex: 1, fontSize: '1.05rem' }} />
         <button type="button" onClick={startListening} disabled={busy || listening} style={{ padding: '12px 16px', background: listening ? 'rgba(255,77,77,0.15)' : 'rgba(0,229,255,0.08)', border: `1px solid ${listening ? 'rgba(255,77,77,0.5)' : 'rgba(0,229,255,0.35)'}`, color: listening ? '#ff8f8f' : '#7dd3fc', borderRadius: 10, cursor: 'pointer', fontSize: '1.1rem' }}>
