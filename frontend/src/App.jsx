@@ -13,7 +13,7 @@ const labelStyle = { display: 'block', color: '#94a3b8', fontSize: '0.85rem', ma
 const fieldStyle = { width: '100%', padding: '10px 14px', borderRadius: '8px', background: '#0f172a', border: '1px solid #334155', color: '#fff', boxSizing: 'border-box' };
 
 const NAV_ITEMS = [
-  { id: 'dashboard', icon: '◈', label: 'مركز القيادة' },
+  { id: 'dashboard', icon: '🧠', label: 'غرفة الوعي' },
   { id: 'investigate', icon: '⌖', label: 'غرفة التحليل' },
   { id: 'commitments', icon: '≣', label: 'وحدات الوقت' },
   { id: 'history', icon: '▤', label: 'سجل التحليلات' },
@@ -653,6 +653,229 @@ function VoiceAgentBar({ onRefresh }) {
           <p style={{ margin: 0, color: 'var(--text)', fontStyle: 'italic' }}>🎩 {last.reply}</p>
         </div>
       )}
+    </div>
+  );
+}
+/* ========== غرفة الوعي — العقل الحي ========== */
+function MindChamber({ commitments }) {
+  const { lang, hs } = useLang();
+  const [life, setLife] = useState(null);
+  const [fullThought, setFullThought] = useState(lang === 'ar' ? 'أُوقظ وعيي... أقرأ ملفاتك يا سيدي.' : 'Waking my consciousness... reading your files, sir.');
+  const [typed, setTyped] = useState('');
+  const [command, setCommand] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [actions, setActions] = useState([]);
+  const [activeDomain, setActiveDomain] = useState(null);
+
+  const totalHours = Math.round(commitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;
+  const remaining = Math.max(168 - totalHours, 0);
+  const risk = riskOf(totalHours);
+  const highHours = commitments.filter((c) => c.intensity === 'high').reduce((s, c) => s + Number(c.hours_per_week), 0);
+
+  function neglectedCount(people) {
+    return (people || []).filter((p) => !p.last_contact || (Date.now() - new Date(p.last_contact).getTime()) / 86400000 > (p.contact_frequency_days || 7)).length;
+  }
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const [f, w, r, h, s] = await Promise.all([
+          fetch(`${API_URL}/api/finance`, { headers }),
+          fetch(`${API_URL}/api/wellness`, { headers }),
+          fetch(`${API_URL}/api/relationships`, { headers }),
+          fetch(`${API_URL}/api/home`, { headers }),
+          fetch(`${API_URL}/api/study`, { headers }),
+        ]);
+        const fj = f.ok ? await f.json() : null;
+        const wj = w.ok ? await w.json() : null;
+        const rj = r.ok ? await r.json() : null;
+        const hj = h.ok ? await h.json() : null;
+        const sj = s.ok ? await s.json() : null;
+        setLife({
+          finance: fj?.summary || null,
+          wellness: wj?.logs?.[0] || null,
+          relationships: rj?.people || [],
+          home: hj?.tasks || [],
+          studyMinutes: sj?.total_minutes || 0,
+        });
+      } catch (e) { /* نتجاهل */ }
+    })();
+  }, [commitments]);
+
+  /* وعي تلقائي عند اكتمال البيانات */
+  useEffect(() => {
+    if (!life) return;
+    const negl = neglectedCount(life.relationships);
+    const pendingHome = life.home.filter((x) => x.status !== 'done').length;
+    const bal = life.finance ? Math.round(life.finance.balance) : 0;
+    setFullThought(lang === 'ar'
+      ? `سيدي، وعيي مكتمل. أسبوعك يحمل ${totalHours} ساعة (خطر: ${risk.label})، رصيدك ${bal}. ${negl ? negl + ' من علاقاتك تنتظر اتصالك. ' : ''}${pendingHome ? pendingHome + ' مهام منزلية معلّقة. ' : ''}المس أي عقدة لأفكّر فيها، أو أمرني وسأنفّذ.`
+      : `Sir, my consciousness is complete. Your week carries ${totalHours}h (risk: ${risk.label}), balance ${bal}. ${negl ? negl + ' relationships await your call. ' : ''}${pendingHome ? pendingHome + ' home tasks pending. ' : ''}Touch any node and I shall reflect on it, or command me and I shall act.`);
+  }, [life, lang]);
+
+  /* آلة كاتبة الوعي */
+  useEffect(() => {
+    setTyped('');
+    let i = 0;
+    const iv = setInterval(() => {
+      i += 2;
+      setTyped(fullThought.slice(0, i));
+      if (i >= fullThought.length) clearInterval(iv);
+    }, 28);
+    return () => clearInterval(iv);
+  }, [fullThought]);
+
+  const think = (text) => {
+    setFullThought(text);
+    jarvisSpeak(text, lang, undefined, localStorage.getItem('aql-voice') || 'en-GB-RyanNeural');
+  };
+
+  const domains = [
+    { id: 'time', icon: '⏳', angle: -90 },
+    { id: 'finance', icon: '💰', angle: -30 },
+    { id: 'study', icon: '📚', angle: 30 },
+    { id: 'home', icon: '🏠', angle: 90 },
+    { id: 'relations', icon: '🤝', angle: 150 },
+    { id: 'health', icon: '🧘', angle: 210 },
+  ];
+  const domainLabel = {
+    time: lang === 'ar' ? 'الوقت' : 'Time', finance: lang === 'ar' ? 'المال' : 'Finance',
+    study: lang === 'ar' ? 'الدراسة' : 'Study', home: lang === 'ar' ? 'البيت' : 'Home',
+    relations: lang === 'ar' ? 'العلاقات' : 'Relations', health: lang === 'ar' ? 'الصحة' : 'Health',
+  };
+
+  const domainStats = (id) => {
+    if (!life) return [];
+    const bal = life.finance ? Math.round(life.finance.balance) : 0;
+    const negl = neglectedCount(life.relationships);
+    const pendingHome = life.home.filter((x) => x.status !== 'done').length;
+    const w = life.wellness;
+    const map = {
+      time: [{ l: lang === 'ar' ? 'ملتزم' : 'Committed', v: totalHours + hs, c: '#2979ff' }, { l: lang === 'ar' ? 'متبقي' : 'Remaining', v: remaining + hs, c: '#00e676' }, { l: lang === 'ar' ? 'الخطر' : 'Risk', v: risk.label, c: risk.color }],
+      finance: [{ l: lang === 'ar' ? 'دخل' : 'Income', v: Math.round(life.finance?.income || 0), c: '#00e676' }, { l: lang === 'ar' ? 'مصروف' : 'Expense', v: Math.round(life.finance?.expense || 0), c: '#ff2d78' }, { l: lang === 'ar' ? 'رصيد' : 'Balance', v: bal, c: '#00e5ff' }],
+      study: [{ l: lang === 'ar' ? 'ساعات دراسة' : 'Study hours', v: Math.round((life.studyMinutes || 0) / 60) + hs, c: '#00e5ff' }],
+      home: [{ l: lang === 'ar' ? 'معلّق' : 'Pending', v: pendingHome, c: '#f59e0b' }, { l: lang === 'ar' ? 'منجز' : 'Done', v: life.home.length - pendingHome, c: '#00e676' }],
+      relations: [{ l: lang === 'ar' ? 'أشخاص' : 'People', v: life.relationships.length, c: '#7c4dff' }, { l: lang === 'ar' ? 'منتظرون' : 'Waiting', v: negl, c: '#ff2d78' }],
+      health: [{ l: lang === 'ar' ? 'مزاج' : 'Mood', v: (w?.mood ?? '-') + '/10', c: '#00e676' }, { l: lang === 'ar' ? 'طاقة' : 'Energy', v: (w?.energy ?? '-') + '/10', c: '#f59e0b' }, { l: lang === 'ar' ? 'نوم' : 'Sleep', v: (w?.sleep_hours ?? '-') + hs, c: '#00e5ff' }],
+    };
+    return map[id] || [];
+  };
+
+  const domainThought = (id) => {
+    if (!life) return '';
+    const bal = life.finance ? Math.round(life.finance.balance) : 0;
+    const negl = neglectedCount(life.relationships);
+    const pendingHome = life.home.filter((x) => x.status !== 'done').length;
+    const w = life.wellness;
+    if (lang === 'ar') {
+      switch (id) {
+        case 'time': return `أفكّر في وقتك يا سيدي: ${totalHours} ساعة ملتزم بها، و${remaining} ساعة حرة. ${risk.label === 'Low' ? 'توازن جميل.' : 'أرصد ضغطًا — دعني أخفّف عنك.'}`;
+        case 'finance': return `أفكّر في مالك يا سيدي: رصيدك ${bal}؛ دخل ${Math.round(life.finance?.income || 0)} ومصروف ${Math.round(life.finance?.expense || 0)}. ${bal >= 0 ? 'انضباط مالي مقبول.' : 'نزيف مالي — أقترح فرملة فورية.'}`;
+        case 'study': return `أفكّر في دراستك يا سيدي: ${Math.round((life.studyMinutes || 0) / 60)} ساعة مسجّلة. ${life.studyMinutes > 600 ? 'وتيرة ممتازة.' : 'يمكنني رفع استثمارك المعرفي إن أمرت.'}`;
+        case 'home': return `أفكّر في بيتك يا سيدي: ${pendingHome} مهمة معلّقة. ${pendingHome > 3 ? 'الفوضى تتراكم — أقترح هجومًا سريعًا مساءً.' : 'المنزل تحت السيطرة.'}`;
+        case 'relations': return `أفكّر في علاقاتك يا سيدي: ${negl} شخصًا ينتظرون اتصالك. العلاقات رأس مال صامت يا سيدي.`;
+        default: return `أفكّر في صحتك يا سيدي: مزاج ${w?.mood ?? '-'}/10، طاقة ${w?.energy ?? '-'}/10، نوم ${w?.sleep_hours ?? '-'} ساعة. ${(!w || (w.sleep_hours || 0) < 7) ? 'أوصي ببروتوكول نوم صارم الليلة.' : 'الجسد متماسك.'}`;
+      }
+    }
+    switch (id) {
+      case 'time': return `Reflecting on your time, sir: ${totalHours}h committed, ${remaining}h free. ${risk.label === 'Low' ? 'A fine balance.' : 'I sense strain — allow me to lighten it.'}`;
+      case 'finance': return `Reflecting on your finance, sir: balance ${bal}; income ${Math.round(life.finance?.income || 0)}, expense ${Math.round(life.finance?.expense || 0)}. ${bal >= 0 ? 'Acceptable discipline.' : 'A financial bleed — I advise an immediate brake.'}`;
+      case 'study': return `Reflecting on your study, sir: ${Math.round((life.studyMinutes || 0) / 60)}h logged. ${life.studyMinutes > 600 ? 'An excellent pace.' : 'I can raise your cognitive investment, if you command.'}`;
+      case 'home': return `Reflecting on your home, sir: ${pendingHome} tasks pending. ${pendingHome > 3 ? 'Chaos accumulates — a swift evening strike, perhaps.' : 'The household is under control.'}`;
+      case 'relations': return `Reflecting on your relations, sir: ${negl} await your call. Relationships are silent capital, sir.`;
+      default: return `Reflecting on your health, sir: mood ${w?.mood ?? '-'}/10, energy ${w?.energy ?? '-'}/10, sleep ${w?.sleep_hours ?? '-'}h. ${(!w || (w.sleep_hours || 0) < 7) ? 'I recommend a strict sleep protocol tonight.' : 'The body holds firm.'}`;
+    }
+  };
+
+  const focusDomain = (d) => { setActiveDomain(d.id); think(domainThought(d.id)); };
+
+  const sendCommand = async (text) => {
+    const cmd = (text || '').trim();
+    if (!cmd || busy) return;
+    setBusy(true); setActions([]);
+    setFullThought(lang === 'ar' ? 'أعالج أمرك يا سيدي...' : 'Processing your command, sir...');
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/agent`, { method: 'POST', headers, body: JSON.stringify({ message: cmd, lang }) });
+      const json = await res.json().catch(() => null);
+      const reply = json?.reply || (lang === 'ar' ? 'تعذّر الاتصال بمحركاتي السحابية يا سيدي.' : 'My cloud engines are unreachable, sir.');
+      setActions(json?.actions || []);
+      think(reply);
+    } catch (e) {
+      setFullThought(lang === 'ar' ? 'حدث خلل لحظي يا سيدي.' : 'A momentary glitch, sir.');
+    }
+    setBusy(false);
+  };
+
+  const startListening = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR();
+    rec.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
+    rec.interimResults = false;
+    rec.onresult = (e) => { const txt = e.results[0][0].transcript; setCommand(txt); sendCommand(txt); };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    setListening(true);
+    try { rec.start(); } catch (e) { setListening(false); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+      <div style={{ position: 'relative', width: 560, height: 520, maxWidth: '94vw' }}>
+        <div className="mind-orbit" />
+        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 420, height: 420 }}>
+          <BrainCore riskL={risk.label} load={totalHours ? highHours / totalHours : 0.3} rest={remaining / 168} />
+        </div>
+        {domains.map((d) => {
+          const rad = (d.angle * Math.PI) / 180;
+          const x = 50 + 45 * Math.cos(rad);
+          const y = 50 + 45 * Math.sin(rad);
+          return (
+            <button key={d.id} className="mind-node" onClick={() => focusDomain(d)}
+              style={{ left: `${x}%`, top: `${y}%`, borderColor: activeDomain === d.id ? 'var(--cyan)' : undefined, boxShadow: activeDomain === d.id ? '0 0 24px rgba(0,229,255,.45)' : undefined }}>
+              <span>{d.icon}</span>
+              <span>{domainLabel[d.id]}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {activeDomain && (
+        <div className="glass-panel hud-panel" style={{ width: '100%', maxWidth: 760, padding: '1rem 1.2rem' }}>
+          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {domainStats(activeDomain).map((s2, i) => (
+              <div key={i} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: s2.c, fontFamily: 'Orbitron, Tajawal', textShadow: `0 0 14px ${s2.c}` }}>{s2.v}</div>
+                <div style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>{s2.l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="glass-panel hud-panel" style={{ width: '100%', maxWidth: 760, padding: '1rem 1.2rem', minHeight: 86 }}>
+        <span style={{ color: 'var(--cyan)', fontFamily: 'Orbitron, Tajawal', fontSize: '0.68rem', letterSpacing: '0.25em' }}>{lang === 'ar' ? 'تيار الوعي' : 'CONSCIOUSNESS STREAM'}</span>
+        <p style={{ margin: '0.45rem 0 0', color: 'var(--text)', lineHeight: 1.9, fontSize: '1.02rem' }}>{typed}<span className="caret">▌</span></p>
+        {actions.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {actions.map((a, i) => (
+              <span key={i} style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: 999, border: '1px solid rgba(0,230,118,.4)', background: 'rgba(0,230,118,.08)', color: '#6ee7b7' }}>⚙️ {a.result}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={(e) => { e.preventDefault(); sendCommand(command); setCommand(''); }} style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 760 }}>
+        <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder={lang === 'ar' ? 'خاطب عقلك... «وازن أسبوعي»، «وش وضع مالي؟»' : 'Address your mind... "balance my week"'} style={{ ...fieldStyle, flex: 1, fontSize: '1.05rem' }} />
+        <button type="button" onClick={startListening} disabled={listening}
+          style={{ padding: '12px 16px', background: listening ? 'rgba(239,68,68,.2)' : 'rgba(0,229,255,.1)', border: `1px solid ${listening ? 'rgba(239,68,68,.5)' : 'rgba(0,229,255,.35)'}`, color: listening ? '#fca5a5' : '#7dd3fc', borderRadius: 10, cursor: 'pointer', fontSize: '1.1rem' }}>
+          {listening ? '🎙️' : '🎤'}
+        </button>
+        <button type="submit" disabled={busy || !command.trim()} style={{ padding: '12px 22px', background: 'linear-gradient(90deg,#0077ff,#00e5ff)', color: '#001018', border: 'none', borderRadius: 10, fontWeight: 800, cursor: 'pointer' }}>⚡</button>
+      </form>
     </div>
   );
 }
@@ -1827,8 +2050,7 @@ function App() {
 
   return (
     <Layout page={page} setPage={setPage} displayName={displayName} onLogout={handleLogout}>
-      {page === 'dashboard' && <DashboardPage commitments={commitments} goInvestigate={() => setPage('investigate')} onRefresh={fetchCommitments} />}
-      {page === 'investigate' && <InvestigatePage commitments={commitments} onSaved={fetchCommitments} />}
+      {page === 'dashboard' && <MindChamber commitments={commitments} />}      {page === 'investigate' && <InvestigatePage commitments={commitments} onSaved={fetchCommitments} />}
       {page === 'commitments' && <CommitmentsPage commitments={commitments} refresh={fetchCommitments} />}
       {page === 'history' && <HistoryPage />}
       {page === 'chat' && <ChatPage />}

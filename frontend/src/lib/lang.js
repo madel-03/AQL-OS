@@ -103,6 +103,7 @@ export const enDict = {
   'متصفحك لا يدعم الأوامر الصوتية — جرّب Chrome.': 'Browser lacks speech support — try Chrome.',
   'تعذر سماع صوتك، حاول مجددًا.': 'Could not hear you, try again.',
   'جاري تجهيز التقارير...': 'Compiling reports...',
+  'غرفة الوعي': 'Mind Chamber',
 };
 
 export function translate(lang, key) { return lang === 'en' ? enDict[key] || key : key; }
