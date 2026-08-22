@@ -1,5 +1,4 @@
 // agent-tools.js
-
 export const toolsRegistry = [
   {
     declaration: {
