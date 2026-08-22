@@ -392,27 +392,19 @@ function Layout({ page, setPage, displayName, onLogout, children }) {
   );
 }
 
-/* ========== النواة الحية ========== */
-function BrainCore({ riskL = 'Low', load = 0.3, rest = 0.7 }) {
+function BrainCore({ riskL = 'Low', load = 0.3, rest = 0.7, thinking = false }) {
   const rgb = riskL === 'Critical' || riskL === 'High' ? '255,77,77' : riskL === 'Medium' ? '255,176,32' : '0,229,255';
-  const speed = 0.6 + load * 1.8;
-
+  const speed = (0.6 + load * 1.8) * (thinking ? 3 : 1);
   useEffect(() => {
     const canvas = document.getElementById('brain-core');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const W = (canvas.width = 420);
-    const H = (canvas.height = 420);
+    const W = (canvas.width = 420); const H = (canvas.height = 420);
     const cx = W / 2, cy = H / 2, R = 150;
-
     const dots = Array.from({ length: 380 }, () => ({
-      a: Math.random() * Math.PI * 2,
-      r: Math.sqrt(Math.random()) * R,
-      s: Math.random() * 1.6 + 0.4,
-      tw: Math.random() * Math.PI * 2,
-      sp: 0.002 + Math.random() * 0.004,
+      a: Math.random() * Math.PI * 2, r: Math.sqrt(Math.random()) * R,
+      s: Math.random() * 1.6 + 0.4, tw: Math.random() * Math.PI * 2, sp: 0.002 + Math.random() * 0.004,
     }));
-
     let raf;
     const draw = (t) => {
       ctx.clearRect(0, 0, W, H);
@@ -421,20 +413,18 @@ function BrainCore({ riskL = 'Low', load = 0.3, rest = 0.7 }) {
         const x = cx + Math.cos(d.a) * d.r;
         const y = cy + Math.sin(d.a) * d.r * 0.92;
         const alpha = 0.3 + 0.7 * Math.abs(Math.sin(t / 700 + d.tw));
-        ctx.beginPath();
-        ctx.arc(x, y, d.s, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${rgb}, ${alpha})`;
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, d.s, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${rgb}, ${alpha})`; ctx.fill();
       }
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
   }, [rgb, speed]);
-
   return (
-    <div style={{ position: 'relative', width: '420px', height: '420px', margin: '0 auto 0.5rem', maxWidth: '100%' }}>
+    <div className={thinking ? 'core-wrap thinking' : 'core-wrap'} style={{ position: 'relative', width: '420px', height: '420px', margin: '0 auto 0.5rem', maxWidth: '100%' }}>
       <canvas id="brain-core" style={{ position: 'absolute', inset: 0 }} />
+      <div className="radar-sweep" />
       <div className="jarvis-ring r1" style={{ animationDuration: `${26 - load * 14}s`, borderColor: `rgba(${rgb},0.55)` }} />
       <div className="jarvis-ring r2" style={{ animationDuration: `${16 - load * 8}s`, borderColor: `rgba(${rgb},0.4)` }} />
       <div className="jarvis-ring r3" style={{ animationDuration: `${5 - rest * 2}s` }} />
@@ -855,6 +845,46 @@ function VitalRadar({ riskPct, riskColor, loads }) {
     </div>
   );
 }
+
+function MemoryTimeline() {
+  const [logs, setLogs] = useState([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`${API_URL}/api/analysis-logs`, { headers });
+        const json = await res.json();
+        if (res.ok) setLogs((json.logs || []).slice(0, 6));
+      } catch (e) { /* نتجاهل */ }
+    })();
+  }, []);
+  const rank = (r) => (r === 'Critical' ? 3 : r === 'High' ? 2 : r === 'Medium' ? 1 : 0);
+  const color = (r) => (r === 'Critical' ? '#ff4d4d' : r === 'High' ? '#ff9100' : r === 'Medium' ? '#ffb020' : '#00e676');
+  if (!logs.length) return null;
+  const ordered = [...logs].reverse();
+  return (
+    <div className="memory-timeline">
+      <div className="memory-title mono">AQL MEMORY</div>
+      <div className="memory-track">
+        {ordered.map((log, i) => {
+          const prev = ordered[i - 1];
+          const delta = prev ? rank(log.burnout_risk) - rank(prev.burnout_risk) : 0;
+          const arrow = delta > 0 ? '↓' : delta < 0 ? '↑' : '•';
+          const aCol = delta > 0 ? '#ff4d4d' : delta < 0 ? '#00e676' : 'var(--muted)';
+          return (
+            <div key={log.id} className="memory-node">
+              <span className="memory-arrow" style={{ color: aCol }}>{arrow}</span>
+              <span className="memory-dot" style={{ borderColor: color(log.burnout_risk), boxShadow: `0 0 10px ${color(log.burnout_risk)}66` }} />
+              <span className="memory-date">{new Date(log.created_at).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en')}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
 /* ========== غرفة الوعي — العقل الحي ========== */
 function MindChamber({ commitments }) {
   const { lang, hs } = useLang();
@@ -867,7 +897,9 @@ function MindChamber({ commitments }) {
   const [listening, setListening] = useState(false);
   const [actions, setActions] = useState([]);
   const [activeDomain, setActiveDomain] = useState(null);
+  const [memory, setMemory] = useState([]);
   const [lastEngine, setLastEngine] = useState(null);
+  const [thinking, setThinking] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -886,6 +918,16 @@ function MindChamber({ commitments }) {
       } catch (e) { /* نتجاهل */ }
     })();
   }, [commitments]);
+  useEffect(() => {
+  (async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const r = await fetch(`${API_URL}/api/analysis-logs`, { headers });
+      const j = await r.json();
+      if (r.ok) setMemory((j.logs || []).slice(0, 3));
+    } catch (e) { /* نتجاهل */ }
+  })();
+}, [commitments]);
 
   const totalHours = Math.round(commitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;
   const remaining = Math.max(168 - totalHours, 0);
@@ -929,16 +971,17 @@ function MindChamber({ commitments }) {
     return () => clearInterval(iv);
   }, [fullThought]);
 
-  const CALM = 'rgba(0,229,255,0.5)'; const WARN = '#ffb020'; const DANGER = '#ff4d4d';
+  const GOOD = 'rgba(0,230,118,0.55)'; const WARN = '#ffb020'; const DANGER = '#ff4d4d';
   const domainStatus = (id) => {
-    if (!life) return { color: CALM, w: 1, hot: false };
-    if (id === 'time') { if (risk.label === 'Critical' || risk.label === 'High' || totalHours > 168) return { color: totalHours > 168 ? WARN : DANGER, w: 2, hot: true }; if (risk.label === 'Medium') return { color: WARN, w: 1.5, hot: true }; return { color: CALM, w: 1, hot: false }; }
-    if (id === 'finance') return (life.finance?.summary?.balance || 0) < 0 ? { color: DANGER, w: 2, hot: true } : { color: CALM, w: 1, hot: false };
-    if (id === 'home') return (life.home || []).filter((x) => x.status !== 'done').length > 5 ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false };
-    if (id === 'relations') return neglectedCount(life.relationships) > 0 ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false };
-    if (id === 'health') { const w = life.wellness; return w && ((w.sleep_hours || 0) < 7 || (w.mood || 10) < 5) ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false }; }
-    return { color: CALM, w: 1, hot: false };
-  };
+  if (!life) return { color: GOOD, w: 1.5, hot: false };
+  if (id === 'time') { if (risk.label === 'Critical' || risk.label === 'High') return { color: DANGER, w: 2, hot: true }; if (risk.label === 'Medium') return { color: WARN, w: 2, hot: true }; return { color: GOOD, w: 1.5, hot: false }; }
+  if (id === 'finance') return (life.finance?.balance || 0) < 0 ? { color: DANGER, w: 2, hot: true } : { color: GOOD, w: 1.5, hot: false };
+  if (id === 'study') return (life.studyMinutes || 0) > 0 ? { color: GOOD, w: 1.5, hot: false } : { color: WARN, w: 2, hot: true };
+  if (id === 'home') return (life.home || []).filter((x) => x.status !== 'done').length > 5 ? { color: WARN, w: 2, hot: true } : { color: GOOD, w: 1.5, hot: false };
+  if (id === 'relations') return neglectedCount(life.relationships) > 0 ? { color: WARN, w: 2, hot: true } : { color: GOOD, w: 1.5, hot: false };
+  if (id === 'health') { const w = life.wellness; return w && ((w.sleep_hours || 0) < 7 || (w.mood || 10) < 5) ? { color: WARN, w: 2, hot: true } : { color: GOOD, w: 1.5, hot: false }; }
+  return { color: GOOD, w: 1.5, hot: false };
+};
   const domains = [
     { id: 'time', icon: '⏳', label: lang === 'ar' ? 'الوقت' : 'Time', angle: -90 },
     { id: 'finance', icon: '💰', label: lang === 'ar' ? 'المال' : 'Finance', angle: -30 },
@@ -984,6 +1027,7 @@ function MindChamber({ commitments }) {
       default: return w ? `Mood ${w.mood}/10, energy ${w.energy}/10, sleep ${w.sleep_hours}h, sir. ${(w.sleep_hours || 0) < 7 ? 'I recommend a strict sleep protocol tonight.' : 'The body holds firm.'}` : 'No wellness data yet, sir.';
     }
   };
+  
   const focusDomain = (d) => { setActiveDomain(d.id); const line = domainThought(d.id); setFullThought(line); jarvisSpeak(line, lang); };
   const sendCommand = async (text) => {
     const cmd = (text || '').trim();
@@ -1132,6 +1176,16 @@ function MindChamber({ commitments }) {
           </div>
         )}
       </div>
+      {memory.length > 0 && (
+  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+    <span className="mono" style={{ fontSize: '0.62rem', color: 'var(--muted)', letterSpacing: '0.2em' }}>{lang === 'ar' ? 'الذاكرة:' : 'MEMORY:'}</span>
+    {memory.map((log) => (
+      <span key={log.id} className="mono" style={{ fontSize: '0.62rem', padding: '3px 10px', borderRadius: 999, border: `1px solid ${log.burnout_risk === 'Critical' || log.burnout_risk === 'High' ? 'rgba(255,77,77,0.4)' : 'rgba(0,229,255,0.25)'}`, color: log.burnout_risk === 'Critical' || log.burnout_risk === 'High' ? '#ff8f8f' : 'var(--muted)' }}>
+        {new Date(log.created_at).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en')} · {log.burnout_risk}
+      </span>
+    ))}
+  </div>
+)}
       <form onSubmit={(e) => { e.preventDefault(); sendCommand(command); setCommand(''); }} style={{ display: 'flex', gap: 8 }}>
         <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder={lang === 'ar' ? 'خاطب عقلك... «وازن أسبوعي»، «سجل مصروف 50»' : 'Address your mind... "balance my week"'} style={{ ...fieldStyle, flex: 1, fontSize: '1.05rem' }} />
         <button type="button" onClick={startListening} disabled={busy || listening} style={{ padding: '12px 16px', background: listening ? 'rgba(255,77,77,0.15)' : 'rgba(0,229,255,0.08)', border: `1px solid ${listening ? 'rgba(255,77,77,0.5)' : 'rgba(0,229,255,0.35)'}`, color: listening ? '#ff8f8f' : '#7dd3fc', borderRadius: 10, cursor: 'pointer', fontSize: '1.1rem' }}>
@@ -1245,8 +1299,7 @@ function DashboardPage({ commitments, goInvestigate, onRefresh }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <BrainCore riskL={risk.label} load={totalHours ? highHours / totalHours : 0.3} rest={remaining / 168} />
-      <VoiceAgentBar onRefresh={onRefresh} />
+    <BrainCore riskL={risk.label} load={totalHours ? highHours / totalHours : 0.3} rest={remaining / 168} thinking={busy} />
       <div style={{ textAlign: 'center', marginBottom: '0.5rem', fontFamily: 'Orbitron, Tajawal', fontSize: '0.72rem', letterSpacing: '0.3em', color: risk.color, textShadow: `0 0 14px ${risk.color}` }}>
         {lang === 'ar'
           ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}`

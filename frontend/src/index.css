@@ -440,3 +440,39 @@ button:disabled { opacity:.7; cursor:not-allowed; }
 @keyframes wave { 0%,100% { transform: scaleY(0.15); } 50% { transform: scaleY(1); } }
 .hud-grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
 .hud-box { padding: 1rem; display: flex; flex-direction: column; gap: 0.8rem; }
+/* ========== 1) مؤشر "أنت هنا" بالقائمة ========== */
+.app-sidebar .nav-btn { position: relative; background: transparent; border: none; }
+.app-sidebar .nav-btn.active { color: #eaf7ff; background: rgba(0,229,255,0.07); }
+.app-sidebar .nav-btn.active .nav-icon { color: #8ff4ff; text-shadow: 0 0 12px rgba(0,229,255,0.9); }
+.app-sidebar .nav-btn.active::before {
+  content: ''; position: absolute; top: 22%; bottom: 22%; inset-inline-start: 0;
+  width: 2px; border-radius: 2px; background: var(--cyan);
+  box-shadow: 0 0 8px var(--cyan), 0 0 16px rgba(0,229,255,0.6);
+}
+
+/* ========== 2) خطوط عصبية أوضح ========== */
+.neural-links line.nl-calm { opacity: 0.6; }
+.neural-links line.nl-hot { opacity: 0.95; }
+
+/* ========== 3) خط زمني للذاكرة ========== */
+.memory-timeline { position: relative; padding: 0.6rem 0 0.2rem; }
+.memory-title { color: var(--cyan); font-size: 0.68rem; letter-spacing: 0.25em; margin-bottom: 0.6rem; }
+.memory-track { position: relative; display: flex; justify-content: space-between; padding: 0 4%; }
+.memory-track::before {
+  content: ''; position: absolute; left: 4%; right: 4%; top: 7px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line), var(--line), transparent);
+}
+.memory-node { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.memory-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid; background: rgba(2,10,24,0.9); }
+.memory-arrow { font-size: 0.7rem; line-height: 1; }
+.memory-date { color: var(--muted); font-size: 0.6rem; font-family: 'Orbitron'; }
+
+/* ========== 4) سكانر الرادار + نبض التفكير ========== */
+.radar-sweep {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 0deg, rgba(0,229,255,0.28) 0deg, rgba(0,229,255,0.06) 26deg, transparent 60deg);
+  animation: spinSlow 6s linear infinite;
+}
+.core-wrap.thinking { animation: corePulse 0.9s var(--ease) infinite; }
+.core-wrap.thinking .radar-sweep { animation-duration: 1.2s; }
+@keyframes corePulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
