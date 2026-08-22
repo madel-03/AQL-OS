@@ -717,7 +717,80 @@ function BatteryPanel({ commitments, life }) {
   );
 }
 
-/* ========== غرفة الوعي — العقل الحي ========== */
+/* ========== كرة الحياة المتحركة (3D) ========== */
+function AnimatedGlobe() {
+  useEffect(() => {
+    const canvas = document.getElementById('life-globe');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = (canvas.width = 260), H = (canvas.height = 260);
+    const cx = W / 2, cy = H / 2, R = 110;
+    const N = 70;
+    const dots = Array.from({ length: N }, (_, i) => ({
+      phi: Math.acos(1 - (2 * (i + 0.5)) / N),
+      theta: Math.PI * (1 + Math.sqrt(5)) * i,
+    }));
+    let rot = 0, raf;
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      rot += 0.004;
+      ctx.strokeStyle = 'rgba(0,229,255,0.22)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+      for (let m = 0; m < 3; m++) {
+        const w = Math.abs(Math.cos(rot * 0.7 + (m * Math.PI) / 3));
+        ctx.beginPath(); ctx.ellipse(cx, cy, Math.max(w * R, 6), R, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.beginPath(); ctx.ellipse(cx, cy, R, R * 0.35, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(cx, cy, R, R * 0.7, 0, 0, Math.PI * 2); ctx.stroke();
+      const pts = dots.map((d) => {
+        const x3 = Math.sin(d.phi) * Math.cos(d.theta + rot);
+        const y3 = Math.sin(d.phi) * Math.sin(d.theta + rot);
+        const z3 = Math.cos(d.phi);
+        return { x: cx + x3 * R, y: cy + y3 * R * 0.92, z: (z3 + 1) / 2 };
+      });
+      ctx.strokeStyle = 'rgba(0,229,255,0.18)';
+      for (let i = 0; i < pts.length; i += 6) {
+        const a = pts[i], b = pts[(i + 9) % pts.length];
+        if (a.z > 0.45 && b.z > 0.45) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+      }
+      for (const p of pts) {
+        ctx.beginPath(); ctx.arc(p.x, p.y, 1.2 + p.z * 1.6, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0,229,255,${0.2 + p.z * 0.7})`;
+        ctx.fill();
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return <canvas id="life-globe" className="globe-canvas" />;
+}
+
+/* ========== الرادار الحيوي المتحرك ========== */
+function AnimatedRadar({ risk }) {
+  return (
+    <div>
+      <div className="radar-box">
+        <div className="radar-sweep" />
+        <svg viewBox="0 0 200 200" className="radar-svg">
+          <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(0,229,255,0.3)" strokeWidth="1" />
+          <circle cx="100" cy="100" r="60" fill="none" stroke="rgba(0,229,255,0.2)" strokeWidth="1" strokeDasharray="3 6" />
+          <circle cx="100" cy="100" r="32" fill="none" stroke="rgba(0,229,255,0.15)" strokeWidth="1" strokeDasharray="2 5" />
+          <line x1="100" y1="12" x2="100" y2="188" stroke="rgba(0,229,255,0.12)" strokeWidth="1" />
+          <line x1="12" y1="100" x2="188" y2="100" stroke="rgba(0,229,255,0.12)" strokeWidth="1" />
+          <circle className="blip b1" cx="132" cy="68" r="3" fill="#00e5ff" />
+          <circle className="blip b2" cx="68" cy="122" r="2.5" fill="#00e5ff" />
+          <circle className="blip b3" cx="122" cy="132" r="2.5" fill={risk.color} />
+        </svg>
+      </div>
+      <div className="searching mono">SEARCHING<span className="dots">...</span></div>
+      <div className="radar-read mono">
+        <span>AZ 217.4°</span><span>RNG 0.42</span><span style={{ color: risk.color }}>SIG {risk.label.toUpperCase()}</span>
+      </div>
+    </div>
+  );
+}
+
 function MindChamber({ commitments }) {
   const { lang, hs } = useLang();
   const [life, setLife] = useState(null);
@@ -749,7 +822,7 @@ function MindChamber({ commitments }) {
   const totalHours = Math.round(commitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;
   const remaining = Math.max(168 - totalHours, 0);
   const risk = riskOf(totalHours);
-  const highHours = commitments.filter((c) => c.intensity === 'high').reduce((s, c) => s + Number(c.hours_per_week), 0);
+  const riskPct = risk.label === 'Critical' ? 95 : risk.label === 'High' ? 70 : risk.label === 'Medium' ? 45 : 15;
   const neglectedCount = (people) => (people || []).filter((p) => !p.last_contact || (Date.now() - new Date(p.last_contact).getTime()) / 86400000 > (p.contact_frequency_days || 7)).length;
 
   useEffect(() => {
@@ -768,25 +841,24 @@ function MindChamber({ commitments }) {
     return () => clearInterval(iv);
   }, [fullThought]);
 
-  /* الألوان الموحّدة: سماوي هادئ / كهرماني تنبيه / أحمر خطر */
   const CALM = 'rgba(0,229,255,0.5)'; const WARN = '#ffb020'; const DANGER = '#ff4d4d';
   const domainStatus = (id) => {
     if (!life) return { color: CALM, w: 1, hot: false };
-    if (id === 'time') { if (risk.label === 'Critical' || risk.label === 'High') return { color: DANGER, w: 2, hot: true }; if (risk.label === 'Medium') return { color: WARN, w: 1.5, hot: true }; return { color: CALM, w: 1, hot: false }; }
-    if (id === 'finance') return (life.finance?.balance || 0) < 0 ? { color: DANGER, w: 2, hot: true } : { color: CALM, w: 1, hot: false };
-    if (id === 'home') return (life.home || []).filter((x) => x.status !== 'done').length > 5 ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false };
-    if (id === 'relations') return neglectedCount(life.relationships) > 0 ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false };
-    if (id === 'health') { const w = life.wellness; return w && ((w.sleep_hours || 0) < 7 || (w.mood || 10) < 5) ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false }; }
-    return { color: CALM, w: 1, hot: false };
+    if (id === 'time') { if (risk.label === 'Critical' || risk.label === 'High') return { color: DANGER, hot: true }; if (risk.label === 'Medium') return { color: WARN, hot: true }; return { color: CALM, hot: false }; }
+    if (id === 'finance') return (life.finance?.balance || 0) < 0 ? { color: DANGER, hot: true } : { color: CALM, hot: false };
+    if (id === 'home') return (life.home || []).filter((x) => x.status !== 'done').length > 5 ? { color: WARN, hot: true } : { color: CALM, hot: false };
+    if (id === 'relations') return neglectedCount(life.relationships) > 0 ? { color: WARN, hot: true } : { color: CALM, hot: false };
+    if (id === 'health') { const w = life.wellness; return w && ((w.sleep_hours || 0) < 7 || (w.mood || 10) < 5) ? { color: WARN, hot: true } : { color: CALM, hot: false }; }
+    return { color: CALM, hot: false };
   };
 
   const domains = [
-    { id: 'time', icon: '⏳', label: lang === 'ar' ? 'الوقت' : 'Time', angle: -90 },
-    { id: 'finance', icon: '💰', label: lang === 'ar' ? 'المال' : 'Finance', angle: -30 },
-    { id: 'study', icon: '📚', label: lang === 'ar' ? 'الدراسة' : 'Study', angle: 30 },
-    { id: 'home', icon: '🏠', label: lang === 'ar' ? 'البيت' : 'Home', angle: 90 },
-    { id: 'relations', icon: '🤝', label: lang === 'ar' ? 'العلاقات' : 'Relations', angle: 150 },
-    { id: 'health', icon: '🧘', label: lang === 'ar' ? 'الصحة' : 'Health', angle: 210 },
+    { id: 'time', icon: '⏳', label: lang === 'ar' ? 'الوقت' : 'Time' },
+    { id: 'finance', icon: '💰', label: lang === 'ar' ? 'المال' : 'Finance' },
+    { id: 'study', icon: '📚', label: lang === 'ar' ? 'الدراسة' : 'Study' },
+    { id: 'home', icon: '🏠', label: lang === 'ar' ? 'البيت' : 'Home' },
+    { id: 'relations', icon: '🤝', label: lang === 'ar' ? 'العلاقات' : 'Relations' },
+    { id: 'health', icon: '🧘', label: lang === 'ar' ? 'الصحة' : 'Health' },
   ];
 
   const domainThought = (id) => {
@@ -798,7 +870,7 @@ function MindChamber({ commitments }) {
     if (lang === 'ar') {
       switch (id) {
         case 'time': return `أفكّر في وقتك يا سيدي: ${totalHours} ساعة ملتزم بها، و${remaining} ساعة حرة. ${risk.label === 'Low' ? 'توازن جميل.' : 'أرصد ضغطًا — دعني أخفّف عنك.'}`;
-        case 'finance': return bal < 0 ? `رصيدك سالب (${bal}) يا سيدي. هذا الخط الأحمر أمامك — أوصي بفرملة فورية.` : `رصيدك ${bal} يا سيدي. انضباطك المالي ${bal > 0 ? 'مقبول' : 'على الحافة'}.`;
+        case 'finance': return bal < 0 ? `رصيدك سالب (${bal}) يا سيدي. أوصي بفرملة فورية للمصاريف.` : `رصيدك ${bal} يا سيدي. انضباطك المالي ${bal > 0 ? 'مقبول' : 'على الحافة'}.`;
         case 'study': return `سجلت ${Math.round((life.studyMinutes || 0) / 60)} ساعة دراسة يا سيدي. ${(life.studyMinutes || 0) > 600 ? 'وتيرة ممتازة.' : 'يمكنني رفع استثمارك المعرفي إن أمرت.'}`;
         case 'home': return pending > 0 ? `لديك ${pending} مهام منزلية معلّقة يا سيدي. الفوضى تتراكم بصمت.` : 'المنزل تحت السيطرة يا سيدي.';
         case 'relations': return negl > 0 ? `${negl} من علاقاتك تنتظر اتصالك يا سيدي. العلاقات رأس مال صامت.` : 'جميع علاقاتك نشطة يا سيدي. أحسنت.';
@@ -807,7 +879,7 @@ function MindChamber({ commitments }) {
     }
     switch (id) {
       case 'time': return `Reflecting on your time, sir: ${totalHours}h committed, ${remaining}h free. ${risk.label === 'Low' ? 'A fine balance.' : 'I sense strain — allow me to lighten it.'}`;
-      case 'finance': return bal < 0 ? `Your balance is negative (${bal}), sir. That red line — I advise an immediate brake.` : `Balance ${bal}, sir. ${bal > 0 ? 'Acceptable discipline.' : 'On the edge.'}`;
+      case 'finance': return bal < 0 ? `Your balance is negative (${bal}), sir. I advise an immediate brake.` : `Balance ${bal}, sir. ${bal > 0 ? 'Acceptable discipline.' : 'On the edge.'}`;
       case 'study': return `You logged ${Math.round((life.studyMinutes || 0) / 60)}h of study, sir. ${(life.studyMinutes || 0) > 600 ? 'Excellent pace.' : 'I can raise your cognitive investment, if you command.'}`;
       case 'home': return pending > 0 ? `${pending} home tasks pending, sir. Chaos accumulates silently.` : 'The household is under control, sir.';
       case 'relations': return negl > 0 ? `${negl} relationships await your call, sir. Bonds are silent capital.` : 'All relationships active, sir. Well done.';
@@ -848,45 +920,66 @@ function MindChamber({ commitments }) {
     try { rec.start(); } catch (e) { setListening(false); }
   };
 
-  const riskPct = risk.label === 'Critical' ? 95 : risk.label === 'High' ? 70 : risk.label === 'Medium' ? 45 : 15;
+  const bal = Math.round(life?.finance?.balance || 0);
+  const energyBars = [
+    { label: 'TIME', pct: Math.min(totalHours / 168, 1) },
+    { label: 'FIN', pct: life ? Math.max(0, Math.min(1, (bal + 2000) / 4000)) : 0 },
+    { label: 'REST', pct: Math.max(0, Math.min(1, remaining / 168)) },
+    { label: 'MOOD', pct: (life?.wellness?.mood || 5) / 10 },
+  ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-      <div className="hud-grid">
+      <div className="hud-grid4">
         <div className="glass-panel hud-panel hud-box">
-          <div className="holo-label mono">◈ LIFE SCAN // مسح الحياة</div>
-          <GlobePanel />
+          <div className="panel-title mono">◈ {lang === 'ar' ? 'مسح الحياة // LIFE SCAN' : 'LIFE SCAN'}</div>
+          <AnimatedGlobe />
           <div className="hex-nodes">
-            {domains.map((d) => { const st = domainStatus(d.id); return (
-              <button key={d.id} className="hex-btn" onClick={() => focusDomain(d)}
-                style={{ color: st.hot ? st.color : 'var(--cyan)', borderColor: st.hot ? st.color : undefined }}>
-                <span>{d.icon}</span><span>{d.label}</span>
-              </button>
-            );})}
+            {domains.map((d) => {
+              const st = domainStatus(d.id);
+              return (
+                <button key={d.id} className="mind-node" onClick={() => focusDomain(d)}
+                  style={{ borderColor: st.hot ? st.color : undefined, color: st.hot ? st.color : undefined, boxShadow: activeDomain === d.id ? `0 0 18px ${st.color}` : undefined }}>
+                  <span>{d.icon}</span><span>{d.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
         <div className="glass-panel hud-panel hud-box">
-          <div className="holo-label mono">◈ VITAL RADAR // الرادار الحيوي</div>
-          <RadarPanel risk={risk} />
+          <div className="panel-title mono">◈ {lang === 'ar' ? 'الرادار الحيوي // VITAL RADAR' : 'VITAL RADAR'}</div>
+          <AnimatedRadar risk={risk} />
         </div>
         <div className="glass-panel hud-panel hud-box">
-          <div className="holo-label mono">◈ ENERGY // مستويات الطاقة</div>
-          <BatteryPanel commitments={commitments} life={life} />
+          <div className="panel-title mono">◈ {lang === 'ar' ? 'مستويات الطاقة // ENERGY' : 'ENERGY'}</div>
+          <div className="energy-wrap">
+            {energyBars.map((b, i) => (
+              <div key={b.label} className="energy-col">
+                <div className="energy-stack">
+                  {Array.from({ length: 14 }, (_, si) => {
+                    const lit = (13 - si) / 14 <= b.pct;
+                    return <span key={si} className={lit ? 'eseg lit' : 'eseg'} style={{ animationDelay: `${(si + i) * 0.08}s` }} />;
+                  })}
+                </div>
+                <span className="mono energy-lbl">{b.label}</span>
+                <span className="mono energy-pct">{Math.round(b.pct * 100)}%</span>
+              </div>
+            ))}
+          </div>
         </div>
         <div className="glass-panel hud-panel hud-box">
-          <div className="holo-label mono">◈ CORE // المقاييس</div>
-          <div style={{ display: 'flex', gap: '1.2rem', justifyContent: 'center', flexWrap: 'wrap', padding: '0.5rem 0' }}>
-            <Gauge value={Math.round(totalHours)} max={168} label={lang === 'ar' ? 'ساعات' : 'Hours'} color="var(--cyan)" suffix={hs} />
+          <div className="panel-title mono">◈ {lang === 'ar' ? 'المقاييس // CORE' : 'CORE'}</div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1.2rem', flexWrap: 'wrap' }}>
+            <Gauge value={Math.round(totalHours)} max={168} label={lang === 'ar' ? 'ساعات' : 'Hours'} color="#00e5ff" suffix={hs} />
             <Gauge value={riskPct} max={100} label={lang === 'ar' ? 'الخطر' : 'Risk'} color={risk.color} suffix="%" />
           </div>
-          <div className="sys-line" style={{ color: risk.color }}>
-            {lang === 'ar' ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}` : `SYSTEM: ${risk.label.toUpperCase()}`}
+          <div className="sys-line" style={{ color: risk.color, position: 'static', marginTop: '0.8rem' }}>
+            {lang === 'ar' ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}` : `SYSTEM: ${risk.label === 'Low' ? 'STABLE' : risk.label === 'Medium' ? 'STRAINED' : 'CRITICAL'}`}
             <span className="mono"> // {totalHours}{hs} / 168{hs}</span>
           </div>
         </div>
       </div>
 
-      {/* ٥) تيار الوعي بإطار زوايا مفتوحة */}
       <div className="hud-corners" style={{ padding: '1.1rem 1.3rem', minHeight: 96 }}>
         <div className="stream-head mono">{lang === 'ar' ? 'تيار الوعي' : 'CONSCIOUSNESS STREAM'}</div>
         <p style={{ margin: '0.45rem 0 0', color: 'var(--text)', lineHeight: 1.9, fontSize: '1.02rem' }}>{typed}<span className="caret">▌</span></p>

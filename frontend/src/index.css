@@ -231,3 +231,96 @@ button:disabled { opacity:.7; cursor:not-allowed; }
   background: var(--cyan);
   box-shadow: 0 0 10px var(--cyan), 0 0 22px rgba(0,229,255,0.55);
 }
+/* ========== Icon Rail (القائمة الشريطية) ========== */
+.app-sidebar.rail {
+  width: 78px;
+  flex-shrink: 0;
+  padding: 1.2rem 0.6rem;
+  position: sticky; top: 0; height: 100vh;
+  overflow-y: auto; overflow-x: hidden;
+  display: flex; flex-direction: column; gap: 4px;
+  transition: width 0.35s var(--ease);
+}
+.app-sidebar.rail:hover,
+.app-sidebar.rail.rail-open { width: 240px; }
+
+.rail-logo {
+  display: flex; align-items: center; gap: 10px;
+  justify-content: center;
+  padding: 0.4rem 0.4rem 1.2rem; cursor: pointer;
+}
+.app-sidebar.rail:hover .rail-logo,
+.app-sidebar.rail.rail-open .rail-logo { justify-content: flex-start; }
+.rail-logo-text { display: none; }
+.app-sidebar.rail:hover .rail-logo-text,
+.app-sidebar.rail.rail-open .rail-logo-text { display: block; }
+
+.nav-btn {
+  position: relative;
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 12px 0; margin: 0;
+  justify-content: center;
+  background: transparent;
+  border: none; border-radius: 10px;
+  color: var(--muted); cursor: pointer;
+  font-size: 1.05rem; font-weight: 700;
+  transition: color 0.25s var(--ease), background 0.25s var(--ease);
+}
+.app-sidebar.rail:hover .nav-btn,
+.app-sidebar.rail.rail-open .nav-btn { justify-content: flex-start; padding: 12px 14px; }
+.nav-btn:hover { color: var(--cyan); background: rgba(0,229,255,0.06); }
+
+.nav-icon {
+  font-size: 1.15rem; line-height: 1;
+  color: var(--cyan);
+  text-shadow: 0 0 10px rgba(0,212,255,0.7);
+  transition: filter 0.25s var(--ease), transform 0.25s var(--ease);
+}
+.nav-btn:hover .nav-icon { filter: drop-shadow(0 0 8px rgba(0,229,255,0.9)); transform: scale(1.08); }
+
+.nav-label {
+  white-space: nowrap; opacity: 0; max-width: 0; overflow: hidden;
+  color: var(--text); font-size: 0.95rem;
+  transition: opacity 0.25s var(--ease), max-width 0.35s var(--ease);
+}
+.app-sidebar.rail:hover .nav-label,
+.app-sidebar.rail.rail-open .nav-label { opacity: 1; max-width: 170px; }
+
+/* العنصر النشط: خط توهّج بدل الـ pill المصمت */
+.nav-btn.active { color: var(--cyan); background: transparent; }
+.nav-btn.active .nav-icon { filter: drop-shadow(0 0 9px rgba(0,229,255,0.95)); }
+.nav-btn.active::before {
+  content: '';
+  position: absolute; inset-inline-start: -6px;
+  top: 18%; height: 64%; width: 2px; border-radius: 2px;
+  background: var(--cyan);
+  box-shadow: 0 0 10px var(--cyan), 0 0 22px rgba(0,229,255,0.55);
+}
+/* ========== شبكة غرفة الوعي ========== */
+.hud-grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; }
+.hud-box { padding: 1rem; display: flex; flex-direction: column; gap: .8rem; }
+.panel-title { color: var(--cyan); font-size: .72rem; letter-spacing: .2em; text-shadow: 0 0 10px rgba(0,229,255,.5); }
+.hex-nodes { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: auto; }
+.mind-node { position: static; transform: none; display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 6px; background: rgba(0,229,255,.06); border: 1px solid rgba(0,229,255,.3); color: var(--cyan); cursor: pointer; font-size: .8rem; font-weight: 700; transition: all .3s var(--ease); }
+.mind-node:hover { background: rgba(0,229,255,.14); box-shadow: 0 0 16px rgba(0,229,255,.3); transform: translateY(-2px); }
+/* الرادار المتحرك */
+.radar-box { position: relative; width: 230px; height: 230px; margin: 0 auto; }
+.radar-sweep { position: absolute; inset: 4%; border-radius: 50%; background: conic-gradient(from 0deg, rgba(0,229,255,.45), rgba(0,229,255,.1) 55deg, transparent 70deg); animation: radarSpin 3.6s linear infinite; }
+@keyframes radarSpin { to { transform: rotate(360deg); } }
+.radar-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.blip { animation: blipPulse 2.2s ease-in-out infinite; }
+.blip.b2 { animation-delay: .7s; }
+.blip.b3 { animation-delay: 1.3s; }
+@keyframes blipPulse { 0%,100% { opacity: .2; } 50% { opacity: 1; } }
+.searching { text-align: center; color: var(--cyan); letter-spacing: .35em; font-size: .8rem; margin-top: .6rem; text-shadow: 0 0 12px rgba(0,229,255,.6); }
+.searching .dots { animation: blink 1s steps(2) infinite; }
+.radar-read { display: flex; justify-content: space-between; color: var(--muted); font-size: .62rem; margin-top: .4rem; }
+/* أعمدة الطاقة */
+.energy-wrap { display: flex; justify-content: center; gap: 1.4rem; padding: .5rem 0; }
+.energy-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.energy-stack { display: flex; flex-direction: column-reverse; gap: 3px; height: 120px; }
+.eseg { width: 12px; height: 6px; background: rgba(0,229,255,.08); }
+.eseg.lit { background: linear-gradient(90deg, var(--blue), var(--cyan)); box-shadow: 0 0 8px rgba(0,229,255,.5); animation: barPulse 2.4s var(--ease) infinite; }
+.energy-lbl { color: var(--muted); font-size: .6rem; letter-spacing: .15em; }
+.energy-pct { color: var(--cyan); font-size: .68rem; }
+.globe-canvas { width: 100%; max-width: 260px; margin: 0 auto; display: block; }
