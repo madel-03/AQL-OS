@@ -538,3 +538,25 @@ button:disabled { opacity:.7; cursor:not-allowed; }
 .timeline::before { content: ''; position: absolute; inset-inline-start: 8px; top: 6px; bottom: 6px; width: 2px; background: linear-gradient(180deg, var(--cyan), rgba(0,212,255,.05)); box-shadow: 0 0 8px rgba(0,212,255,.4); }
 .tl-item { position: relative; }
 .tl-dot { position: absolute; inset-inline-start: -24px; top: 16px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #02101f; }
+/* ========== ضمان حركة الرادار والنواة ========== */
+@keyframes radarSpin { to { transform: rotate(360deg); } }
+@keyframes globeSpin { to { transform: rotate(360deg); } }
+
+.radar-sweep {
+  position: absolute; inset: 4%;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(0,229,255,0.4), rgba(0,229,255,0.08) 55deg, transparent 75deg);
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation: radarSpin 4s linear infinite;
+  pointer-events: none;
+}
+
+.globe-dots, .globe-svg g {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: globeSpin 45s linear infinite;
+}
+
+/* نبض أسرع للعقد الحمراء */
+.mind-node { transition: all 0.3s var(--ease); }
