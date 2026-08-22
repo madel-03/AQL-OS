@@ -535,14 +535,24 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     // 3️⃣ Gemini
     if (!reply) {
       try {
+        console.log('💬 Trying Gemini...');
+        // دمج السياق مع رسالة المستخدم في حزمة واحدة لتجنب خطأ تعاقب الأدوار في Gemini
+        const safeMessage = `System Info:\n${systemPrompt}\n\nUser Message:\n${message}`;
+        
         const geminiContents = [
-          { role: 'user', parts: [{ text: `System Info:\n${systemPrompt}` }] },
           ...history.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.content }] })),
-          { role: 'user', parts: [{ text: message }] }
+          { role: 'user', parts: [{ text: safeMessage }] }
         ];
+
+        // تنظيف الـ history في حال كان هناك رسالتين متتاليتين لنفس الدور (لتجنب Crash)
+        const cleanedContents = geminiContents.filter((msg, index, arr) => {
+          if (index === 0) return true;
+          return msg.role !== arr[index - 1].role;
+        });
+
         const data = await geminiGenerate({
           system_instruction: { parts: [{ text: CHAT_PERSONA }] },
-          contents: geminiContents,
+          contents: cleanedContents,
           generationConfig: { temperature: 0.8 },
         });
         reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
