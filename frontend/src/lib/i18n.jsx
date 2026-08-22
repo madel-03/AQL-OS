@@ -48,7 +48,7 @@ function translateDom(lang, origMap) {
 }
 
 export function LangProvider({ children }) {
-  const [lang, setLang] = useState(() => localStorage.getItem('tawazun-lang') || 'ar');
+  const [lang, setLang] = useState(() => localStorage.getItem('tawazun-lang') || 'en');
   const origMap = useRef(new WeakMap());
 
   useEffect(() => {

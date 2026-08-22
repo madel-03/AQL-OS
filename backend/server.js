@@ -6,7 +6,7 @@ import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { AGENT_TOOLS, getGroqTools, runAgentTool } from './agent-tools.js'; // استيراد الأدوات
+import { AGENT_TOOLS, getOpenAITools, runAgentTool } from './agent-tools.js';
 
 const app = express();
 app.use(cors({
@@ -23,6 +23,13 @@ app.use(express.json());
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
+// 1️⃣ المفاتيح والموديلات مرتبة حسب الأولوية
+const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY || '';
+const CEREBRAS_MODEL = 'llama-3.3-70b';
+
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GROQ_MODEL = 'llama-3.1-70b-versatile';
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MODEL_FALLBACKS = [
   'gemini-2.0-flash',
@@ -30,8 +37,6 @@ const MODEL_FALLBACKS = [
   'gemini-1.5-flash',
   'gemini-1.5-pro',
 ];
-const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GROQ_MODEL = 'llama-3.1-70b-versatile';
 
 const BASEER_PERSONA = `أنت "عَقْل"، المحقق السلوكي الذكي في نظام AQL-OS لتوازن الحياة. شخصيتك مستوحاة من باتريك جين وشارلوك هولمز مع هدوء ورصانة جارفس: خاطب المستخدم بلقب "سيدي"، بأسلوب مهذب رفيع وسخرية بريطانية خفيفة.
 مهمتك: تحليل المعطيات (التزامات، مقاييس، ذاكرة تحليلات، ملف الحياة) وإرجاع JSON فقط بهذه المفاتيح:
@@ -45,18 +50,18 @@ const BASEER_PERSONA = `أنت "عَقْل"، المحقق السلوكي الذ
 لا تضف أي نص خارج JSON.`;
 
 const CHAT_PERSONA = `أنت "عَقْل"، المحقق السلوكي الذكي في نظام AQL-OS لتوازن الحياة، بأسلوب جارفس: خاطب المستخدم بلقب "سيدي".
-أنت في محادثة حية. قواعد الرد:
-- استخدم معطيات ملف القضية الحقيقية (التزامات، مقاييس، ذاكرة، ملف الحياة) في ردودك.
-- أجب من جملتين إلى خمس جمل بأسلوب خطابي ذكي.
-- استنتج ولاحظ واطرح أسئلة حادة عند الحاجة.
-- لا تخترع أرقامًا غير موجودة.
-- أجب بنص عادي فقط بدون JSON وبدون عناوين.`;
+أنت في محادثة حية وتحليلية عميقة. قواعد الرد:
+- استخدم معطيات ملف القضية الحقيقية (التزامات، مقاييس، ذاكرة، ملف الحياة) في ردودك بدقة.
+- أجب بأسلوب خطابي ذكي، فصيح، وهادئ (من 2 إلى 5 جمل).
+- استنتج، لاحظ، وحلل بذكاء شارلوك هولمز.
+- لا تخترع أرقامًا غير موجودة في السياق.
+- أجب بنص عادي فقط بدون JSON وبدون عناوين جانبية.`;
 
 function normalizeCommitment(row) {
   return {
     id: row.id,
     title: row.title,
-    hours_per_week: Number(row.hours_per_week),
+    hours_per_week: Math.round(Number(row.hours_per_week || 0) * 10) / 10,
     type: row.type,
     intensity: row.intensity,
     timeSlot: row.time_slot,
@@ -94,25 +99,49 @@ function parseBrainJson(text) {
   return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-async function groqChat(system, userMessage) {
+// 🌐 1. Cerebras Chat Helper (الأول والأساسي)
+async function cerebrasChat(system, messages, tools = null) {
+  if (!CEREBRAS_API_KEY) throw new Error('CEREBRAS_API_KEY missing');
+  const body = {
+    model: CEREBRAS_MODEL,
+    temperature: 0.7,
+    messages: [{ role: 'system', content: system }, ...messages],
+  };
+  if (tools) {
+    body.tools = tools;
+    body.tool_choice = 'auto';
+  }
+  const response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${CEREBRAS_API_KEY}` },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error('Cerebras ' + response.status);
+  return await response.json();
+}
+
+// 🌐 2. Groq Chat Helper (الثاني الاحتياطي)
+async function groqChat(system, messages, tools = null) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY missing');
+  const body = {
+    model: GROQ_MODEL,
+    temperature: 0.7,
+    messages: [{ role: 'system', content: system }, ...messages],
+  };
+  if (tools) {
+    body.tools = tools;
+    body.tool_choice = 'auto';
+  }
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      temperature: 0.7,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: userMessage },
-      ],
-    }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error('Groq ' + response.status);
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
+  return await response.json();
 }
 
+// 🌐 3. Gemini Helper (الثالث والأخير)
 async function geminiGenerate(payload) {
   let lastError = null;
   for (const model of MODEL_FALLBACKS) {
@@ -139,65 +168,6 @@ async function geminiGenerate(payload) {
   throw lastError || new Error('All Gemini models failed');
 }
 
-function ruleBasedAnalysis(currentCommitments, newCommitment) {
-  const currentHours = currentCommitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
-  const addedHours = Number(newCommitment.hours_per_week || 0);
-  const projectedTotal = currentHours + addedHours;
-  const remainingHours = 168 - projectedTotal;
-  let score = 0;
-  const deductions = [];
-  if (projectedTotal > 110) {
-    score += 3;
-    deductions.push('إجمالي الالتزامات يتجاوز 110 ساعة أسبوعيًا — منطقة انهيار محتمل.');
-  } else if (projectedTotal > 90) {
-    score += 2;
-    deductions.push('الإجمالي اقترب من 90+ ساعة — هامش الأمان يتآكل.');
-  } else if (projectedTotal > 75) {
-    score += 1;
-    deductions.push('الحمل الكلي مرتفع نسبيًا لكنه ما زال قابلًا للإدارة.');
-  }
-  if (newCommitment.timeSlot === 'late_night' && newCommitment.intensity === 'high') {
-    score += 2;
-    deductions.push('القرار الجديد يسكن الليل المتأخر — جودة النوم أول الضحايا.');
-  }
-  if (newCommitment.intensity === 'high') {
-    score += 1;
-    deductions.push('حمل ذهني عالٍ يضاف دون فترات استشفاء واضحة.');
-  }
-  if (!newCommitment.flexible) {
-    score += 1;
-    deductions.push('التزام صارم جديد يقلل مرونة الجدول عند الطوارئ.');
-  }
-  if (remainingHours < 56) {
-    score += 1;
-    deductions.push('ميزانية النوم والراحة هبطت تحت 56 ساعة أسبوعيًا.');
-  }
-  const burnoutRisk = score >= 5 ? 'Critical' : score >= 3 ? 'High' : score >= 2 ? 'Medium' : 'Low';
-  return {
-    current_hours: currentHours,
-    added_hours: addedHours,
-    projected_total: projectedTotal,
-    remaining_hours: remainingHours,
-    burnoutRisk,
-    main_insight:
-      burnoutRisk === 'Critical'
-        ? 'جدولك يتجه نحو نقطة الانهيار: الالتزامات تلتهم حتى ميزانية النوم.'
-        : burnoutRisk === 'High'
-        ? 'القرار ممكن نظريًا، لكنه يدفعك لمنطقة الخطر.'
-        : burnoutRisk === 'Medium'
-        ? 'جدولك متماسك لكن هامش الخطأ ضيق. انتبه لأوقات الراحة.'
-        : 'القرار متوازن وآمن: يوجد هامش كافٍ للنوم والاستشفاء.',
-    detective_question: 'ما الشيء الذي تحاول تعويضه بإضافة هذا الالتزام؟ وهل الرقم الذي اخترته قرار أم رغبة؟',
-    recommendation:
-      burnoutRisk === 'Critical'
-        ? 'أوقف الإضافة فورًا وأعد توزيع 20% من الساعات الصارمة.'
-        : burnoutRisk === 'High'
-        ? 'قلّص الساعات المقترحة 25% أو انقل النشاط لفترة صباحية.'
-        : 'نفّذ القرار مع تثبيت قاعدة: مساء واحد فارغ تمامًا كل أسبوع.',
-    deductions: deductions.length ? deductions : ['لا توجد إشارات خطر واضحة في النمط الحالي.'],
-  };
-}
-
 async function fetchLifeData(userId) {
   try {
     const [fin, stu, home, rel, well] = await Promise.all([
@@ -211,13 +181,10 @@ async function fetchLifeData(userId) {
     const income = finList.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
     const expense = finList.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
     return {
-      finance: { income, expense, balance: income - expense },
+      finance: { income, expense, balance: income - expense, entries: finList },
       study: { total_minutes: (stu.data || []).reduce((s, e) => s + Number(e.duration_minutes), 0) },
       home: { pending_tasks: (home.data || []).filter((t) => t.status !== 'done').length },
-      relationships: {
-        count: (rel.data || []).length,
-        neglected: (rel.data || []).filter((p) => !p.last_contact || (Date.now() - new Date(p.last_contact).getTime()) / 86400000 > (p.contact_frequency_days || 7)).map((p) => p.person_name),
-      },
+      relationships: { count: (rel.data || []).length },
       wellness: (well.data || [])[0] || null,
     };
   } catch (e) {
@@ -225,118 +192,51 @@ async function fetchLifeData(userId) {
   }
 }
 
+// دالة تحليل المخاطر الذكية (Cerebras → Groq → Gemini)
 async function askBaseerBrain(evidence, lang = 'ar') {
   const langNote = lang === 'en' ? '\nIMPORTANT: Respond FULLY in English, JARVIS style, address the user as "sir". Keep the same JSON keys.' : '\nأسلوب الكلام: خاطب المستخدم بلقب "سيدي"، بأسلوب جارفس.';
+  const systemPrompt = BASEER_PERSONA + langNote;
+  const userMsg = JSON.stringify(evidence, null, 2);
+
+  // 1️⃣ Cerebras
+  if (CEREBRAS_API_KEY) {
+    try {
+      const data = await cerebrasChat(systemPrompt, [{ role: 'user', content: userMsg }]);
+      const text = data.choices?.[0]?.message?.content || '';
+      console.log('🧠 عَقْل فكر عبر Cerebras');
+      return parseBrainJson(text);
+    } catch (err) {
+      console.log('🧠 Cerebras brain failed, trying Groq:', err.message);
+    }
+  }
+
+  // 2️⃣ Groq
+  if (GROQ_API_KEY) {
+    try {
+      const data = await groqChat(systemPrompt, [{ role: 'user', content: userMsg }]);
+      const text = data.choices?.[0]?.message?.content || '';
+      console.log('🧠 عَقْل فكر عبر Groq');
+      return parseBrainJson(text);
+    } catch (e) {
+      console.log('🧠 Groq brain failed, trying Gemini:', e.message);
+    }
+  }
+
+  // 3️⃣ Gemini
   try {
     const data = await geminiGenerate({
-      system_instruction: { parts: [{ text: BASEER_PERSONA + langNote }] },
-      contents: [{ role: 'user', parts: [{ text: JSON.stringify(evidence, null, 2) }] }],
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: 'user', parts: [{ text: userMsg }] }],
       generationConfig: { temperature: 0.9 },
     });
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    if (!text.trim()) throw new Error('Empty Gemini response');
     console.log('🧠 عَقْل فكر عبر Gemini');
     return parseBrainJson(text);
   } catch (err) {
     console.log('🧠 Gemini brain failed:', err.message);
   }
-  if (GROQ_API_KEY) {
-    try {
-      const gText = await groqChat(BASEER_PERSONA + langNote, JSON.stringify(evidence, null, 2));
-      console.log('🧠 عَقْل فكر عبر Groq');
-      return parseBrainJson(gText);
-    } catch (e) {
-      console.log('🧠 Groq brain failed:', e.message);
-    }
-  }
+
   throw new Error('All brains failed');
-}
-
-async function askBaseerChat({ context, history, userMessage }, lang = 'ar') {
-  const langNote = lang === 'en' 
-    ? '\nRespond in English. Style: JARVIS from Iron Man - address user as "sir", polished, calm, dry British wit.' 
-    : '\nالأسلوب: خاطب المستخدم بلقب "سيدي"، بأسلوب جارفس: مهذب رفيع، هدوء تام، وسخرية خفيفة.';
-  
-  const userContext = `
-Current situation:
-- Commitments: ${JSON.stringify(context.commitments?.map(c => c.title) || [])}
-- Total hours/week: ${context.metrics?.total_hours || 0}h
-- Risk level: ${context.metrics?.current_risk || 'Low'}
-- Finance: Balance ${context.life?.finance?.balance || 0}
-- Wellness: Mood ${context.life?.wellness?.mood || '-'}/10
-
-Recent conversation:
-${history.map(h => `${h.role === 'assistant' ? 'AQL' : 'User'}: ${h.content}`).join('\n')}
-
-User's message: ${userMessage}
-`;
-
-  if (GROQ_API_KEY) {
-    try {
-      const systemPrompt = `You are AQL, a JARVIS-style life OS assistant. ${langNote}
-Rules:
-- Be helpful and insightful (3-5 sentences)
-- Reference the user's actual data when relevant
-- Ask probing questions when appropriate
-- Maintain calm, professional tone
-- End with actionable advice or insight`;
-
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Authorization': `Bearer ${GROQ_API_KEY}` 
-        },
-        body: JSON.stringify({
-          model: 'llama-3.1-70b-versatile',
-          temperature: 0.7,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userContext },
-          ],
-        }),
-      });
-      
-      if (!response.ok) throw new Error('Groq ' + response.status);
-      const data = await response.json();
-      const text = data.choices?.[0]?.message?.content || '';
-      
-      if (text.trim()) {
-        console.log('💬 Chat via Groq (fast)');
-        return text.trim();
-      }
-    } catch (err) {
-      console.log('💬 Groq chat failed, trying Gemini:', err.message);
-    }
-  }
-
-  const langNoteGemini = lang === 'en'
-    ? '\nIMPORTANT: Respond FULLY in English (5-7 sentences), JARVIS style, address as "sir".'
-    : '\nأسلوب الكلام: خاطب المستخدم بلقب "سيدي"، بأسلوب جارفس. أجب بـ 5-7 جمل.';
-    
-  const contents = [
-    { role: 'user', parts: [{ text: `Context:\n${JSON.stringify(context, null, 2)}` }] },
-    { role: 'model', parts: [{ text: 'I\'ve reviewed your case. How can I assist, sir?' }] },
-  ];
-  for (const m of history) {
-    contents.push({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] });
-  }
-  contents.push({ role: 'user', parts: [{ text: userMessage }] });
-  
-  try {
-    const data = await geminiGenerate({
-      system_instruction: { parts: [{ text: CHAT_PERSONA + langNoteGemini }] },
-      contents,
-      generationConfig: { temperature: 0.9 },
-    });
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    if (!text.trim()) throw new Error('Empty response');
-    console.log('💬 Chat via Gemini');
-    return text.trim();
-  } catch (err) {
-    console.error('💬 Gemini chat failed:', err.message);
-  }
-  throw new Error('All chat engines failed');
 }
 
 async function edgeSpeak(text, voiceName) {
@@ -361,28 +261,6 @@ async function edgeSpeak(text, voiceName) {
     }
   }
   throw lastErr || new Error('Edge TTS failed');
-}
-
-async function agentGenerate(payload) {
-  let lastError = null;
-  for (const model of MODEL_FALLBACKS) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-    try {
-      const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (response.status === 503 || response.status === 429 || response.status === 404) {
-        lastError = new Error(`Gemini ${response.status} on ${model}`);
-        continue;
-      }
-      if (!response.ok) {
-        const t = await response.text();
-        throw new Error(`Gemini ${response.status}: ${t}`);
-      }
-      return await response.json();
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw lastError || new Error('All Gemini models failed');
 }
 
 // ----------------------------------------------------
@@ -557,39 +435,38 @@ app.post('/api/simulate', requireAuth, async (req, res) => {
     const newCommitment = body.newCommitment || {};
     const currentHours = currentCommitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
     const addedHours = Number(newCommitment.hours_per_week || 0);
-    const projectedTotal = currentHours + addedHours;
-    const remainingHours = 168 - projectedTotal;
+    const projectedTotal = Math.round((currentHours + addedHours) * 10) / 10;
+    const remainingHours = Math.round((168 - projectedTotal) * 10) / 10;
     const highHours = currentCommitments.filter((c) => c.intensity === 'high').reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
     const rigidHours = currentCommitments.filter((c) => !c.flexible).reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
     const lateHours = currentCommitments.filter((c) => c.timeSlot === 'late_night').reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
+    
     const { data: memory } = await supabase.from('analysis_logs').select('burnout_risk, main_insight').eq('user_id', req.user.id).order('created_at', { ascending: false }).limit(3);
     const life = await fetchLifeData(req.user.id);
+    
     const evidence = {
       current_commitments: currentCommitments,
       new_commitment: newCommitment,
-      metrics: { current_hours: currentHours, added_hours: addedHours, projected_total: projectedTotal, remaining_hours: remainingHours, high_intensity_hours: highHours, rigid_hours: rigidHours, late_night_hours: lateHours },
+      metrics: { current_hours: Math.round(currentHours * 10) / 10, added_hours: addedHours, projected_total: projectedTotal, remaining_hours: remainingHours, high_intensity_hours: highHours, rigid_hours: rigidHours, late_night_hours: lateHours },
       history: memory || [],
       life: life || null,
     };
-    let brain = null;
-    try {
-      brain = await askBaseerBrain(evidence, lang);
-    } catch (e) {
-      console.log('🧠 Brain fallback to rules:', e.message);
-    }
-    const base = ruleBasedAnalysis(currentCommitments, newCommitment);
+
+    let brain = await askBaseerBrain(evidence, lang);
+
     const simulationResults = {
-      current_hours: base.current_hours,
-      added_hours: base.added_hours,
-      projected_total: base.projected_total,
-      remaining_hours: base.remaining_hours,
-      burnout_risk: brain?.burnout_risk || base.burnoutRisk,
-      main_insight: brain?.main_insight || base.main_insight,
-      detective_question: brain?.detective_question || base.detective_question,
-      recommendation: brain?.recommendation || base.recommendation,
-      deductions: Array.isArray(brain?.deductions) && brain.deductions.length ? brain.deductions : base.deductions,
-      thinking_source: brain ? 'gemini' : 'rules',
+      current_hours: Math.round(currentHours * 10) / 10,
+      added_hours: addedHours,
+      projected_total: projectedTotal,
+      remaining_hours: remainingHours,
+      burnout_risk: brain.burnout_risk || 'Medium',
+      main_insight: brain.main_insight || '',
+      detective_question: brain.detective_question || '',
+      recommendation: brain.recommendation || '',
+      deductions: brain.deductions || [],
+      thinking_source: 'ai',
     };
+
     await supabase.from('analysis_logs').insert({ user_id: req.user.id, burnout_risk: simulationResults.burnout_risk, main_insight: simulationResults.main_insight, projected_total: projectedTotal });
     res.json({ simulation_results: simulationResults });
   } catch (err) {
@@ -607,6 +484,7 @@ app.get('/api/chat', requireAuth, async (req, res) => {
   }
 });
 
+// 💬 مسار الدردشة الذكي (Cerebras ← Groq ← Gemini) بدون أي شروط ثابتة
 app.post('/api/chat', requireAuth, async (req, res) => {
   try {
     const body = req.body || {};
@@ -616,83 +494,75 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     const lang = body.lang === 'en' ? 'en' : 'ar';
     const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
     const list = (commitments || []).map(normalizeCommitment);
-    const totalHours = Math.round(list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;    const remainingHours = 168 - totalHours;
+    const totalHours = Math.round(list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;
     const life = await fetchLifeData(req.user.id);
-    const msg = message.toLowerCase();
     
+    const { data: historyData } = await supabase.from('chat_messages').select('role, content').eq('user_id', req.user.id).order('created_at', { ascending: false }).limit(10);
+    const history = (historyData || []).reverse();
+
+    const systemPrompt = CHAT_PERSONA + (lang === 'en' ? '\nRespond in English, address the user as "sir".' : '\nخاطب المستخدم بلقب "سيدي".')
+      + `\nCurrent Case Data:\n- Commitments: ${JSON.stringify(list)}\n- Total Weekly Hours: ${totalHours}h\n- Life & Finance Summary: ${JSON.stringify(life)}`;
+
+    const messagesPayload = [
+      ...history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
+      { role: 'user', content: message }
+    ];
+
     let reply = '';
-    
-    if (msg.includes('حلل') || msg.includes('analyze') || msg.includes('حالي') || msg.includes('how am i')) {
-      const mood = life?.wellness?.mood || 5;
-      const energy = life?.wellness?.energy || 5;
-      const sleep = life?.wellness?.sleep_hours || 0;
-      const risk = riskLabel(totalHours);
-      reply = lang === 'en' ? 
-        `Here's your current status, sir:\n• Mood: ${mood}/10 ${mood >= 7 ? '😊 Great' : mood >= 4 ? '😐 Okay' : '😔 Low'}\n• Energy: ${energy}/10\n• Sleep: ${sleep}h ${sleep >= 7 ? '✅' : '⚠️ Need more'}\n• Weekly load: ${totalHours}h (${risk})\n${totalHours > 90 ? '⚠️ Recommendation: Consider reducing commitments by 10-15 hours.' : '✅ Your schedule is manageable.'}` :
-        `حالتك الحالية يا سيدي:\n• المزاج: ${mood}/10 ${mood >= 7 ? '😊 ممتاز' : mood >= 4 ? '😐 مقبول' : '😔 منخفض'}\n• الطاقة: ${energy}/10\n• النوم: ${sleep}س ${sleep >= 7 ? '✅' : '⚠️ تحتاج أكثر'}\n• الحمل الأسبوعي: ${totalHours}س (${risk})\n${totalHours > 90 ? '⚠️ نصيحة: فكّر في تقليل الالتزامات بـ 10-15 ساعة.' : '✅ جدولك متوازن.'}`;
-    } else if (msg.includes('رصيد') || msg.includes('فلوس') || msg.includes('balance') || msg.includes('money') || msg.includes('مصروف')) {
-      const balance = life?.finance?.balance || 0;
-      const income = life?.finance?.income || 0;
-      const expense = life?.finance?.expense || 0;
-      const percentage = income > 0 ? Math.round((expense / income) * 100) : 0;
-      reply = lang === 'en' ?
-        `Financial overview, sir:\n• Balance: $${balance}\n• Income: $${income}\n• Expenses: $${expense} (${percentage}% of income)\n${percentage > 80 ? '⚠️ Warning: High expense ratio. Consider budgeting.' : percentage > 50 ? '✅ Moderate spending.' : '✅ Healthy savings rate.'}` :
-        `الملف المالي يا سيدي:\n• الرصيد: ${balance} ريال\n• الدخل: ${income} ريال\n• المصاريف: ${expense} ريال (${percentage}% من الدخل)\n${percentage > 80 ? '⚠️ تحذير: المصاريف مرتفعة. فكّر في التوفير.' : percentage > 50 ? '✅ صرف معتدل.' : '✅ معدل توفير صحي.'}`;
-    } else if (msg.includes('التزام') || msg.includes('commitment') || msg.includes('وقت') || msg.includes('schedule') || msg.includes('جدول')) {
-      const byType = {};
-      list.forEach(c => { byType[c.type] = (byType[c.type] || 0) + c.hours_per_week; });
-      const highIntensity = list.filter(c => c.intensity === 'high').length;
-      const flexible = list.filter(c => c.flexible).length;
-      reply = lang === 'en' ?
-        `Time commitments breakdown, sir:\n• Total: ${totalHours}h/week (${Math.round(totalHours/7*10)/10}h/day)\n• Remaining free time: ${remainingHours}h/week\n• High intensity: ${highIntensity} commitments\n• Flexible: ${flexible}/${list.length}\n\nBy category:\n${Object.entries(byType).map(([type, hours]) => `• ${type}: ${hours}h`).join('\n')}\n\n${totalHours > 100 ? '🔴 Critical: Overloaded. Reduce immediately.' : totalHours > 80 ? '⚠️ Heavy load. Prioritize rest.' : '✅ Balanced schedule.'}` :
-        `تفصيل الالتزامات يا سيدي:\n• المجموع: ${totalHours} ساعة/أسبوع (${Math.round(totalHours/7*10)/10} ساعة/يوم)\n• الوقت الحر المتبقي: ${remainingHours} ساعة/أسبوع\n• عالية الحمل: ${highIntensity} التزامات\n• مرنة: ${flexible}/${list.length}\n\nحسب الفئة:\n${Object.entries(byType).map(([type, hours]) => `• ${type}: ${hours}س`).join('\n')}\n\n${totalHours > 100 ? '🔴 خطر: حمل زائد. قلّل فوراً.' : totalHours > 80 ? '⚠️ حمل ثقيل. أعطِ الأولوية للراحة.' : '✅ جدول متوازن.'}`;
-    } else if (msg.includes('دراسة') || msg.includes('study') || msg.includes('تعلم')) {
-      const studyMinutes = life?.study?.total_minutes || 0;
-      const studyHours = Math.round(studyMinutes / 60);
-      const dailyAvg = Math.round(studyMinutes / 7);
-      reply = lang === 'en' ?
-        `Study statistics, sir:\n• Total logged: ${studyHours} hours\n• Daily average: ${dailyAvg} minutes\n${studyHours > 20 ? '✅ Excellent dedication!' : studyHours > 10 ? '✅ Good progress.' : '💡 Suggestion: Aim for 2-3 hours daily.'}` :
-        `إحصائيات الدراسة يا سيدي:\n• المجموع المسجل: ${studyHours} ساعة\n• المعدل اليومي: ${dailyAvg} دقيقة\n${studyHours > 20 ? '✅ تفاني ممتاز!' : studyHours > 10 ? '✅ تقدم جيد.' : '💡 اقتراح: استهدف 2-3 ساعات يومياً.'}`;
-    } else if (msg.includes('نوم') || msg.includes('sleep') || msg.includes('صحة') || msg.includes('health')) {
-      const sleep = life?.wellness?.sleep_hours || 0;
-      const exercise = life?.wellness?.exercise_minutes || 0;
-      const mood = life?.wellness?.mood || 5;
-      reply = lang === 'en' ?
-        `Wellness report, sir:\n• Sleep: ${sleep}h ${sleep >= 7 ? '✅ Optimal' : sleep >= 5 ? '⚠️ Below optimal' : '🔴 Critical - need rest'}\n• Exercise: ${exercise}min ${exercise >= 30 ? '✅ Active' : '💡 Try to move more'}\n• Mood: ${mood}/10\n${sleep < 7 || mood < 5 ? '\n⚠️ Recommendation: Prioritize 7-8 hours sleep tonight.' : '\n✅ Great wellness habits!'}` :
-        `تقرير الصحة يا سيدي:\n• النوم: ${sleep}س ${sleep >= 7 ? '✅ مثالي' : sleep >= 5 ? '⚠️ أقل من المثالي' : '🔴 خطر - تحتاج راحة'}\n• الرياضة: ${exercise}د ${exercise >= 30 ? '✅ نشيط' : '💡 حاول تتحرك أكثر'}\n• المزاج: ${mood}/10\n${sleep < 7 || mood < 5 ? '\n⚠️ نصيحة: أعطِ الأولوية لـ 7-8 ساعات نوم الليلة.' : '\n✅ عادات صحية ممتازة!'}`;
-    } else if (msg.includes('علاق') || msg.includes('relation') || msg.includes('تواصل') || msg.includes('contact')) {
-      const count = life?.relationships?.count || 0;
-      const neglected = life?.relationships?.neglected?.length || 0;
-      reply = lang === 'en' ?
-        `Relationships overview, sir:\n• Total contacts: ${count}\n• Need attention: ${neglected}\n${neglected > 0 ? `⚠️ You haven't contacted ${neglected} people recently. Consider reaching out.` : '✅ All relationships active.'}` :
-        `نظرة على العلاقات يا سيدي:\n• إجمالي المعارف: ${count}\n• يحتاجون انتباه: ${neglected}\n${neglected > 0 ? `⚠️ ما تواصلت مع ${neglected} أشخاص مؤخراً. فكّر في التواصل معهم.` : '✅ جميع العلاقات نشطة.'}`;
-    } else if (msg.includes('مهمة') || msg.includes('بيت') || msg.includes('home') || msg.includes('task')) {
-      const pending = life?.home?.pending_tasks || 0;
-      reply = lang === 'en' ?
-        `Home tasks, sir:\n• Pending: ${pending} tasks\n${pending > 5 ? '⚠️ Consider delegating or scheduling.' : pending > 0 ? '✅ Manageable load.' : '✅ All clear!'}` :
-        `مهام البيت يا سيدي:\n• المعلقة: ${pending} مهام\n${pending > 5 ? '⚠️ فكّر في التفويض أو الجدولة.' : pending > 0 ? '✅ حمل معقول.' : '✅ كل شيء تمام!'}`;
-    } else if (msg.includes('نصيحة') || msg.includes('اقتراح') || msg.includes('advice') || msg.includes('suggest')) {
-      const suggestions = [];
-      if (totalHours > 90) suggestions.push(lang === 'en' ? 'Reduce weekly commitments by 10-15 hours' : 'قلّل الالتزامات الأسبوعية بـ 10-15 ساعة');
-      if ((life?.wellness?.sleep_hours || 0) < 7) suggestions.push(lang === 'en' ? 'Prioritize 7-8 hours sleep tonight' : 'أعطِ الأولوية لـ 7-8 ساعات نوم الليلة');
-      if ((life?.finance?.expense || 0) > (life?.finance?.income || 1) * 0.8) suggestions.push(lang === 'en' ? 'Review and reduce expenses' : 'راجع وقلّل المصاريف');
-      if (suggestions.length === 0) suggestions.push(lang === 'en' ? 'Keep up the great balance!' : 'واصل على هذا التوازن الممتاز!');
-      reply = lang === 'en' ?
-        `Personalized recommendations, sir:\n${suggestions.map((s, i) => `${i+1}. ${s}`).join('\n')}` :
-        `توصيات مخصصة لك يا سيدي:\n${suggestions.map((s, i) => `${i+1}. ${s}`).join('\n')}`;
-    } else {
-      const risk = riskLabel(totalHours);
-      reply = lang === 'en' ?
-        `I understand, sir. Current summary:\n• Commitments: ${totalHours}h/week (${risk})\n• Balance: $${life?.finance?.balance || 0}\n• Mood: ${life?.wellness?.mood || '-'}/10\n\nTry asking:\n• "Analyze my status"\n• "Show my finances"\n• "My commitments breakdown"\n• "Wellness report"\n• "Give me advice"` :
-        `فهمت يا سيدي. ملخص حالياً:\n• الالتزامات: ${totalHours}س/أسبوع (${risk})\n• الرصيد: ${life?.finance?.balance || 0} ريال\n• المزاج: ${life?.wellness?.mood || '-'}/10\n\nجرّب تسأل:\n• "حلل حالتي"\n• "ورّني مالي"\n• "تفصيل التزاماتي"\n• "تقرير الصحة"\n• "عطِني نصيحة"`;
+
+    // 1️⃣ Cerebras
+    if (CEREBRAS_API_KEY) {
+      try {
+        const data = await cerebrasChat(systemPrompt, messagesPayload);
+        reply = data.choices?.[0]?.message?.content || '';
+        if (reply.trim()) console.log('💬 Chat via Cerebras');
+      } catch (err) {
+        console.log('💬 Cerebras chat failed, sliding to Groq:', err.message);
+      }
     }
-    
+
+    // 2️⃣ Groq
+    if (!reply && GROQ_API_KEY) {
+      try {
+        const data = await groqChat(systemPrompt, messagesPayload);
+        reply = data.choices?.[0]?.message?.content || '';
+        if (reply.trim()) console.log('💬 Chat via Groq');
+      } catch (err) {
+        console.log('💬 Groq chat failed, sliding to Gemini:', err.message);
+      }
+    }
+
+    // 3️⃣ Gemini
+    if (!reply) {
+      try {
+        const geminiContents = [
+          { role: 'user', parts: [{ text: `System Info:\n${systemPrompt}` }] },
+          ...history.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.content }] })),
+          { role: 'user', parts: [{ text: message }] }
+        ];
+        const data = await geminiGenerate({
+          system_instruction: { parts: [{ text: CHAT_PERSONA }] },
+          contents: geminiContents,
+          generationConfig: { temperature: 0.8 },
+        });
+        reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (reply.trim()) console.log('💬 Chat via Gemini');
+      } catch (err) {
+        console.error('💬 Gemini chat failed:', err.message);
+      }
+    }
+
+    if (!reply) {
+      reply = lang === 'en'
+        ? 'Pardon me, sir — my thinking engines are momentarily offline.'
+        : 'عذرًا سيدي — محركات التفكير تشهد انقطاعاً لحظياً.';
+    }
+
     await supabase.from('chat_messages').insert([
       { user_id: req.user.id, role: 'user', content: message },
       { user_id: req.user.id, role: 'assistant', content: reply },
     ]);
     
-    console.log('💬 Smart rules response');
     res.json({ reply });
   } catch (err) {
     console.error('Chat error:', err);
@@ -706,18 +576,33 @@ app.post('/api/directive', requireAuth, async (req, res) => {
     const lang = body.lang === 'en' ? 'en' : 'ar';
     const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
     const list = (commitments || []).map(normalizeCommitment);
-    const totalHours = list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
+    const totalHours = Math.round(list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;
     const prompt = lang === 'en' ? `You are AQL, a JARVIS-style mind; address the user as "sir". Build today's operational directive. Modules: ${JSON.stringify(list)}. Weekly total: ${totalHours}h. Return JSON only: {"slots":[{"time":"06:00-09:00","task":"...","tag":"deep|meeting|rest|warn"}],"closing":"one JARVIS-style line"}` : `أنت "عَقْل" بأسلوب جارفس، تخاطب المستخدم بلقب "سيدي". ابنِ توجيه اليوم التشغيلي بناءً على التزاماته: ${JSON.stringify(list)}. الإجمالي الأسبوعي: ${totalHours} ساعة. أرجع JSON فقط بالشكل: {"slots":[{"time":"06:00-09:00","task":"...","tag":"deep|meeting|rest|warn"}],"closing":"جملة ختامية بأسلوب جارفس"}`;
+    
     let result = null;
-    try {
-      const data = await geminiGenerate({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.8 } });
-      result = parseBrainJson(data.candidates?.[0]?.content?.parts?.[0]?.text || '');
-    } catch (e) {}
-    if (!result && GROQ_API_KEY) {
+
+    // 1️⃣ Cerebras
+    if (CEREBRAS_API_KEY) {
       try {
-        result = parseBrainJson(await groqChat('Return JSON only.', prompt));
+        const data = await cerebrasChat('Return JSON only.', [{ role: 'user', content: prompt }]);
+        result = parseBrainJson(data.choices?.[0]?.message?.content || '');
       } catch (e) {}
     }
+    // 2️⃣ Groq
+    if (!result && GROQ_API_KEY) {
+      try {
+        const data = await groqChat('Return JSON only.', [{ role: 'user', content: prompt }]);
+        result = parseBrainJson(data.choices?.[0]?.message?.content || '');
+      } catch (e) {}
+    }
+    // 3️⃣ Gemini
+    if (!result) {
+      try {
+        const data = await geminiGenerate({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.8 } });
+        result = parseBrainJson(data.candidates?.[0]?.content?.parts?.[0]?.text || '');
+      } catch (e) {}
+    }
+
     if (!result) {
       result = {
         slots: [{ time: '06:00-09:00', task: lang === 'en' ? 'Deep work on your top goal' : 'عمل عميق على هدفك الأهم', tag: 'deep' }, { time: '13:00-14:00', task: lang === 'en' ? 'Light meetings & admin' : 'اجتماعات وأمور خفيفة', tag: 'meeting' }, { time: '21:00+', task: lang === 'en' ? 'Screens off — recovery protocol' : 'إيقاف الشاشات — بروتوكول الاستشفاء', tag: 'warn' }],
@@ -747,7 +632,7 @@ app.post('/api/tts', requireAuth, async (req, res) => {
   }
 });
 
-// الوكيل: Gemini للـ Function Calling + قاعدة ذكية احتياط
+// 🤖 مسار الوكيل التفاعلي (Cerebras ← Groq ← Gemini) تنفيذ أدوات بنسبة 100% بدون قواعد تقليدية
 app.post('/api/agent', requireAuth, async (req, res) => {
   const body = req.body || {};
   const message = (body.message || '').trim();
@@ -755,82 +640,30 @@ app.post('/api/agent', requireAuth, async (req, res) => {
   
   if (!message) return res.status(400).json({ error: 'No message' });
 
-  // الاستعلام عن البيانات مرة واحدة فقط
   const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
   const list = (commitments || []).map(normalizeCommitment);
-  const totalHours = list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
+  const totalHours = Math.round(list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;
   const life = await fetchLifeData(req.user.id);
   
-  const system = (lang === 'en'
-    ? 'You are AQL, the user\'s JARVIS-style life OS agent. Address him as "sir". Execute his request using the provided tools when needed, then reply in 2-4 sentences. '
-    : 'أنت "عَقْل"، وكيل نظام الحياة بأسلوب جارفس. خاطبه بلقب "سيدي". نفّذ طلبه باستخدام الأدوات عند الحاجة ثم ارد بجملتين إلى أربع. ')
-    + `Current data: ${JSON.stringify({ commitments: list, life })}`;
+  const system = CHAT_PERSONA + (lang === 'en' ? '\nRespond in English, address the user as "sir".' : '\nخاطب المستخدم بلقب "سيدي".')
+    + `\nCurrent System Data:\n- Commitments: ${JSON.stringify(list)}\n- Total Weekly Hours: ${totalHours}h\n- Life & Finance Data: ${JSON.stringify(life)}`;
 
-  // === الطبقة 1: Gemini مع Function Calling ===
-  try {
-    console.log('🤖 Agent: trying Gemini with tools...');
-    const contents = [{ role: 'user', parts: [{ text: message }] }];
-    const actions = [];
-    let reply = '';
-    for (let step = 0; step < 6; step++) {
-      const data = await agentGenerate({
-        system_instruction: { parts: [{ text: system }] },
-        contents,
-        tools: [{ function_declarations: AGENT_TOOLS }],
-      });
-      const part = data.candidates?.[0]?.content?.parts?.[0];
-      const fc = part?.functionCall;
-      if (fc) {
-        // استخدام الدالة الديناميكية وتمرير supabase
-        const result = await runAgentTool(req.user.id, fc.name, fc.args || {}, { supabase });
-        actions.push({ tool: fc.name, result });
-        contents.push({ role: 'model', parts: [{ functionCall: fc }] });
-        contents.push({ role: 'user', parts: [{ functionResponse: { name: fc.name, response: { result } } }] });
-        continue;
-      }
-      reply = part?.text || '';
-      break;
-    }
-    if (reply || actions.length) {
-      console.log('✅ Agent: Gemini succeeded with', actions.length, 'actions');
-      return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'gemini' });
-    }
-  } catch (gemErr) {
-    console.log('🧠 Agent: Gemini failed →', gemErr.message);
-  }
+  const openAiTools = getOpenAITools();
+  const actions = [];
+  let reply = '';
 
-  // === الطبقة 2: Groq مع Function Calling (صيغة OpenAI) ===
-  if (GROQ_API_KEY) {
+  // === 🥇 الطبقة الأولى: Cerebras ===
+  if (CEREBRAS_API_KEY) {
     try {
-      console.log('🤖 Agent: trying Groq with tools...');
-      const groqTools = getGroqTools(); // جلب الخصائص بالصيغة التلقائية
-      const messages = [
-        { role: 'system', content: system },
-        { role: 'user', content: message },
-      ];
-      const actions = [];
-      let reply = '';
+      console.log('🤖 Agent: Trying Cerebras...');
+      let messages = [{ role: 'user', content: message }];
       for (let step = 0; step < 6; step++) {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
-          body: JSON.stringify({ model: GROQ_MODEL, temperature: 0.7, messages, tools: groqTools, tool_choice: 'auto' }),
-        });
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(`Groq ${response.status}: ${errText}`);
-        }
-        const data = await response.json();
+        const data = await cerebrasChat(system, messages, openAiTools);
         const msg = data.choices?.[0]?.message;
         const tc = msg?.tool_calls?.[0];
         if (tc) {
           let args = {};
-          try { 
-            args = JSON.parse(tc.function.arguments || '{}'); 
-          } catch (e) {
-            console.log('⚠️ Groq tool arguments parsing failed:', tc.function.arguments);
-          }
-          // استخدام الدالة الديناميكية وتمرير supabase
+          try { args = JSON.parse(tc.function.arguments || '{}'); } catch (e) {}
           const result = await runAgentTool(req.user.id, tc.function.name, args, { supabase });
           actions.push({ tool: tc.function.name, result });
           messages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls });
@@ -841,83 +674,80 @@ app.post('/api/agent', requireAuth, async (req, res) => {
         break;
       }
       if (reply || actions.length) {
-        console.log('✅ Agent: Groq succeeded with', actions.length, 'actions');
+        console.log('✅ Agent: Cerebras succeeded');
+        return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'cerebras' });
+      }
+    } catch (cErr) {
+      console.log('⚠️ Cerebras agent failed, sliding to Groq:', cErr.message);
+    }
+  }
+
+  // === 🥈 الطبقة الثانية: Groq ===
+  if (GROQ_API_KEY) {
+    try {
+      console.log('🤖 Agent: Trying Groq...');
+      let messages = [{ role: 'user', content: message }];
+      for (let step = 0; step < 6; step++) {
+        const data = await groqChat(system, messages, openAiTools);
+        const msg = data.choices?.[0]?.message;
+        const tc = msg?.tool_calls?.[0];
+        if (tc) {
+          let args = {};
+          try { args = JSON.parse(tc.function.arguments || '{}'); } catch (e) {}
+          const result = await runAgentTool(req.user.id, tc.function.name, args, { supabase });
+          actions.push({ tool: tc.function.name, result });
+          messages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls });
+          messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+          continue;
+        }
+        reply = msg?.content || '';
+        break;
+      }
+      if (reply || actions.length) {
+        console.log('✅ Agent: Groq succeeded');
         return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'groq' });
       }
     } catch (gErr) {
-      console.log('❌ Agent: Groq failed →', gErr.message);
+      console.log('⚠️ Groq agent failed, sliding to Gemini:', gErr.message);
     }
   }
 
-  // === الطبقة 3: قاعدة ذكية (آخر ملجأ) ===
-  console.log('🤖 Agent: falling back to smart rules...');
-  const lower = message.toLowerCase();
-  const actions = [];
-  let ruleReply = '';
-
-  // 💰 1. شرط تحليل وعرض المصاريف والماليات أولاً
-  if (lower.includes('مصروف') || lower.includes('مال') || lower.includes('فلوس') || lower.includes('finance') || lower.includes('expense') || lower.includes('تحليل')) {
-    const finList = await supabase.from('finance_entries').select('*').eq('user_id', req.user.id);
-    const entries = finList.data || [];
-    const totalIncome = entries.filter(e => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
-    const totalExpense = entries.filter(e => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
-    const balance = totalIncome - totalExpense;
-
-    ruleReply = lang === 'en'
-      ? `Financial analysis, sir:\n• Total Income: $${totalIncome}\n• Total Expenses: $${totalExpense}\n• Net Balance: $${balance}\n${totalExpense > totalIncome ? '⚠️ Warning: Expenses exceed income.' : '✅ Your financial flow is stable.'}`
-      : `تحليل المصاريف يا سيدي:\n• إجمالي الدخل: ${totalIncome} ريال\n• إجمالي المصاريف: ${totalExpense} ريال\n• صافي الرصيد: ${balance} ريال\n${totalExpense > totalIncome ? '⚠️ تنبيه: المصاريف تتجاوز الدخل.' : '✅ وضعك المالي مستقر.'}`;
+  // === 🥉 الطبقة الثالثة: Gemini ===
+  try {
+    console.log('🤖 Agent: Trying Gemini...');
+    const contents = [{ role: 'user', parts: [{ text: message }] }];
+    for (let step = 0; step < 6; step++) {
+      const data = await geminiGenerate({
+        system_instruction: { parts: [{ text: system }] },
+        contents,
+        tools: [{ function_declarations: AGENT_TOOLS }],
+      });
+      const part = data.candidates?.[0]?.content?.parts?.[0];
+      const fc = part?.functionCall;
+      if (fc) {
+        const result = await runAgentTool(req.user.id, fc.name, fc.args || {}, { supabase });
+        actions.push({ tool: fc.name, result });
+        contents.push({ role: 'model', parts: [{ functionCall: fc }] });
+        contents.push({ role: 'user', parts: [{ functionResponse: { name: fc.name, response: { result } } }] });
+        continue;
+      }
+      reply = part?.text || '';
+      break;
+    }
+    if (reply || actions.length) {
+      console.log('✅ Agent: Gemini succeeded');
+      return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'gemini' });
+    }
+  } catch (gemErr) {
+    console.log('❌ Gemini agent failed:', gemErr.message);
   }
+
+  // ⚠️ بروتوكول الطوارئ لو انقطعت كل المزودات السحابية
+  const emergencyReply = lang === 'en'
+    ? 'Pardon me, sir — all cognitive engines are momentarily unreachable. Standing by for reconnection.'
+    : 'عذرًا سيدي — محركات التفكير السحابية تشهد انقطاعاً لحظياً. في انتظار إعادة الاتصال.';
   
-  // ➕ 2. شروط الإضافة والتسجيل
-  else if (lower.includes('add') || lower.includes('سجل') || lower.includes('ضيف')) {
-    if (lower.includes('مصروف') || lower.includes('expense') || lower.includes('صرف')) {
-      const amountMatch = message.match(/(\d+)/);
-      const categoryMatch = message.match(/(?:ريال|دولار|sar|usd)\s+(.+)/i) || message.match(/expense\s+(.+)/i);
-      const amount = amountMatch ? Number(amountMatch[1]) : 0;
-      const category = categoryMatch ? categoryMatch[1].trim() : 'عام';
-      if (amount > 0) {
-        const { data, error } = await supabase.from('finance_entries').insert({
-          user_id: req.user.id, type: 'expense', amount, category, note: null,
-        }).select().single();
-        if (!error) {
-          actions.push({ tool: 'add_expense', result: `recorded ${amount} (${category})` });
-          ruleReply = lang === 'en' ? `Recorded expense of ${amount} ${category}, sir.` : `تم تسجيل مصروف ${amount} ${category} يا سيدي.`;
-        }
-      }
-    } else {
-      const hoursMatch = message.match(/(\d+)\s*(hour|h|ساعة)/i);
-      const minutesMatch = message.match(/(\d+)\s*(min|m|دقيقة)/i);
-      let hours = 0;
-      let title = 'New Commitment';
-      if (hoursMatch) {
-        hours = Number(hoursMatch[1]);
-        const titleMatch = message.match(/(?:of|من)\s+(.+)/i) || message.match(/(.+)\s+(?:hour|h|ساعة)/i);
-        if (titleMatch) title = titleMatch[1].trim();
-      } else if (minutesMatch) {
-        hours = Number(minutesMatch[1]) / 60;
-        const titleMatch = message.match(/(?:of|من)\s+(.+)/i) || message.match(/(.+)\s+(?:min|m|دقيقة)/i);
-        if (titleMatch) title = titleMatch[1].trim();
-      }
-      if (hours > 0) {
-        const { data, error } = await supabase.from('commitments').insert({
-          user_id: req.user.id, title, hours_per_week: Math.round(hours * 10) / 10,
-          type: 'personal', intensity: 'medium', time_slot: 'mixed', flexible: true, status: 'active',
-        }).select().single();
-        if (!error) {
-          actions.push({ tool: 'add_commitment', result: `added "${data.title}" (${data.hours_per_week}h/week)` });
-          ruleReply = lang === 'en' ? `Added "${data.title}" for ${data.hours_per_week} hours/week, sir.` : `تم إضافة "${data.title}" بمعدل ${data.hours_per_week} ساعات أسبوعياً يا سيدي.`;
-        }
-      }
-    }
-  }
-
-  if (!ruleReply) {
-    ruleReply = lang === 'en'
-      ? `I understand, sir. You have ${list.length} commitments (${totalHours}h/week). How can I assist?`
-      : `فهمت يا سيدي. عندك ${list.length} التزامات (${totalHours}س/أسبوع). كيف أساعدك؟`;
-  }
-
-  res.json({ reply: ruleReply, actions, engine: 'rules' });
+  res.status(503).json({ reply: emergencyReply, actions: [], engine: 'emergency' });
 });
 
 app.get('/api/finance', requireAuth, async (req, res) => {
