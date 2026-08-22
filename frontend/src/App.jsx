@@ -31,7 +31,13 @@ async function getAuthHeaders() {
 }
 
 const barWidth = (hours) => `${Math.max(0, Math.min((hours / 168) * 100, 100))}%`;
-
+function prettyAction(result) {
+  const m = String(result || '').match(/RESULTS: (\[[\s\S]*\])$/);
+  if (m) {
+    try { return JSON.parse(m[1]).slice(0, 3).map((r) => '• ' + r.title).join('   '); } catch (e) { /* نتجاهل */ }
+  }
+  return String(result || '');
+}
 function riskOf(totalHours) {
   if (totalHours > 110) return { label: 'Critical', color: '#ef4444' };
   if (totalHours > 90) return { label: 'High', color: '#f59e0b' };
@@ -641,7 +647,7 @@ function VoiceAgentBar({ onRefresh }) {
         <div style={{ marginTop: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {(last.actions || []).map((a, i) => (
             <div key={i} style={{ fontSize: '0.8rem', color: '#00e676', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '4px', padding: '0.4rem 0.7rem' }}>
-              ⚙️ {a.result}
+              ⚙️ {prettyAction(a.result)}
             </div>
           ))}
           <p style={{ margin: 0, color: 'var(--text)', fontStyle: 'italic' }}>🎩 {last.reply}</p>

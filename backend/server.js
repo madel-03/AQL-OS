@@ -661,7 +661,21 @@ app.post('/api/agent', requireAuth, async (req, res) => {
 
   const openAiTools = getOpenAITools();
   const actions = [];
-  let reply = '';
+let reply = '';
+const summarize = () => {
+  if (reply) return reply;
+  if (!actions.length) return lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.';
+  const m = String(actions[actions.length - 1].result || '').match(/RESULTS: (\[[\s\S]*\])$/);
+  if (m) {
+    try {
+      const titles = JSON.parse(m[1]).slice(0, 3).map((r) => r.title).join('، ');
+      return lang === 'en'
+        ? `I found these for you, sir: ${titles}.`
+        : `عثرت لك يا سيدي على: ${titles}. التفاصيل معروضة أمامك.`;
+    } catch (e) { /* نتجاهل */ }
+  }
+  return String(actions[actions.length - 1].result);
+};
 
   // === 🥇 الطبقة الأولى: Cerebras ===
   if (CEREBRAS_API_KEY) {
