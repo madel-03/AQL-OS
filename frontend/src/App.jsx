@@ -123,35 +123,35 @@ function playChunkLocal(chunk, lang) {
 }
 
 async function playChunkTTS(chunk, lang, voice) {
-for (let attempt = 0; attempt < 3; attempt++) {
-try {
-const headers = await getAuthHeaders();
-const ctrl = new AbortController();
-const timer = setTimeout(() => ctrl.abort(), 20000);
-const res = await fetch(`${API_URL}/api/tts`, {
-method: 'POST', headers, signal: ctrl.signal,
-body: JSON.stringify({ text: chunk, lang, voice }),
-});
-clearTimeout(timer);
-if (res.status === 429) { await new Promise((r) => setTimeout(r, 1500)); continue; }
-const json = await res.json();
-if (!res.ok || !json.audio) return false;
-const isMpeg = (json.mime || '').includes('mpeg');
-const url = URL.createObjectURL(isMpeg ? b64ToBlob(json.audio, 'audio/mpeg') : pcmToWav(json.audio, Number(((json.mime || '').match(/rate=(\d+)/) || [])[1] || 24000)));
-const ok = await new Promise((resolve) => {
-jarvisAudio = new Audio(url);
-jarvisAudio.onended = () => resolve(true);
-jarvisAudio.onerror = () => resolve(false);
-jarvisAudio.play().catch(() => resolve(false));
-});
-jarvisAudio = null;
-URL.revokeObjectURL(url);
-return ok;
-} catch (e) {
-await new Promise((r) => setTimeout(r, 800));
-}
-}
-return false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const headers = await getAuthHeaders();
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 20000);
+      const res = await fetch(`${API_URL}/api/tts`, {
+        method: 'POST', headers, signal: ctrl.signal,
+        body: JSON.stringify({ text: chunk, lang, voice }),
+      });
+      clearTimeout(timer);
+      if (res.status === 429) { await new Promise((r) => setTimeout(r, 1500)); continue; }
+      const json = await res.json();
+      if (!res.ok || !json.audio) return false;
+      const isMpeg = (json.mime || '').includes('mpeg');
+      const url = URL.createObjectURL(isMpeg ? b64ToBlob(json.audio, 'audio/mpeg') : pcmToWav(json.audio, Number(((json.mime || '').match(/rate=(\d+)/) || [])[1] || 24000)));
+      const ok = await new Promise((resolve) => {
+        jarvisAudio = new Audio(url);
+        jarvisAudio.onended = () => resolve(true);
+        jarvisAudio.onerror = () => resolve(false);
+        jarvisAudio.play().catch(() => resolve(false));
+      });
+      jarvisAudio = null;
+      URL.revokeObjectURL(url);
+      return ok;
+    } catch (e) {
+      await new Promise((r) => setTimeout(r, 800));
+    }
+  }
+  return false;
 }
 
 function jarvisSpeak(text, lang, onEnd, voice) {
@@ -198,20 +198,20 @@ function BrainPanels({ result }) {
 }
 /* ========== زر اللغة العائم (قبل الدخول) ========== */
 function FloatingLangButton() {
-const { lang, setLang } = useLang();
-return (
-<button
-onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
-style={{
-position: 'fixed', top: '18px', right: '18px', zIndex: 50,
-background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.35)',
-color: '#7dd3fc', borderRadius: '999px', padding: '8px 18px',
-cursor: 'pointer', fontSize: '0.85rem', fontWeight: '700', backdropFilter: 'blur(8px)',
-}}
->
-◐ {lang === 'ar' ? 'EN' : 'AR'}
-</button>
-);
+  const { lang, setLang } = useLang();
+  return (
+    <button
+      onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
+      style={{
+        position: 'fixed', top: '18px', right: '18px', zIndex: 50,
+        background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.35)',
+        color: '#7dd3fc', borderRadius: '999px', padding: '8px 18px',
+        cursor: 'pointer', fontSize: '0.85rem', fontWeight: '700', backdropFilter: 'blur(8px)',
+      }}
+    >
+      ◐ {lang === 'ar' ? 'EN' : 'AR'}
+    </button>
+  );
 }
 
 /* ========== شاشة الدخول ========== */
@@ -672,6 +672,7 @@ function RadarPanel({ risk }) {
     </div>
   );
 }
+
 /* ========== الكرة الهولوغرامية ========== */
 function GlobePanel() {
   const dots = Array.from({ length: 42 }, (_, i) => {
@@ -693,6 +694,7 @@ function GlobePanel() {
     </svg>
   );
 }
+
 /* ========== أعمدة الطاقة ========== */
 function BatteryPanel({ commitments, life }) {
   const total = commitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
@@ -751,7 +753,6 @@ function MindChamber({ commitments }) {
   const neglectedCount = (people) => (people || []).filter((p) => !p.last_contact || (Date.now() - new Date(p.last_contact).getTime()) / 86400000 > (p.contact_frequency_days || 7)).length;
 
   useEffect(() => {
-    const riskPct = risk.label === 'Critical' ? 95 : risk.label === 'High' ? 70 : risk.label === 'Medium' ? 45 : 15;
     if (!life) return;
     const negl = neglectedCount(life.relationships);
     const pending = (life.home || []).filter((x) => x.status !== 'done').length;
@@ -847,41 +848,43 @@ function MindChamber({ commitments }) {
     try { rec.start(); } catch (e) { setListening(false); }
   };
 
+  const riskPct = risk.label === 'Critical' ? 95 : risk.label === 'High' ? 70 : risk.label === 'Medium' ? 45 : 15;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-     <div className="hud-grid">
-  <div className="glass-panel hud-panel hud-box">
-    <div className="holo-label mono">◈ LIFE SCAN // مسح الحياة</div>
-    <GlobePanel />
-    <div className="hex-nodes">
-      {domains.map((d) => { const st = domainStatus(d.id); return (
-        <button key={d.id} className="hex-btn" onClick={() => focusDomain(d)}
-          style={{ color: st.hot ? st.color : 'var(--cyan)', borderColor: st.hot ? st.color : undefined }}>
-          <span>{d.icon}</span><span>{d.label}</span>
-        </button>
-      );})}
-    </div>
-  </div>
-  <div className="glass-panel hud-panel hud-box">
-    <div className="holo-label mono">◈ VITAL RADAR // الرادار الحيوي</div>
-    <RadarPanel risk={risk} />
-  </div>
-  <div className="glass-panel hud-panel hud-box">
-    <div className="holo-label mono">◈ ENERGY // مستويات الطاقة</div>
-    <BatteryPanel commitments={commitments} life={life} />
-  </div>
-  <div className="glass-panel hud-panel hud-box">
-    <div className="holo-label mono">◈ CORE // المقاييس</div>
-    <div style={{ display: 'flex', gap: '1.2rem', justifyContent: 'center', flexWrap: 'wrap', padding: '0.5rem 0' }}>
-      <Gauge value={Math.round(totalHours)} max={168} label={lang === 'ar' ? 'ساعات' : 'Hours'} color="var(--cyan)" suffix={hs} />
-      <Gauge value={riskPct} max={100} label={lang === 'ar' ? 'الخطر' : 'Risk'} color={risk.color} suffix="%" />
-    </div>
-    <div className="sys-line" style={{ color: risk.color }}>
-      {lang === 'ar' ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}` : `SYSTEM: ${risk.label.toUpperCase()}`}
-      <span className="mono"> // {totalHours}{hs} / 168{hs}</span>
-    </div>
-  </div>
-</div>
+      <div className="hud-grid">
+        <div className="glass-panel hud-panel hud-box">
+          <div className="holo-label mono">◈ LIFE SCAN // مسح الحياة</div>
+          <GlobePanel />
+          <div className="hex-nodes">
+            {domains.map((d) => { const st = domainStatus(d.id); return (
+              <button key={d.id} className="hex-btn" onClick={() => focusDomain(d)}
+                style={{ color: st.hot ? st.color : 'var(--cyan)', borderColor: st.hot ? st.color : undefined }}>
+                <span>{d.icon}</span><span>{d.label}</span>
+              </button>
+            );})}
+          </div>
+        </div>
+        <div className="glass-panel hud-panel hud-box">
+          <div className="holo-label mono">◈ VITAL RADAR // الرادار الحيوي</div>
+          <RadarPanel risk={risk} />
+        </div>
+        <div className="glass-panel hud-panel hud-box">
+          <div className="holo-label mono">◈ ENERGY // مستويات الطاقة</div>
+          <BatteryPanel commitments={commitments} life={life} />
+        </div>
+        <div className="glass-panel hud-panel hud-box">
+          <div className="holo-label mono">◈ CORE // المقاييس</div>
+          <div style={{ display: 'flex', gap: '1.2rem', justifyContent: 'center', flexWrap: 'wrap', padding: '0.5rem 0' }}>
+            <Gauge value={Math.round(totalHours)} max={168} label={lang === 'ar' ? 'ساعات' : 'Hours'} color="var(--cyan)" suffix={hs} />
+            <Gauge value={riskPct} max={100} label={lang === 'ar' ? 'الخطر' : 'Risk'} color={risk.color} suffix="%" />
+          </div>
+          <div className="sys-line" style={{ color: risk.color }}>
+            {lang === 'ar' ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}` : `SYSTEM: ${risk.label.toUpperCase()}`}
+            <span className="mono"> // {totalHours}{hs} / 168{hs}</span>
+          </div>
+        </div>
+      </div>
 
       {/* ٥) تيار الوعي بإطار زوايا مفتوحة */}
       <div className="hud-corners" style={{ padding: '1.1rem 1.3rem', minHeight: 96 }}>
@@ -963,7 +966,7 @@ function DashboardPage({ commitments, goInvestigate, onRefresh }) {
     { label: t('انضباط'), value: totalHours ? 1 - Math.min(rigidHours / totalHours, 1) : 1 },
   ];
 
-      useEffect(() => {
+  useEffect(() => {
     const h = new Date().getHours();
     const part = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
 
@@ -1016,7 +1019,7 @@ function DashboardPage({ commitments, goInvestigate, onRefresh }) {
           ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}`
           : `SYSTEM: ${risk.label === 'Low' ? 'STABLE' : risk.label === 'Medium' ? 'STRAINED' : 'CRITICAL'}`}
       </div>
-            <HoloDecor />
+      <HoloDecor />
       <div className="glass-panel hud-panel" style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', justifyItems: 'center' }}>
         <Gauge value={commitments.length} max={10} label={t('الالتزامات النشطة')} color="#00e5ff" />
         <Gauge value={totalHours} max={168} label={t('ساعات ملتزم بها')} color="#2979ff" suffix={hs} />
@@ -2059,6 +2062,7 @@ function LifeOSPage() {
     </div>
   );
 }
+
 /* ========== التطبيق ========== */
 function App() {
   const [session, setSession] = useState(null);
@@ -2098,7 +2102,8 @@ function App() {
 
   return (
     <Layout page={page} setPage={setPage} displayName={displayName} onLogout={handleLogout}>
-      {page === 'dashboard' && <MindChamber commitments={commitments} />}      {page === 'investigate' && <InvestigatePage commitments={commitments} onSaved={fetchCommitments} />}
+      {page === 'dashboard' && <MindChamber commitments={commitments} />}      
+      {page === 'investigate' && <InvestigatePage commitments={commitments} onSaved={fetchCommitments} />}
       {page === 'commitments' && <CommitmentsPage commitments={commitments} refresh={fetchCommitments} />}
       {page === 'history' && <HistoryPage />}
       {page === 'chat' && <ChatPage />}
