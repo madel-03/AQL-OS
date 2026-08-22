@@ -597,7 +597,7 @@ function VoiceAgentBar({ onRefresh }) {
         body: JSON.stringify({ message: command, lang }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'error');
+      if (!res.ok && !json.reply) throw new Error(json.error || 'error');
       setLast(json);
       jarvisSpeak(json.reply, lang, () => onRefresh && onRefresh(), localStorage.getItem('aql-voice') || 'en-GB-RyanNeural');
     } catch (e) {

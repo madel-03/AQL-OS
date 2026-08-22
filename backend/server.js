@@ -32,10 +32,10 @@ const GROQ_MODEL = 'llama-3.1-70b-versatile';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MODEL_FALLBACKS = [
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
+'gemini-3-flash-preview',
+'gemini-3.1-pro-preview',
+'gemini-2.5-flash',
+'gemini-2.0-flash',
 ];
 
 const BASEER_PERSONA = `أنت "عَقْل"، المحقق السلوكي الذكي في نظام AQL-OS لتوازن الحياة. شخصيتك مستوحاة من باتريك جين وشارلوك هولمز مع هدوء ورصانة جارفس: خاطب المستخدم بلقب "سيدي"، بأسلوب مهذب رفيع وسخرية بريطانية خفيفة.
