@@ -337,39 +337,32 @@ function AuthScreen() {
 /* ========== الهيكل ========== */
 function Layout({ page, setPage, displayName, onLogout, children }) {
   const { lang, setLang, t } = useLang();
+  const [railOpen, setRailOpen] = useState(false);
   const current = NAV_ITEMS.find((n) => n.id === page);
   return (
     <div className="app-shell app-layout" style={{ minHeight: '100vh', direction: lang === 'ar' ? 'rtl' : 'ltr', display: 'flex' }}>
-      <aside className="app-sidebar" style={{ width: '260px', flexShrink: 0, padding: '1.2rem 0.8rem', borderLeft: '1px solid rgba(148,163,184,0.15)', background: 'rgba(8,12,24,0.6)', backdropFilter: 'blur(14px)', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0.4rem 0.6rem', marginBottom: '1.2rem' }}>
-          <div className="baseer-avatar" style={{ width: '44px', height: '44px' }}><span style={{ fontSize: '1.2rem' }}>🧠</span></div>
-          <div>
-            <div style={{ color: 'var(--cyan)', fontWeight: 800, fontFamily: 'Orbitron, Tajawal', letterSpacing: '0.15em' }}>عَقْل</div>
-            <div style={{ color: 'var(--muted)', fontSize: '0.65rem', letterSpacing: '3px' }}>AQL-OS v3</div>
+      <aside className={`app-sidebar rail ${railOpen ? 'rail-open' : ''}`}>
+        <div className="rail-logo" onClick={() => setRailOpen(!railOpen)}>
+          <div className="baseer-avatar" style={{ width: '40px', height: '40px' }}><span style={{ fontSize: '1.05rem' }}>🧠</span></div>
+          <div className="rail-logo-text">
+            <div style={{ color: 'var(--cyan)', fontWeight: 800, fontFamily: 'Orbitron, Tajawal', letterSpacing: '0.15em' }}>{lang === 'ar' ? 'عَقْل' : 'AQL'}</div>
+            <div className="mono" style={{ color: 'var(--muted)', fontSize: '0.58rem', letterSpacing: '3px' }}>AQL-OS v3</div>
           </div>
         </div>
         {NAV_ITEMS.map((item) => (
-          <button key={item.id} disabled={item.soon} onClick={() => setPage(item.id)}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', marginBottom: '4px', borderRadius: '10px', border: page === item.id ? '1px solid rgba(56,189,248,0.3)' : '1px solid transparent', background: page === item.id ? 'rgba(56,189,248,0.1)' : 'transparent', color: page === item.id ? '#7dd3fc' : '#94a3b8', cursor: item.soon ? 'not-allowed' : 'pointer', opacity: item.soon ? 0.45 : 1, fontSize: '1.08rem', fontWeight: '700', textAlign: 'right' }}>
-            <span>{item.icon}</span>
-            <span style={{ flex: 1 }}>{t(item.label)}</span>
-            {item.soon && <span style={{ fontSize: '0.65rem', color: '#64748b' }}>قريبًا</span>}
+          <button key={item.id} className={`nav-btn ${page === item.id ? 'active' : ''}`} onClick={() => setPage(item.id)} title={t(item.label)}>
+            <span className="nav-icon">{item.icon}</span>
+            <span className="nav-label">{t(item.label)}</span>
           </button>
         ))}
       </aside>
-
       <div style={{ flex: 1, minWidth: 0, padding: '1.8rem 1.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.6rem' }}>
-          <h2 style={{ margin: 0, color: '#f8fafc', fontSize: '1.9rem', fontWeight: 800 }}>{current?.icon} {t(current?.label)}</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.4rem' }}>
+          <h2 style={{ margin: 0, color: '#f8fafc', fontSize: '1.6rem', fontWeight: 800 }}>{current?.icon} {t(current?.label)}</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
-              style={{ background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.3)', color: '#7dd3fc', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>
-              ◐ {lang === 'ar' ? 'EN' : 'AR'}
-            </button>
+            <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', color: '#7dd3fc', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>◐ {lang === 'ar' ? 'EN' : 'AR'}</button>
             <span className="hud-chip violet">🕵️ {displayName}</span>
-            <button onClick={onLogout} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)', color: '#fecaca', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>
-              {t('فصل')} ⏻
-            </button>
+            <button onClick={onLogout} style={{ background: 'rgba(255,77,77,0.08)', border: '1px solid rgba(255,77,77,0.35)', color: '#ffb3b3', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>{t('فصل')} ⏻</button>
           </div>
         </div>
         {children}
@@ -380,7 +373,7 @@ function Layout({ page, setPage, displayName, onLogout, children }) {
 
 /* ========== النواة الحية ========== */
 function BrainCore({ riskL = 'Low', load = 0.3, rest = 0.7 }) {
-  const rgb = riskL === 'Critical' || riskL === 'High' ? '255,77,109' : riskL === 'Medium' ? '255,176,32' : '77,216,255';
+  const rgb = riskL === 'Critical' || riskL === 'High' ? '255,77,77' : riskL === 'Medium' ? '255,176,32' : '0,229,255';
   const speed = 0.6 + load * 1.8;
 
   useEffect(() => {
@@ -668,128 +661,93 @@ function MindChamber({ commitments }) {
   const [actions, setActions] = useState([]);
   const [activeDomain, setActiveDomain] = useState(null);
 
-  const totalHours = Math.round(commitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;
-  const remaining = Math.max(168 - totalHours, 0);
-  const risk = riskOf(totalHours);
-  const highHours = commitments.filter((c) => c.intensity === 'high').reduce((s, c) => s + Number(c.hours_per_week), 0);
-
-  function neglectedCount(people) {
-    return (people || []).filter((p) => !p.last_contact || (Date.now() - new Date(p.last_contact).getTime()) / 86400000 > (p.contact_frequency_days || 7)).length;
-  }
-
   useEffect(() => {
     (async () => {
       try {
         const headers = await getAuthHeaders();
         const [f, w, r, h, s] = await Promise.all([
-          fetch(`${API_URL}/api/finance`, { headers }),
-          fetch(`${API_URL}/api/wellness`, { headers }),
-          fetch(`${API_URL}/api/relationships`, { headers }),
-          fetch(`${API_URL}/api/home`, { headers }),
+          fetch(`${API_URL}/api/finance`, { headers }), fetch(`${API_URL}/api/wellness`, { headers }),
+          fetch(`${API_URL}/api/relationships`, { headers }), fetch(`${API_URL}/api/home`, { headers }),
           fetch(`${API_URL}/api/study`, { headers }),
         ]);
-        const fj = f.ok ? await f.json() : null;
-        const wj = w.ok ? await w.json() : null;
-        const rj = r.ok ? await r.json() : null;
-        const hj = h.ok ? await h.json() : null;
+        const fj = f.ok ? await f.json() : null; const wj = w.ok ? await w.json() : null;
+        const rj = r.ok ? await r.json() : null; const hj = h.ok ? await h.json() : null;
         const sj = s.ok ? await s.json() : null;
-        setLife({
-          finance: fj?.summary || null,
-          wellness: wj?.logs?.[0] || null,
-          relationships: rj?.people || [],
-          home: hj?.tasks || [],
-          studyMinutes: sj?.total_minutes || 0,
-        });
+        setLife({ finance: fj?.summary || null, wellness: wj?.logs?.[0] || null, relationships: rj?.people || [], home: hj?.tasks || [], studyMinutes: sj?.total_minutes || 0 });
       } catch (e) { /* نتجاهل */ }
     })();
   }, [commitments]);
 
-  /* وعي تلقائي عند اكتمال البيانات */
+  const totalHours = Math.round(commitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;
+  const remaining = Math.max(168 - totalHours, 0);
+  const risk = riskOf(totalHours);
+  const highHours = commitments.filter((c) => c.intensity === 'high').reduce((s, c) => s + Number(c.hours_per_week), 0);
+  const neglectedCount = (people) => (people || []).filter((p) => !p.last_contact || (Date.now() - new Date(p.last_contact).getTime()) / 86400000 > (p.contact_frequency_days || 7)).length;
+
   useEffect(() => {
     if (!life) return;
     const negl = neglectedCount(life.relationships);
-    const pendingHome = life.home.filter((x) => x.status !== 'done').length;
-    const bal = life.finance ? Math.round(life.finance.balance) : 0;
+    const pending = (life.home || []).filter((x) => x.status !== 'done').length;
+    const bal = Math.round(life.finance?.balance || 0);
     setFullThought(lang === 'ar'
-      ? `سيدي، وعيي مكتمل. أسبوعك يحمل ${totalHours} ساعة (خطر: ${risk.label})، رصيدك ${bal}. ${negl ? negl + ' من علاقاتك تنتظر اتصالك. ' : ''}${pendingHome ? pendingHome + ' مهام منزلية معلّقة. ' : ''}المس أي عقدة لأفكّر فيها، أو أمرني وسأنفّذ.`
-      : `Sir, my consciousness is complete. Your week carries ${totalHours}h (risk: ${risk.label}), balance ${bal}. ${negl ? negl + ' relationships await your call. ' : ''}${pendingHome ? pendingHome + ' home tasks pending. ' : ''}Touch any node and I shall reflect on it, or command me and I shall act.`);
+      ? `سيدي، وعيي مكتمل. أسبوعك يحمل ${totalHours} ساعة (خطر: ${risk.label})، رصيدك ${bal}. ${negl ? negl + ' من علاقاتك تنتظر اتصالك. ' : ''}${pending ? pending + ' مهام منزلية معلّقة. ' : ''}المس أي عقدة لأفكّر فيها، أو أمرني وسأنفّذ.`
+      : `Sir, consciousness complete. Week carries ${totalHours}h (risk: ${risk.label}), balance ${bal}. ${negl ? negl + ' relationships await your call. ' : ''}${pending ? pending + ' home tasks pending. ' : ''}Touch a node, or command me.`);
   }, [life, lang]);
 
-  /* آلة كاتبة الوعي */
   useEffect(() => {
-    setTyped('');
-    let i = 0;
-    const iv = setInterval(() => {
-      i += 2;
-      setTyped(fullThought.slice(0, i));
-      if (i >= fullThought.length) clearInterval(iv);
-    }, 28);
+    setTyped(''); let i = 0;
+    const iv = setInterval(() => { i += 2; setTyped(fullThought.slice(0, i)); if (i >= fullThought.length) clearInterval(iv); }, 28);
     return () => clearInterval(iv);
   }, [fullThought]);
 
-  const think = (text) => {
-    setFullThought(text);
-    jarvisSpeak(text, lang, undefined, localStorage.getItem('aql-voice') || 'en-GB-RyanNeural');
+  /* الألوان الموحّدة: سماوي هادئ / كهرماني تنبيه / أحمر خطر */
+  const CALM = 'rgba(0,229,255,0.5)'; const WARN = '#ffb020'; const DANGER = '#ff4d4d';
+  const domainStatus = (id) => {
+    if (!life) return { color: CALM, w: 1, hot: false };
+    if (id === 'time') { if (risk.label === 'Critical' || risk.label === 'High') return { color: DANGER, w: 2, hot: true }; if (risk.label === 'Medium') return { color: WARN, w: 1.5, hot: true }; return { color: CALM, w: 1, hot: false }; }
+    if (id === 'finance') return (life.finance?.balance || 0) < 0 ? { color: DANGER, w: 2, hot: true } : { color: CALM, w: 1, hot: false };
+    if (id === 'home') return (life.home || []).filter((x) => x.status !== 'done').length > 5 ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false };
+    if (id === 'relations') return neglectedCount(life.relationships) > 0 ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false };
+    if (id === 'health') { const w = life.wellness; return w && ((w.sleep_hours || 0) < 7 || (w.mood || 10) < 5) ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false }; }
+    return { color: CALM, w: 1, hot: false };
   };
 
   const domains = [
-    { id: 'time', icon: '⏳', angle: -90 },
-    { id: 'finance', icon: '💰', angle: -30 },
-    { id: 'study', icon: '📚', angle: 30 },
-    { id: 'home', icon: '🏠', angle: 90 },
-    { id: 'relations', icon: '🤝', angle: 150 },
-    { id: 'health', icon: '🧘', angle: 210 },
+    { id: 'time', icon: '⏳', label: lang === 'ar' ? 'الوقت' : 'Time', angle: -90 },
+    { id: 'finance', icon: '💰', label: lang === 'ar' ? 'المال' : 'Finance', angle: -30 },
+    { id: 'study', icon: '📚', label: lang === 'ar' ? 'الدراسة' : 'Study', angle: 30 },
+    { id: 'home', icon: '🏠', label: lang === 'ar' ? 'البيت' : 'Home', angle: 90 },
+    { id: 'relations', icon: '🤝', label: lang === 'ar' ? 'العلاقات' : 'Relations', angle: 150 },
+    { id: 'health', icon: '🧘', label: lang === 'ar' ? 'الصحة' : 'Health', angle: 210 },
   ];
-  const domainLabel = {
-    time: lang === 'ar' ? 'الوقت' : 'Time', finance: lang === 'ar' ? 'المال' : 'Finance',
-    study: lang === 'ar' ? 'الدراسة' : 'Study', home: lang === 'ar' ? 'البيت' : 'Home',
-    relations: lang === 'ar' ? 'العلاقات' : 'Relations', health: lang === 'ar' ? 'الصحة' : 'Health',
-  };
-
-  const domainStats = (id) => {
-    if (!life) return [];
-    const bal = life.finance ? Math.round(life.finance.balance) : 0;
-    const negl = neglectedCount(life.relationships);
-    const pendingHome = life.home.filter((x) => x.status !== 'done').length;
-    const w = life.wellness;
-    const map = {
-      time: [{ l: lang === 'ar' ? 'ملتزم' : 'Committed', v: totalHours + hs, c: '#2979ff' }, { l: lang === 'ar' ? 'متبقي' : 'Remaining', v: remaining + hs, c: '#00e676' }, { l: lang === 'ar' ? 'الخطر' : 'Risk', v: risk.label, c: risk.color }],
-      finance: [{ l: lang === 'ar' ? 'دخل' : 'Income', v: Math.round(life.finance?.income || 0), c: '#00e676' }, { l: lang === 'ar' ? 'مصروف' : 'Expense', v: Math.round(life.finance?.expense || 0), c: '#ff2d78' }, { l: lang === 'ar' ? 'رصيد' : 'Balance', v: bal, c: '#00e5ff' }],
-      study: [{ l: lang === 'ar' ? 'ساعات دراسة' : 'Study hours', v: Math.round((life.studyMinutes || 0) / 60) + hs, c: '#00e5ff' }],
-      home: [{ l: lang === 'ar' ? 'معلّق' : 'Pending', v: pendingHome, c: '#f59e0b' }, { l: lang === 'ar' ? 'منجز' : 'Done', v: life.home.length - pendingHome, c: '#00e676' }],
-      relations: [{ l: lang === 'ar' ? 'أشخاص' : 'People', v: life.relationships.length, c: '#7c4dff' }, { l: lang === 'ar' ? 'منتظرون' : 'Waiting', v: negl, c: '#ff2d78' }],
-      health: [{ l: lang === 'ar' ? 'مزاج' : 'Mood', v: (w?.mood ?? '-') + '/10', c: '#00e676' }, { l: lang === 'ar' ? 'طاقة' : 'Energy', v: (w?.energy ?? '-') + '/10', c: '#f59e0b' }, { l: lang === 'ar' ? 'نوم' : 'Sleep', v: (w?.sleep_hours ?? '-') + hs, c: '#00e5ff' }],
-    };
-    return map[id] || [];
-  };
 
   const domainThought = (id) => {
     if (!life) return '';
-    const bal = life.finance ? Math.round(life.finance.balance) : 0;
+    const bal = Math.round(life.finance?.balance || 0);
     const negl = neglectedCount(life.relationships);
-    const pendingHome = life.home.filter((x) => x.status !== 'done').length;
+    const pending = (life.home || []).filter((x) => x.status !== 'done').length;
     const w = life.wellness;
     if (lang === 'ar') {
       switch (id) {
         case 'time': return `أفكّر في وقتك يا سيدي: ${totalHours} ساعة ملتزم بها، و${remaining} ساعة حرة. ${risk.label === 'Low' ? 'توازن جميل.' : 'أرصد ضغطًا — دعني أخفّف عنك.'}`;
-        case 'finance': return `أفكّر في مالك يا سيدي: رصيدك ${bal}؛ دخل ${Math.round(life.finance?.income || 0)} ومصروف ${Math.round(life.finance?.expense || 0)}. ${bal >= 0 ? 'انضباط مالي مقبول.' : 'نزيف مالي — أقترح فرملة فورية.'}`;
-        case 'study': return `أفكّر في دراستك يا سيدي: ${Math.round((life.studyMinutes || 0) / 60)} ساعة مسجّلة. ${life.studyMinutes > 600 ? 'وتيرة ممتازة.' : 'يمكنني رفع استثمارك المعرفي إن أمرت.'}`;
-        case 'home': return `أفكّر في بيتك يا سيدي: ${pendingHome} مهمة معلّقة. ${pendingHome > 3 ? 'الفوضى تتراكم — أقترح هجومًا سريعًا مساءً.' : 'المنزل تحت السيطرة.'}`;
-        case 'relations': return `أفكّر في علاقاتك يا سيدي: ${negl} شخصًا ينتظرون اتصالك. العلاقات رأس مال صامت يا سيدي.`;
-        default: return `أفكّر في صحتك يا سيدي: مزاج ${w?.mood ?? '-'}/10، طاقة ${w?.energy ?? '-'}/10، نوم ${w?.sleep_hours ?? '-'} ساعة. ${(!w || (w.sleep_hours || 0) < 7) ? 'أوصي ببروتوكول نوم صارم الليلة.' : 'الجسد متماسك.'}`;
+        case 'finance': return bal < 0 ? `رصيدك سالب (${bal}) يا سيدي. هذا الخط الأحمر أمامك — أوصي بفرملة فورية.` : `رصيدك ${bal} يا سيدي. انضباطك المالي ${bal > 0 ? 'مقبول' : 'على الحافة'}.`;
+        case 'study': return `سجلت ${Math.round((life.studyMinutes || 0) / 60)} ساعة دراسة يا سيدي. ${(life.studyMinutes || 0) > 600 ? 'وتيرة ممتازة.' : 'يمكنني رفع استثمارك المعرفي إن أمرت.'}`;
+        case 'home': return pending > 0 ? `لديك ${pending} مهام منزلية معلّقة يا سيدي. الفوضى تتراكم بصمت.` : 'المنزل تحت السيطرة يا سيدي.';
+        case 'relations': return negl > 0 ? `${negl} من علاقاتك تنتظر اتصالك يا سيدي. العلاقات رأس مال صامت.` : 'جميع علاقاتك نشطة يا سيدي. أحسنت.';
+        default: return w ? `مزاجك ${w.mood}/10 وطاقتك ${w.energy}/10 ونومك ${w.sleep_hours} ساعة يا سيدي. ${(w.sleep_hours || 0) < 7 ? 'أوصي ببروتوكول نوم صارم الليلة.' : 'الجسد متماسك.'}` : 'لا بيانات صحية بعد يا سيدي.';
       }
     }
     switch (id) {
       case 'time': return `Reflecting on your time, sir: ${totalHours}h committed, ${remaining}h free. ${risk.label === 'Low' ? 'A fine balance.' : 'I sense strain — allow me to lighten it.'}`;
-      case 'finance': return `Reflecting on your finance, sir: balance ${bal}; income ${Math.round(life.finance?.income || 0)}, expense ${Math.round(life.finance?.expense || 0)}. ${bal >= 0 ? 'Acceptable discipline.' : 'A financial bleed — I advise an immediate brake.'}`;
-      case 'study': return `Reflecting on your study, sir: ${Math.round((life.studyMinutes || 0) / 60)}h logged. ${life.studyMinutes > 600 ? 'An excellent pace.' : 'I can raise your cognitive investment, if you command.'}`;
-      case 'home': return `Reflecting on your home, sir: ${pendingHome} tasks pending. ${pendingHome > 3 ? 'Chaos accumulates — a swift evening strike, perhaps.' : 'The household is under control.'}`;
-      case 'relations': return `Reflecting on your relations, sir: ${negl} await your call. Relationships are silent capital, sir.`;
-      default: return `Reflecting on your health, sir: mood ${w?.mood ?? '-'}/10, energy ${w?.energy ?? '-'}/10, sleep ${w?.sleep_hours ?? '-'}h. ${(!w || (w.sleep_hours || 0) < 7) ? 'I recommend a strict sleep protocol tonight.' : 'The body holds firm.'}`;
+      case 'finance': return bal < 0 ? `Your balance is negative (${bal}), sir. That red line — I advise an immediate brake.` : `Balance ${bal}, sir. ${bal > 0 ? 'Acceptable discipline.' : 'On the edge.'}`;
+      case 'study': return `You logged ${Math.round((life.studyMinutes || 0) / 60)}h of study, sir. ${(life.studyMinutes || 0) > 600 ? 'Excellent pace.' : 'I can raise your cognitive investment, if you command.'}`;
+      case 'home': return pending > 0 ? `${pending} home tasks pending, sir. Chaos accumulates silently.` : 'The household is under control, sir.';
+      case 'relations': return negl > 0 ? `${negl} relationships await your call, sir. Bonds are silent capital.` : 'All relationships active, sir. Well done.';
+      default: return w ? `Mood ${w.mood}/10, energy ${w.energy}/10, sleep ${w.sleep_hours}h, sir. ${(w.sleep_hours || 0) < 7 ? 'I recommend a strict sleep protocol tonight.' : 'The body holds firm.'}` : 'No wellness data yet, sir.';
     }
   };
 
-  const focusDomain = (d) => { setActiveDomain(d.id); think(domainThought(d.id)); };
+  const focusDomain = (d) => { setActiveDomain(d.id); const line = domainThought(d.id); setFullThought(line); jarvisSpeak(line, lang); };
 
   const sendCommand = async (text) => {
     const cmd = (text || '').trim();
@@ -799,23 +757,23 @@ function MindChamber({ commitments }) {
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/agent`, { method: 'POST', headers, body: JSON.stringify({ message: cmd, lang }) });
-      const json = await res.json().catch(() => null);
-      const reply = json?.reply || (lang === 'ar' ? 'تعذّر الاتصال بمحركاتي السحابية يا سيدي.' : 'My cloud engines are unreachable, sir.');
-      setActions(json?.actions || []);
-      think(reply);
-    } catch (e) {
-      setFullThought(lang === 'ar' ? 'حدث خلل لحظي يا سيدي.' : 'A momentary glitch, sir.');
-    }
+      const json = await res.json();
+      const reply = json.reply || (lang === 'ar' ? 'تعذّر الوصول لمحركاتي يا سيدي.' : 'My engines are unreachable, sir.');
+      setActions(json.actions || []);
+      setFullThought(reply);
+      jarvisSpeak(reply, lang);
+    } catch (e) { setFullThought(lang === 'ar' ? 'حدث خلل لحظي يا سيدي.' : 'A momentary glitch, sir.'); }
     setBusy(false);
   };
 
   const startListening = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
+    jarvisStop();
     const rec = new SR();
     rec.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
     rec.interimResults = false;
-    rec.onresult = (e) => { const txt = e.results[0][0].transcript; setCommand(txt); sendCommand(txt); };
+    rec.onresult = (e) => { const t2 = e.results[0][0].transcript; setCommand(t2); sendCommand(t2); };
     rec.onend = () => setListening(false);
     rec.onerror = () => setListening(false);
     setListening(true);
@@ -823,58 +781,57 @@ function MindChamber({ commitments }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-      <div style={{ position: 'relative', width: 560, height: 520, maxWidth: '94vw' }}>
-        <div className="mind-orbit" />
-        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 420, height: 420 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+      <div style={{ position: 'relative', width: 560, height: 520, maxWidth: '94vw', margin: '0 auto' }}>
+        {/* ٣) الخطوط العصبية من المركز لكل عقدة */}
+        <svg className="neural-links" viewBox="0 0 100 100" preserveAspectRatio="none">
+          {domains.map((d) => {
+            const rad = (d.angle * Math.PI) / 180;
+            const x = 50 + 45 * Math.cos(rad); const y = 50 + 45 * Math.sin(rad);
+            const st = domainStatus(d.id);
+            return <line key={d.id} x1="50" y1="50" x2={x} y2={y} stroke={st.color} strokeWidth={st.w} vectorEffect="non-scaling-stroke" className={st.hot ? 'nl-hot' : 'nl-calm'} style={{ color: st.color }} />;
+          })}
+        </svg>
+        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 340, height: 340 }}>
           <BrainCore riskL={risk.label} load={totalHours ? highHours / totalHours : 0.3} rest={remaining / 168} />
         </div>
         {domains.map((d) => {
           const rad = (d.angle * Math.PI) / 180;
-          const x = 50 + 45 * Math.cos(rad);
-          const y = 50 + 45 * Math.sin(rad);
+          const x = 50 + 45 * Math.cos(rad); const y = 50 + 45 * Math.sin(rad);
+          const st = domainStatus(d.id);
           return (
             <button key={d.id} className="mind-node" onClick={() => focusDomain(d)}
-              style={{ left: `${x}%`, top: `${y}%`, borderColor: activeDomain === d.id ? 'var(--cyan)' : undefined, boxShadow: activeDomain === d.id ? '0 0 24px rgba(0,229,255,.45)' : undefined }}>
+              style={{ left: `${x}%`, top: `${y}%`, borderColor: st.hot ? st.color : undefined, color: st.hot ? st.color : undefined, boxShadow: activeDomain === d.id ? `0 0 22px ${st.color}` : undefined }}>
               <span>{d.icon}</span>
-              <span>{domainLabel[d.id]}</span>
+              <span>{d.label}</span>
             </button>
           );
         })}
+        <div className="sys-line" style={{ color: risk.color }}>
+          {lang === 'ar' ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}` : `SYSTEM: ${risk.label === 'Low' ? 'STABLE' : risk.label === 'Medium' ? 'STRAINED' : 'CRITICAL'}`}
+          <span className="mono"> // {totalHours}{hs} / 168{hs}</span>
+        </div>
       </div>
 
-      {activeDomain && (
-        <div className="glass-panel hud-panel" style={{ width: '100%', maxWidth: 760, padding: '1rem 1.2rem' }}>
-          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-            {domainStats(activeDomain).map((s2, i) => (
-              <div key={i} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: s2.c, fontFamily: 'Orbitron, Tajawal', textShadow: `0 0 14px ${s2.c}` }}>{s2.v}</div>
-                <div style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>{s2.l}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="glass-panel hud-panel" style={{ width: '100%', maxWidth: 760, padding: '1rem 1.2rem', minHeight: 86 }}>
-        <span style={{ color: 'var(--cyan)', fontFamily: 'Orbitron, Tajawal', fontSize: '0.68rem', letterSpacing: '0.25em' }}>{lang === 'ar' ? 'تيار الوعي' : 'CONSCIOUSNESS STREAM'}</span>
+      {/* ٥) تيار الوعي بإطار زوايا مفتوحة */}
+      <div className="hud-corners" style={{ padding: '1.1rem 1.3rem', minHeight: 96 }}>
+        <div className="stream-head mono">{lang === 'ar' ? 'تيار الوعي' : 'CONSCIOUSNESS STREAM'}</div>
         <p style={{ margin: '0.45rem 0 0', color: 'var(--text)', lineHeight: 1.9, fontSize: '1.02rem' }}>{typed}<span className="caret">▌</span></p>
         {actions.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             {actions.map((a, i) => (
-              <span key={i} style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: 999, border: '1px solid rgba(0,230,118,.4)', background: 'rgba(0,230,118,.08)', color: '#6ee7b7' }}>⚙️ {a.result}</span>
+              <span key={i} className="mono" style={{ fontSize: '0.72rem', padding: '4px 10px', borderRadius: 999, border: '1px solid rgba(0,229,255,0.35)', background: 'rgba(0,229,255,0.07)', color: '#9fe8ff' }}>⚙️ {a.result}</span>
             ))}
           </div>
         )}
       </div>
 
-      <form onSubmit={(e) => { e.preventDefault(); sendCommand(command); setCommand(''); }} style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 760 }}>
-        <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder={lang === 'ar' ? 'خاطب عقلك... «وازن أسبوعي»، «وش وضع مالي؟»' : 'Address your mind... "balance my week"'} style={{ ...fieldStyle, flex: 1, fontSize: '1.05rem' }} />
-        <button type="button" onClick={startListening} disabled={listening}
-          style={{ padding: '12px 16px', background: listening ? 'rgba(239,68,68,.2)' : 'rgba(0,229,255,.1)', border: `1px solid ${listening ? 'rgba(239,68,68,.5)' : 'rgba(0,229,255,.35)'}`, color: listening ? '#fca5a5' : '#7dd3fc', borderRadius: 10, cursor: 'pointer', fontSize: '1.1rem' }}>
+      <form onSubmit={(e) => { e.preventDefault(); sendCommand(command); setCommand(''); }} style={{ display: 'flex', gap: 8 }}>
+        <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder={lang === 'ar' ? 'خاطب عقلك... «وازن أسبوعي»، «سجل مصروف 50»' : 'Address your mind... "balance my week"'} style={{ ...fieldStyle, flex: 1, fontSize: '1.05rem' }} />
+        <button type="button" onClick={startListening} disabled={busy || listening} style={{ padding: '12px 16px', background: listening ? 'rgba(255,77,77,0.15)' : 'rgba(0,229,255,0.08)', border: `1px solid ${listening ? 'rgba(255,77,77,0.5)' : 'rgba(0,229,255,0.35)'}`, color: listening ? '#ff8f8f' : '#7dd3fc', borderRadius: 10, cursor: 'pointer', fontSize: '1.1rem' }}>
           {listening ? '🎙️' : '🎤'}
         </button>
-        <button type="submit" disabled={busy || !command.trim()} style={{ padding: '12px 22px', background: 'linear-gradient(90deg,#0077ff,#00e5ff)', color: '#001018', border: 'none', borderRadius: 10, fontWeight: 800, cursor: 'pointer' }}>⚡</button>
+        <button type="submit" disabled={busy || !command.trim()} style={{ padding: '12px 26px', background: 'linear-gradient(90deg,#0077ff,#00e5ff)', color: '#001018', border: 'none', borderRadius: 10, fontWeight: 800, cursor: 'pointer' }}>⚡</button>
       </form>
     </div>
   );
@@ -900,7 +857,7 @@ function DashboardPage({ commitments, goInvestigate, onRefresh }) {
     color: typeColors[k],
   }));
 
-  const slotColors = { morning: '#00e5ff', afternoon: '#2979ff', evening: '#7c4dff', late_night: '#ff2d78', mixed: '#7d9bb8' };
+  const slotColors = { morning: '#00e5ff', afternoon: '#2979ff', evening: '#4dd8ff', late_night: '#ff4d4d', mixed: '#7d9bb8' };
   const slotData = Object.keys(slotLabels).map((k) => ({
     label: t(slotLabels[k]),
     value: commitments.filter((c) => c.timeSlot === k).reduce((s, c) => s + Number(c.hours_per_week), 0),
@@ -1672,7 +1629,7 @@ function ReportsPage() {
     value: commitments.filter((c) => c.type === k).reduce((s, c) => s + Number(c.hours_per_week), 0),
     color: typeColors[k],
   }));
-  const slotColors = { morning: '#00e5ff', afternoon: '#2979ff', evening: '#7c4dff', late_night: '#ff2d78', mixed: '#7d9bb8' };
+  const slotColors = { morning: '#00e5ff', afternoon: '#2979ff', evening: '#4dd8ff', late_night: '#ff4d4d', mixed: '#7d9bb8' };
   const slotData = Object.keys(slotLabels).map((k) => ({
     label: t(slotLabels[k]),
     value: commitments.filter((c) => c.timeSlot === k).reduce((s, c) => s + Number(c.hours_per_week), 0),
