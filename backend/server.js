@@ -6,7 +6,7 @@ import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { AGENT_TOOLS, getOpenAITools, runAgentTool } from './agent-tools.js';
+import { AGENT_TOOLS, getOpenAITools, runAgentTool, liveWebSearch } from './agent-tools.js';
 
 const app = express();
 app.use(cors({
@@ -500,9 +500,10 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     const { data: historyData } = await supabase.from('chat_messages').select('role, content').eq('user_id', req.user.id).order('created_at', { ascending: false }).limit(10);
     const history = (historyData || []).reverse();
 
-    const systemPrompt = CHAT_PERSONA + (lang === 'en' ? '\nRespond in English, address the user as "sir".' : '\nخاطب المستخدم بلقب "سيدي".')
-      + `\nCurrent Case Data:\n- Commitments: ${JSON.stringify(list)}\n- Total Weekly Hours: ${totalHours}h\n- Life & Finance Summary: ${JSON.stringify(life)}`;
-
+     const live = await liveWebSearch(message, lang);
+     const systemPrompt = CHAT_PERSONA + (lang === 'en' ? '\nRespond in English, address the user as "sir".' : '\nخاطب المستخدم بلقب "سيدي".')
+     + `\nCurrent Case Data:\n- Commitments: ${JSON.stringify(list)}\n- Total Weekly Hours: ${totalHours}h\n- Life & Finance Summary: ${JSON.stringify(life)}`
+     + (live ? `\nLIVE WEB RESULTS (اعتمد عليها إذا كانت ذات صلة واذكر المصادر بالروابط):\n${live}` : '');
     const messagesPayload = [
       ...history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
       { role: 'user', content: message }
