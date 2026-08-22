@@ -837,6 +837,27 @@ function MindChamber({ commitments }) {
   );
 }
 
+/* ========== شريط هولوغرامي زخرفي ========== */
+function HoloDecor() {
+  const bars = [35, 60, 45, 80, 55, 70, 40, 90, 65, 50, 75, 60, 85, 45];
+  return (
+    <div className="holo-strip" aria-hidden="true">
+      <div className="holo-cell">
+        <div className="holo-label">POWER</div>
+        <div className="holo-bars">{bars.map((h, i) => <span key={i} style={{ height: `${h}%`, animationDelay: `${i * 0.12}s` }} />)}</div>
+      </div>
+      <div className="holo-cell">
+        <div className="holo-label">SIGNAL</div>
+        <div className="holo-dots">{Array.from({ length: 40 }).map((_, i) => <span key={i} className={[7, 12, 21, 28, 33].includes(i) ? 'on' : ''} />)}</div>
+      </div>
+      <div className="holo-cell">
+        <div className="holo-label">UPLINK</div>
+        <div className="holo-code">01.1.25.9.55.88.144<br />AQL.220.14.07.118<br />NODE.01R.ACTIVE</div>
+      </div>
+    </div>
+  );
+}
+
 /* ========== مركز القيادة ========== */
 function DashboardPage({ commitments, goInvestigate, onRefresh }) {
   useEffect(() => { fetch(`${API_URL}/api/health`).catch(() => {}); }, []);
@@ -925,7 +946,7 @@ function DashboardPage({ commitments, goInvestigate, onRefresh }) {
           ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}`
           : `SYSTEM: ${risk.label === 'Low' ? 'STABLE' : risk.label === 'Medium' ? 'STRAINED' : 'CRITICAL'}`}
       </div>
-
+            <HoloDecor />
       <div className="glass-panel hud-panel" style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', justifyItems: 'center' }}>
         <Gauge value={commitments.length} max={10} label={t('الالتزامات النشطة')} color="#00e5ff" />
         <Gauge value={totalHours} max={168} label={t('ساعات ملتزم بها')} color="#2979ff" suffix={hs} />
@@ -1639,7 +1660,7 @@ function ReportsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <ProjectionChart commitments={commitments} />
-
+      <HoloDecor />
       <div className="glass-panel hud-panel" style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', justifyItems: 'center' }}>
         <Gauge value={totalHours} max={168} label={t('إجمالي الالتزامات:')} color="#2979ff" suffix={hs} />
         <Gauge value={highHours} max={Math.max(totalHours, 1)} label={t('حمل ذهني عالٍ:')} color="#ff9100" suffix={hs} />
