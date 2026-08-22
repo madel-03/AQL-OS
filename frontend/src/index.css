@@ -324,3 +324,106 @@ button:disabled { opacity:.7; cursor:not-allowed; }
 .energy-lbl { color: var(--muted); font-size: .6rem; letter-spacing: .15em; }
 .energy-pct { color: var(--cyan); font-size: .68rem; }
 .globe-canvas { width: 100%; max-width: 260px; margin: 0 auto; display: block; }
+/* ========== القائمة: شاشة حية من نفس الجهاز ========== */
+.app-sidebar.rail {
+  width: 86px;
+  flex-shrink: 0;
+  position: sticky; top: 0; height: 100vh;
+  overflow-y: auto; overflow-x: hidden;
+  padding: 1rem 0.7rem;
+  display: flex; flex-direction: column; gap: 4px;
+  background: linear-gradient(180deg, rgba(3,22,48,0.85), rgba(2,10,24,0.92)) !important;
+  border-inline-end: 1px solid var(--line-soft) !important;
+  backdrop-filter: blur(14px);
+  transition: width 0.35s var(--ease);
+}
+.app-sidebar.rail:hover, .app-sidebar.rail.rail-open { width: 250px; }
+
+/* زوايا HUD على إطار القائمة كلها */
+.app-sidebar.rail::before {
+  content: ''; position: absolute; inset: 6px; pointer-events: none; z-index: 2;
+  background:
+    linear-gradient(var(--cyan),var(--cyan)) top left / 14px 1px,
+    linear-gradient(var(--cyan),var(--cyan)) top left / 1px 14px,
+    linear-gradient(var(--cyan),var(--cyan)) top right / 14px 1px,
+    linear-gradient(var(--cyan),var(--cyan)) top right / 1px 14px,
+    linear-gradient(var(--cyan),var(--cyan)) bottom left / 14px 1px,
+    linear-gradient(var(--cyan),var(--cyan)) bottom left / 1px 14px,
+    linear-gradient(var(--cyan),var(--cyan)) bottom right / 14px 1px,
+    linear-gradient(var(--cyan),var(--cyan)) bottom right / 1px 14px;
+  background-repeat: no-repeat; opacity: 0.55;
+}
+
+/* خط سكانر عمودي يتحرك ببطء خلف القائمة */
+.rail-scan { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+.rail-scan::after {
+  content: ''; position: absolute; left: 0; right: 0; height: 140px; top: -160px;
+  background: linear-gradient(to bottom, transparent, rgba(0,229,255,0.09), rgba(30,111,255,0.05), transparent);
+  animation: railScan 7s linear infinite;
+}
+@keyframes railScan { to { top: 100%; } }
+
+/* الشعار بإطار HUD مفتوح */
+.rail-logo {
+  position: relative;
+  display: flex; align-items: center; gap: 10px; justify-content: center;
+  padding: 0.6rem 0.5rem; margin-bottom: 1rem; cursor: pointer;
+}
+.rail-logo::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(var(--cyan),var(--cyan)) top left / 10px 1px,
+    linear-gradient(var(--cyan),var(--cyan)) top left / 1px 10px,
+    linear-gradient(var(--cyan),var(--cyan)) bottom right / 10px 1px,
+    linear-gradient(var(--cyan),var(--cyan)) bottom right / 1px 10px;
+  background-repeat: no-repeat; opacity: 0.8;
+}
+.rail-logo-text { display: none; }
+.app-sidebar.rail:hover .rail-logo-text, .app-sidebar.rail.rail-open .rail-logo-text { display: block; }
+
+/* أزرار القائمة: flat تمامًا بدون خلفيات */
+.nav-btn {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 11px 10px; margin: 0;
+  justify-content: center;
+  background: transparent; border: none; border-radius: 8px;
+  color: var(--muted); cursor: pointer;
+  font-size: 0.92rem; font-weight: 700;
+  transition: color 0.25s var(--ease);
+}
+.app-sidebar.rail:hover .nav-btn, .app-sidebar.rail.rail-open .nav-btn { justify-content: flex-start; padding: 11px 14px; }
+.nav-icon { display: grid; place-items: center; width: 22px; height: 22px; }
+.nav-icon svg { width: 19px; height: 19px; }
+.app-sidebar.rail .nav-btn > .nav-icon { color: var(--muted); }
+.nav-label { white-space: nowrap; opacity: 0; max-width: 0; overflow: hidden; transition: opacity 0.25s var(--ease), max-width 0.35s var(--ease); }
+.app-sidebar.rail:hover .nav-label, .app-sidebar.rail.rail-open .nav-label { opacity: 1; max-width: 170px; }
+.nav-btn:hover { color: #9fe8ff; }
+.nav-btn:hover > .nav-icon { color: var(--cyan); filter: drop-shadow(0 0 6px rgba(0,229,255,0.6)); }
+
+/* العنصر النشط: خط توهج جانبي + زوايا خفيفة — بدون أي خلفية مصمتة */
+.nav-btn.active { color: #bff1ff; background: transparent; }
+.nav-btn.active > .nav-icon { color: var(--cyan); filter: drop-shadow(0 0 8px rgba(0,229,255,0.85)); }
+.nav-btn.active::after {
+  content: ''; position: absolute; top: 16%; bottom: 16%; width: 2px;
+  inset-inline-start: -7px;
+  background: var(--cyan);
+  box-shadow: 0 0 8px var(--cyan), 0 0 18px rgba(0,229,255,0.6);
+}
+.nav-btn.active::before {
+  content: ''; position: absolute; inset: 3px; pointer-events: none;
+  background:
+    linear-gradient(var(--cyan),var(--cyan)) top left / 8px 1px,
+    linear-gradient(var(--cyan),var(--cyan)) top left / 1px 8px,
+    linear-gradient(var(--cyan),var(--cyan)) bottom right / 8px 1px,
+    linear-gradient(var(--cyan),var(--cyan)) bottom right / 1px 8px;
+  background-repeat: no-repeat; opacity: 0.7;
+}
+
+/* أيقونة العنوان داخل الصفحة */
+.title-icon svg { width: 20px; height: 20px; vertical-align: -3px; color: var(--cyan); filter: drop-shadow(0 0 6px rgba(0,229,255,0.6)); }
+
+@media (max-width: 900px) {
+  .rail-scan { display: none; }
+  .app-sidebar.rail, .app-sidebar.rail:hover, .app-sidebar.rail.rail-open { width: 100% !important; height: auto !important; position: static !important; }
+}
