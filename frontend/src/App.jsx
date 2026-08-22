@@ -498,6 +498,7 @@ function Radar({ axes }) {
   };
   const poly = (r) => axes.map((_, i) => pt(i, r).join(',')).join(' ');
   const dataPoly = axes.map((a, i) => pt(i, R * Math.max(a.value, 0.06)).join(',')).join(' ');
+  const sw = 0.6;
   return (
     <svg width="190" height="180" viewBox="0 0 180 180" style={{ margin: '0 auto', display: 'block' }}>
       {[0.33, 0.66, 1].map((g) => (
@@ -507,6 +508,10 @@ function Radar({ axes }) {
         const [x, y] = pt(i, R);
         return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="rgba(0,229,255,0.12)" strokeWidth="1" />;
       })}
+      <g className="radar-sweep">
+        <path d={`M ${cx} ${cy} L ${cx} ${cy - R} A ${R} ${R} 0 0 1 ${cx + R * Math.sin(sw)} ${cy - R * Math.cos(sw)} Z`} fill="rgba(0,229,255,0.10)" />
+        <line x1={cx} y1={cy} x2={cx} y2={cy - R} stroke="#00e5ff" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 6px rgba(0,229,255,0.8))' }} />
+      </g>
       <polygon points={dataPoly} fill="rgba(0,229,255,0.18)" stroke="#00e5ff" strokeWidth="2"
         style={{ filter: 'drop-shadow(0 0 8px rgba(0,229,255,0.5))', transition: 'all 1s cubic-bezier(.4,0,.2,1)' }} />
       {axes.map((a, i) => {
@@ -1560,23 +1565,29 @@ function HistoryPage() {
         const response = await fetch(`${API_URL}/api/analysis-logs`, { headers });
         const json = await response.json();
         if (response.ok) setLogs(json.logs || []);
-      } catch (err) { /* تجاهل */ }
+      } catch (err) { /* نتجاهل */ }
       setLoaded(true);
     })();
   }, []);
   if (!loaded) return <p style={{ color: '#94a3b8' }}>⏳ جاري فتح الأرشيف...</p>;
   if (logs.length === 0) return <div className="glass-panel hud-panel" style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>الأرشيف فارغ. شغّل أول محاكاة من غرفة التحليل. 🔍</div>;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-      {logs.map((log) => (
-        <div key={log.id} className="glass-panel" style={{ padding: '1rem 1.2rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '6px' }}>
-            <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>{new Date(log.created_at).toLocaleString('ar-SA')}</span>
-            <span style={{ fontSize: '0.75rem', fontWeight: 800, padding: '3px 10px', borderRadius: '999px', background: log.burnout_risk === 'Critical' ? 'rgba(239,68,68,0.15)' : log.burnout_risk === 'Low' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', color: log.burnout_risk === 'Critical' ? '#fca5a5' : log.burnout_risk === 'Low' ? '#6ee7b7' : '#fcd34d' }}>الخطر: {log.burnout_risk}</span>
+    <div className="timeline">
+      {logs.map((log) => {
+        const color = log.burnout_risk === 'Critical' ? '#ef4444' : log.burnout_risk === 'Low' ? '#00e676' : '#ff9100';
+        return (
+          <div key={log.id} className="tl-item">
+            <span className="tl-dot" style={{ background: color, boxShadow: `0 0 12px ${color}` }} />
+            <div className="glass-panel hud-panel" style={{ padding: '1rem 1.2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '6px' }}>
+                <span className="mono" style={{ color: '#94a3b8', fontSize: '0.75rem' }}>{new Date(log.created_at).toLocaleString('ar-SA')}</span>
+                <span className="mono" style={{ fontSize: '0.72rem', fontWeight: 800, color }}>● {log.burnout_risk}</span>
+              </div>
+              <p style={{ margin: 0, color: '#e2e8f0', fontSize: '1rem', lineHeight: 1.7 }}>{log.main_insight}</p>
+            </div>
           </div>
-          <p style={{ margin: 0, color: '#e2e8f0', fontSize: '1.05rem', lineHeight: 1.7 }}>{log.main_insight}</p>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
