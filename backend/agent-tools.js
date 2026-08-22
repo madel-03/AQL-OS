@@ -1,181 +1,304 @@
-// agent-tools.js
-export const toolsRegistry = [
-  {
-    declaration: {
-      name: 'add_commitment',
-      description: 'Add a new weekly time commitment',
-      parameters: {
-        type: 'OBJECT',
-        properties: {
-          title: { type: 'STRING' },
-          hours_per_week: { type: 'NUMBER' },
-          type: { type: 'STRING', description: 'study|work|health|personal|sleep' },
-          intensity: { type: 'STRING', description: 'low|medium|high' },
-          time_slot: { type: 'STRING', description: 'morning|afternoon|evening|late_night|mixed' }
-        },
-        required: ['title', 'hours_per_week']
-      }
-    },
-    execute: async (userId, args, { supabase }) => {
-      const { data, error } = await supabase.from('commitments').insert({
-        user_id: userId,
-        title: String(args.title || 'التزام جديد'),
-        hours_per_week: Number(args.hours_per_week || 1),
-        type: ['study', 'work', 'health', 'personal', 'sleep'].includes(args.type) ? args.type : 'personal',
-        intensity: ['low', 'medium', 'high'].includes(args.intensity) ? args.intensity : 'medium',
-        time_slot: ['morning', 'afternoon', 'evening', 'late_night', 'mixed'].includes(args.time_slot) ? args.time_slot : 'mixed',
-        flexible: true,
-        status: 'active'
-      }).select().single();
-      if (error) throw error;
-      return `added commitment "${data.title}" (${data.hours_per_week}h/week)`;
-    }
-  },
-  {
-    declaration: {
-      name: 'reduce_hours',
-      description: 'Reduce weekly hours of an existing commitment (match by title)',
-      parameters: {
-        type: 'OBJECT',
-        properties: { title: { type: 'STRING' }, new_hours: { type: 'NUMBER' } },
-        required: ['title', 'new_hours']
-      }
-    },
-    execute: async (userId, args, { supabase }) => {
-      const { data: row } = await supabase.from('commitments').select('*').eq('user_id', userId).eq('status', 'active').ilike('title', `%${String(args.title || '')}%`).maybeSingle();
-      if (!row) return `commitment "${args.title}" not found`;
-      const { error } = await supabase.from('commitments').update({ hours_per_week: Number(args.new_hours) }).eq('id', row.id);
-      if (error) throw error;
-      return `reduced "${row.title}" to ${args.new_hours}h/week`;
-    }
-  },
-  {
-    declaration: {
-      name: 'archive_commitment',
-      description: 'Archive/remove an existing commitment (match by title)',
-      parameters: {
-        type: 'OBJECT',
-        properties: { title: { type: 'STRING' } },
-        required: ['title']
-      }
-    },
-    execute: async (userId, args, { supabase }) => {
-      const { data: row } = await supabase.from('commitments').select('*').eq('user_id', userId).eq('status', 'active').ilike('title', `%${String(args.title || '')}%`).maybeSingle();
-      if (!row) return `commitment "${args.title}" not found`;
-      const { error } = await supabase.from('commitments').update({ status: 'archived' }).eq('id', row.id);
-      if (error) throw error;
-      return `archived "${row.title}"`;
-    }
-  },
-  {
-    declaration: {
-      name: 'create_goal',
-      description: 'Create a strategic goal',
-      parameters: {
-        type: 'OBJECT',
-        properties: { title: { type: 'STRING' } },
-        required: ['title']
-      }
-    },
-    execute: async (userId, args, { supabase }) => {
-      const { data, error } = await supabase.from('goals').insert({ user_id: userId, title: String(args.title || 'هدف جديد') }).select().single();
-      if (error) throw error;
-      return `created goal "${data.title}"`;
-    }
-  },
-  {
-    declaration: {
-      name: 'add_expense',
-      description: 'Record a financial expense or income',
-      parameters: {
-        type: 'OBJECT',
-        properties: { amount: { type: 'NUMBER' }, kind: { type: 'STRING', description: 'expense|income' }, category: { type: 'STRING' } },
-        required: ['amount']
-      }
-    },
-    execute: async (userId, args, { supabase }) => {
-      const { data, error } = await supabase.from('finance_entries').insert({ user_id: userId, type: args.kind === 'income' ? 'income' : 'expense', amount: Number(args.amount || 0), category: String(args.category || 'عام') }).select().single();
-      if (error) throw error;
-      return `recorded ${args.kind === 'income' ? 'income' : 'expense'} of ${args.amount} (${args.category || 'عام'})`;
-    }
-  },
-  {
-    declaration: {
-      name: 'add_home_task',
-      description: 'Add a home task',
-      parameters: {
-        type: 'OBJECT',
-        properties: { title: { type: 'STRING' }, priority: { type: 'STRING', description: 'low|medium|high|urgent' } },
-        required: ['title']
-      }
-    },
-    execute: async (userId, args, { supabase }) => {
-      const { data, error } = await supabase.from('home_tasks').insert({ user_id: userId, title: String(args.title || 'مهمة'), priority: String(args.priority || 'medium') }).select().single();
-      if (error) throw error;
-      return `added home task "${args.title}"`;
-    }
-  },
-  {
-    declaration: {
-      name: 'log_study',
-      description: 'Log a study session',
-      parameters: {
-        type: 'OBJECT',
-        properties: { subject: { type: 'STRING' }, duration_minutes: { type: 'NUMBER' } },
-        required: ['subject', 'duration_minutes']
-      }
-    },
-    execute: async (userId, args, { supabase }) => {
-      const { data, error } = await supabase.from('study_sessions').insert({ user_id: userId, subject: String(args.subject || 'دراسة'), duration_minutes: Number(args.duration_minutes || 0) }).select().single();
-      if (error) throw error;
-      return `logged ${args.duration_minutes}min study of "${args.subject}"`;
-    }
-  },
-  {
-    declaration: {
-      name: 'mark_contact',
-      description: 'Mark that the user contacted a person today',
-      parameters: {
-        type: 'OBJECT',
-        properties: { person_name: { type: 'STRING' } },
-        required: ['person_name']
-      }
-    },
-    execute: async (userId, args, { supabase }) => {
-      const { data: row } = await supabase.from('relationships').select('id').eq('user_id', userId).ilike('person_name', `%${String(args.person_name || '')}%`).maybeSingle();
-      if (!row) return `person "${args.person_name}" not found in relationships`;
-      const { error } = await supabase.from('relationships').update({ last_contact: new Date().toISOString().slice(0, 10) }).eq('id', row.id);
-      if (error) throw error;
-      return `marked contact with "${args.person_name}" today`;
-    }
-  }
+import express from 'express';
+import cors from 'cors';
+import 'dotenv/config';
+import { createClient } from '@supabase/supabase-js';
+import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { AGENT_TOOLS, getOpenAITools, runAgentTool } from './agent-tools.js';
+
+const app = express();
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
+    'https://aql-os-orcin.vercel.app',
+    /^https:\/\/.*\.vercel\.app$/,
+  ],
+}));
+app.use(express.json());
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const MODEL_FALLBACKS = [
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
 ];
 
-export const AGENT_TOOLS = toolsRegistry.map(t => t.declaration);
+// مفاتيح النماذج السريعة والذكية
+const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY || '';
+const CEREBRAS_MODEL = 'llama-3.3-70b';
 
-export const getGroqTools = () => toolsRegistry.map(tool => ({
-  type: 'function',
-  function: {
-    name: tool.declaration.name,
-    description: tool.declaration.description,
-    parameters: {
-      type: 'object',
-      properties: tool.declaration.parameters.properties,
-      required: tool.declaration.parameters.required || [],
-    },
-  },
-}));
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GROQ_MODEL = 'llama-3.1-8b-instant';
 
-export const runAgentTool = async (userId, name, args, context) => {
-  const tool = toolsRegistry.find(t => t.declaration.name === name);
-  if (!tool) {
-    console.warn(`Tool ${name} called but not found.`);
-    return `unknown tool ${name}`;
-  }
+const CHAT_PERSONA = `أنت "عَقْل"، المحقق السلوكي الذكي في نظام AQL-OS لتوازن الحياة، بأسلوب جارفس: خاطب المستخدم بلقب "سيدي".
+أنت في محادثة حية وتحليلية عميقة. قواعد الرد:
+- استخدم معطيات ملف القضية الحقيقية (التزامات، مقاييس، ذاكرة، ملف الحياة) في ردودك بدقة.
+- أجب بأسلوب خطابي ذكي، فصيح، وهادئ.
+- استنتج، لاحظ، وحلل بذكاء شارلوك هولمز.
+- لا تخترع أرقامًا غير موجودة في السياق.
+- أجب بنص عادي فقط بدون JSON وبدون عناوين جانبية.`;
+
+function normalizeCommitment(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    hours_per_week: Math.round(Number(row.hours_per_week || 0) * 10) / 10,
+    type: row.type,
+    intensity: row.intensity,
+    timeSlot: row.time_slot,
+    flexible: !!row.flexible,
+    goal_id: row.goal_id || null,
+    status: row.status,
+  };
+}
+
+async function requireAuth(req, res, next) {
   try {
-    return await tool.execute(userId, args, context);
-  } catch (e) {
-    console.error(`Error executing ${name}:`, e.message);
-    return `tool ${name} failed: ${e.message}`;
+    const token = (req.headers.authorization || '').replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'Unauthorized' });
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data.user) return res.status(401).json({ error: 'Unauthorized' });
+    req.user = data.user;
+    next();
+  } catch (err) {
+    res.status(401).json({ error: 'Unauthorized' });
   }
-};
+}
+
+async function fetchLifeData(userId) {
+  try {
+    const [fin, stu, home, rel, well] = await Promise.all([
+      supabase.from('finance_entries').select('type, amount, category').eq('user_id', userId).limit(100),
+      supabase.from('study_sessions').select('subject, duration_minutes').eq('user_id', userId).limit(50),
+      supabase.from('home_tasks').select('title, status').eq('user_id', userId).limit(50),
+      supabase.from('relationships').select('person_name, relation_type, last_contact, contact_frequency_days').eq('user_id', userId).limit(50),
+      supabase.from('wellness_logs').select('mood, energy, sleep_hours').eq('user_id', userId).order('log_date', { ascending: false }).limit(7),
+    ]);
+    const finList = fin.data || [];
+    const income = finList.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
+    const expense = finList.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
+    return {
+      finance: { income, expense, balance: income - expense, entries: finList },
+      study: { total_minutes: (stu.data || []).reduce((s, e) => s + Number(e.duration_minutes), 0) },
+      home: { pending_tasks: (home.data || []).filter((t) => t.status !== 'done').length },
+      relationships: { count: (rel.data || []).length },
+      wellness: (well.data || [])[0] || null,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+async function geminiGenerate(payload) {
+  let lastError = null;
+  for (const model of MODEL_FALLBACKS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.status === 503 || response.status === 429 || response.status === 404) {
+        lastError = new Error(`Gemini ${response.status} on ${model}`);
+        continue;
+      }
+      if (!response.ok) {
+        const t = await response.text();
+        throw new Error(`Gemini ${response.status}: ${t}`);
+      }
+      return await response.json();
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error('All Gemini models failed');
+}
+
+// دالة الاتصال بـ Cerebras (متوافقة مع OpenAI API)
+async function cerebrasChat(system, messages, tools = null) {
+  if (!CEREBRAS_API_KEY) throw new Error('CEREBRAS_API_KEY missing');
+  const body = {
+    model: CEREBRAS_MODEL,
+    temperature: 0.7,
+    messages: [{ role: 'system', content: system }, ...messages],
+  };
+  if (tools) {
+    body.tools = tools;
+    body.tool_choice = 'auto';
+  }
+  const response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${CEREBRAS_API_KEY}` },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error('Cerebras ' + response.status);
+  return await response.json();
+}
+
+// دالة الاتصال بـ Groq
+async function groqChat(system, messages, tools = null) {
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY missing');
+  const body = {
+    model: GROQ_MODEL,
+    temperature: 0.7,
+    messages: [{ role: 'system', content: system }, ...messages],
+  };
+  if (tools) {
+    body.tools = tools;
+    body.tool_choice = 'auto';
+  }
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error('Groq ' + response.status);
+  return await response.json();
+}
+
+// ----------------------------------------------------
+// Endpoints
+// ----------------------------------------------------
+
+app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'AQL-OS backend' }));
+
+app.get('/api/commitments', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active').order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ commitments: (data || []).map(normalizeCommitment) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// مسار الوكيل الذكي بالكامل (بدون أي قواعد تقليدية، اعتماداً حصرياً على سلسلة النماذج الذكية)
+app.post('/api/agent', requireAuth, async (req, res) => {
+  const body = req.body || {};
+  const message = (body.message || '').trim();
+  const lang = body.lang === 'en' ? 'en' : 'ar';
+  
+  if (!message) return res.status(400).json({ error: 'No message' });
+
+  const { data: commitments } = await supabase.from('commitments').select('*').eq('user_id', req.user.id).eq('status', 'active');
+  const list = (commitments || []).map(normalizeCommitment);
+  const totalHours = Math.round(list.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;
+  const life = await fetchLifeData(req.user.id);
+  
+  const system = CHAT_PERSONA + (lang === 'en' ? '\nRespond in English, address the user as "sir".' : '\nخاطب المستخدم بلقب "سيدي".')
+    + `\nCurrent System Data:\n- Commitments: ${JSON.stringify(list)}\n- Total Weekly Hours: ${totalHours}h\n- Life & Finance Data: ${JSON.stringify(life)}`;
+
+  const openAiTools = getOpenAITools();
+  const actions = [];
+  let reply = '';
+
+  // === الطبقة الأولى: Gemini مع Function Calling ===
+  try {
+    console.log('🤖 Agent: Trying Gemini...');
+    const contents = [{ role: 'user', parts: [{ text: message }] }];
+    for (let step = 0; step < 6; step++) {
+      const data = await geminiGenerate({
+        system_instruction: { parts: [{ text: system }] },
+        contents,
+        tools: [{ function_declarations: AGENT_TOOLS }],
+      });
+      const part = data.candidates?.[0]?.content?.parts?.[0];
+      const fc = part?.functionCall;
+      if (fc) {
+        const result = await runAgentTool(req.user.id, fc.name, fc.args || {}, { supabase });
+        actions.push({ tool: fc.name, result });
+        contents.push({ role: 'model', parts: [{ functionCall: fc }] });
+        contents.push({ role: 'user', parts: [{ functionResponse: { name: fc.name, response: { result } } }] });
+        continue;
+      }
+      reply = part?.text || '';
+      break;
+    }
+    if (reply || actions.length) {
+      console.log('✅ Agent: Gemini succeeded');
+      return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'gemini' });
+    }
+  } catch (gemErr) {
+    console.log('⚠️ Gemini agent failed, sliding to Cerebras:', gemErr.message);
+  }
+
+  // === الطبقة الثانية: Cerebras (سريع جداً وعالي الذكاء) ===
+  if (CEREBRAS_API_KEY) {
+    try {
+      console.log('🤖 Agent: Trying Cerebras...');
+      let messages = [{ role: 'user', content: message }];
+      for (let step = 0; step < 6; step++) {
+        const data = await cerebrasChat(system, messages, openAiTools);
+        const msg = data.choices?.[0]?.message;
+        const tc = msg?.tool_calls?.[0];
+        if (tc) {
+          let args = {};
+          try { args = JSON.parse(tc.function.arguments || '{}'); } catch (e) {}
+          const result = await runAgentTool(req.user.id, tc.function.name, args, { supabase });
+          actions.push({ tool: tc.function.name, result });
+          messages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls });
+          messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+          continue;
+        }
+        reply = msg?.content || '';
+        break;
+      }
+      if (reply || actions.length) {
+        console.log('✅ Agent: Cerebras succeeded');
+        return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'cerebras' });
+      }
+    } catch (cErr) {
+      console.log('⚠️ Cerebras agent failed, sliding to Groq:', cErr.message);
+    }
+  }
+
+  // === الطبقة الثالثة: Groq (احتياطي سريع) ===
+  if (GROQ_API_KEY) {
+    try {
+      console.log('🤖 Agent: Trying Groq...');
+      let messages = [{ role: 'user', content: message }];
+      for (let step = 0; step < 6; step++) {
+        const data = await groqChat(system, messages, openAiTools);
+        const msg = data.choices?.[0]?.message;
+        const tc = msg?.tool_calls?.[0];
+        if (tc) {
+          let args = {};
+          try { args = JSON.parse(tc.function.arguments || '{}'); } catch (e) {}
+          const result = await runAgentTool(req.user.id, tc.function.name, args, { supabase });
+          actions.push({ tool: tc.function.name, result });
+          messages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls });
+          messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+          continue;
+        }
+        reply = msg?.content || '';
+        break;
+      }
+      if (reply || actions.length) {
+        console.log('✅ Agent: Groq succeeded');
+        return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'groq' });
+      }
+    } catch (gErr) {
+      console.log('❌ Groq agent failed:', gErr.message);
+    }
+  }
+
+  // === بروتوكول الطوارئ (لو تعطلت كل العقول السحابية مؤقتاً) ===
+  const emergencyReply = lang === 'en'
+    ? 'Pardon me, sir — all cognitive engines are momentarily unreachable. Standing by for reconnection.'
+    : 'عذرًا سيدي — محركات التفكير السحابية تشهد انقطاعاً لحظياً. في انتظار إعادة الاتصال.';
+  
+  res.status(503).json({ reply: emergencyReply, actions: [], engine: 'emergency' });
+});
+
+// باقي المسارات تبقى كما هي...
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
