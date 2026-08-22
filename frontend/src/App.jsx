@@ -891,10 +891,10 @@ function MemoryTimeline() {
 
 
 /* ========== غرفة الوعي — العقل الحي ========== */
+/* ========== غرفة الوعي — العقل الحي ========== */
 function MindChamber({ commitments }) {
   const { lang, hs } = useLang();
   const [life, setLife] = useState(null);
-  const [logs, setLogs] = useState([]);
   const [fullThought, setFullThought] = useState(lang === 'ar' ? 'أُوقظ وعيي... أقرأ ملفاتك يا سيدي.' : 'Waking my consciousness... reading your files, sir.');
   const [typed, setTyped] = useState('');
   const [command, setCommand] = useState('');
@@ -902,72 +902,38 @@ function MindChamber({ commitments }) {
   const [listening, setListening] = useState(false);
   const [actions, setActions] = useState([]);
   const [activeDomain, setActiveDomain] = useState(null);
-  const [memory, setMemory] = useState([]);
-  const [lastEngine, setLastEngine] = useState(null);
-  const [thinking, setThinking] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
         const headers = await getAuthHeaders();
-        const [f, w, r, h, s, lg] = await Promise.all([
+        const [f, w, r, h, s] = await Promise.all([
           fetch(`${API_URL}/api/finance`, { headers }), fetch(`${API_URL}/api/wellness`, { headers }),
           fetch(`${API_URL}/api/relationships`, { headers }), fetch(`${API_URL}/api/home`, { headers }),
-          fetch(`${API_URL}/api/study`, { headers }), fetch(`${API_URL}/api/analysis-logs`, { headers }),
+          fetch(`${API_URL}/api/study`, { headers }),
         ]);
         const fj = f.ok ? await f.json() : null; const wj = w.ok ? await w.json() : null;
         const rj = r.ok ? await r.json() : null; const hj = h.ok ? await h.json() : null;
-        const sj = s.ok ? await s.json() : null; const lgj = lg.ok ? await lg.json() : null;
-        setLife({ finance: fj || null, wellness: wj?.logs?.[0] || null, relationships: rj?.people || [], home: hj?.tasks || [], studyMinutes: sj?.total_minutes || 0 });
-        setLogs(lgj?.logs || []);
+        const sj = s.ok ? await s.json() : null;
+        setLife({ finance: fj?.summary || null, wellness: wj?.logs?.[0] || null, relationships: rj?.people || [], home: hj?.tasks || [], studyMinutes: sj?.total_minutes || 0 });
       } catch (e) { /* نتجاهل */ }
     })();
   }, [commitments]);
-  useEffect(() => {
-  (async () => {
-    try {
-      const headers = await getAuthHeaders();
-      const r = await fetch(`${API_URL}/api/analysis-logs`, { headers });
-      const j = await r.json();
-      if (r.ok) setMemory((j.logs || []).slice(0, 3));
-    } catch (e) { /* نتجاهل */ }
-  })();
-}, [commitments]);
 
   const totalHours = Math.round(commitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;
   const remaining = Math.max(168 - totalHours, 0);
   const risk = riskOf(totalHours);
-  const riskPct = risk.label === 'Critical' ? 95 : risk.label === 'High' ? 70 : risk.label === 'Medium' ? 45 : 15;
   const highHours = commitments.filter((c) => c.intensity === 'high').reduce((s, c) => s + Number(c.hours_per_week), 0);
   const neglectedCount = (people) => (people || []).filter((p) => !p.last_contact || (Date.now() - new Date(p.last_contact).getTime()) / 86400000 > (p.contact_frequency_days || 7)).length;
-  const RISK_ORDER = ['Low', 'Medium', 'High', 'Critical'];
 
-  /* اتجاهات عبر الزمن (بادرة + ذاكرة) */
-  const spendTrend = (() => {
-    const entries = life?.finance?.entries || [];
-    const now = Date.now();
-    const last7 = entries.filter((e) => e.type === 'expense' && now - new Date(e.entry_date).getTime() < 7 * 86400000).reduce((s, e) => s + Number(e.amount), 0);
-    const prev7 = entries.filter((e) => e.type === 'expense' && now - new Date(e.entry_date).getTime() >= 7 * 86400000 && now - new Date(e.entry_date).getTime() < 14 * 86400000).reduce((s, e) => s + Number(e.amount), 0);
-    if (prev7 <= 0) return null;
-    return Math.round(((last7 - prev7) / prev7) * 100);
-  })();
-  const riskTrend = logs.length >= 2 ? RISK_ORDER.indexOf(logs[0].burnout_risk) - RISK_ORDER.indexOf(logs[1].burnout_risk) : 0;
-
-  /* البادرة: تيار الوعي يفتح بملاحظات استباقية */
   useEffect(() => {
     if (!life) return;
-    const bal = Math.round(life.finance?.summary?.balance || 0);
     const negl = neglectedCount(life.relationships);
     const pending = (life.home || []).filter((x) => x.status !== 'done').length;
-    const notes = [lang === 'ar'
-      ? `سيدي، وعيي مكتمل. أسبوعك يحمل ${totalHours} ساعة (خطر: ${risk.label})، رصيدك ${bal}.`
-      : `Sir, consciousness complete. Week carries ${totalHours}h (risk: ${risk.label}), balance ${bal}.`];
-    if (spendTrend !== null && spendTrend >= 20) notes.push(lang === 'ar' ? `لاحظت أن مصروفك زاد ${spendTrend}% مقارنة بالأسبوع الماضي.` : `I noticed your spending rose ${spendTrend}% versus last week.`);
-    if (riskTrend > 0) notes.push(lang === 'ar' ? 'مستوى خطرك ارتفع منذ آخر تحليل — أوصي بالمراجعة.' : 'Your risk climbed since the last analysis — a review is advisable.');
-    else if (riskTrend < 0) notes.push(lang === 'ar' ? 'تحسّن ملحوظ منذ آخر تحليل — أحسنت يا سيدي.' : 'Marked improvement since the last analysis — well done, sir.');
-    if (negl) notes.push(lang === 'ar' ? `${negl} من علاقاتك تنتظر اتصالك.` : `${negl} relationships await your call.`);
-    if (pending) notes.push(lang === 'ar' ? `${pending} مهام منزلية معلّقة.` : `${pending} home tasks pending.`);
-    setFullThought(notes.join(' '));
+    const bal = Math.round(life.finance?.balance || 0);
+    setFullThought(lang === 'ar'
+      ? `سيدي، وعيي مكتمل. أسبوعك يحمل ${totalHours} ساعة (خطر: ${risk.label})، رصيدك ${bal}. ${negl ? negl + ' من علاقاتك تنتظر اتصالك. ' : ''}${pending ? pending + ' مهام منزلية معلّقة. ' : ''}المس أي عقدة لأفكّر فيها، أو أمرني وسأنفّذ.`
+      : `Sir, consciousness complete. Week carries ${totalHours}h (risk: ${risk.label}), balance ${bal}. ${negl ? negl + ' relationships await your call. ' : ''}${pending ? pending + ' home tasks pending. ' : ''}Touch a node, or command me.`);
   }, [life, lang]);
 
   useEffect(() => {
@@ -976,17 +942,17 @@ function MindChamber({ commitments }) {
     return () => clearInterval(iv);
   }, [fullThought]);
 
-  const GOOD = 'rgba(0,230,118,0.55)'; const WARN = '#ffb020'; const DANGER = '#ff4d4d';
+  const CALM = 'rgba(0,229,255,0.5)'; const WARN = '#ffb020'; const DANGER = '#ff4d4d';
   const domainStatus = (id) => {
-  if (!life) return { color: GOOD, w: 1.5, hot: false };
-  if (id === 'time') { if (risk.label === 'Critical' || risk.label === 'High') return { color: DANGER, w: 2, hot: true }; if (risk.label === 'Medium') return { color: WARN, w: 2, hot: true }; return { color: GOOD, w: 1.5, hot: false }; }
-  if (id === 'finance') return (life.finance?.balance || 0) < 0 ? { color: DANGER, w: 2, hot: true } : { color: GOOD, w: 1.5, hot: false };
-  if (id === 'study') return (life.studyMinutes || 0) > 0 ? { color: GOOD, w: 1.5, hot: false } : { color: WARN, w: 2, hot: true };
-  if (id === 'home') return (life.home || []).filter((x) => x.status !== 'done').length > 5 ? { color: WARN, w: 2, hot: true } : { color: GOOD, w: 1.5, hot: false };
-  if (id === 'relations') return neglectedCount(life.relationships) > 0 ? { color: WARN, w: 2, hot: true } : { color: GOOD, w: 1.5, hot: false };
-  if (id === 'health') { const w = life.wellness; return w && ((w.sleep_hours || 0) < 7 || (w.mood || 10) < 5) ? { color: WARN, w: 2, hot: true } : { color: GOOD, w: 1.5, hot: false }; }
-  return { color: GOOD, w: 1.5, hot: false };
-};
+    if (!life) return { color: CALM, w: 1, hot: false };
+    if (id === 'time') { if (risk.label === 'Critical' || risk.label === 'High') return { color: DANGER, w: 2, hot: true }; if (risk.label === 'Medium') return { color: WARN, w: 1.5, hot: true }; return { color: CALM, w: 1, hot: false }; }
+    if (id === 'finance') return (life.finance?.balance || 0) < 0 ? { color: DANGER, w: 2, hot: true } : { color: CALM, w: 1, hot: false };
+    if (id === 'home') return (life.home || []).filter((x) => x.status !== 'done').length > 5 ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false };
+    if (id === 'relations') return neglectedCount(life.relationships) > 0 ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false };
+    if (id === 'health') { const w = life.wellness; return w && ((w.sleep_hours || 0) < 7 || (w.mood || 10) < 5) ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false }; }
+    return { color: CALM, w: 1, hot: false };
+  };
+
   const domains = [
     { id: 'time', icon: '⏳', label: lang === 'ar' ? 'الوقت' : 'Time', angle: -90 },
     { id: 'finance', icon: '💰', label: lang === 'ar' ? 'المال' : 'Finance', angle: -30 },
@@ -995,28 +961,17 @@ function MindChamber({ commitments }) {
     { id: 'relations', icon: '🤝', label: lang === 'ar' ? 'العلاقات' : 'Relations', angle: 150 },
     { id: 'health', icon: '🧘', label: lang === 'ar' ? 'الصحة' : 'Health', angle: 210 },
   ];
-  const domainLoads = life ? domains.map((d) => {
-    const st = domainStatus(d.id);
-    let v = 0.2;
-    if (d.id === 'time') v = Math.min(totalHours / 168, 1);
-    if (d.id === 'finance') { const s = life.finance?.summary; v = s ? (s.balance < 0 ? 0.9 : s.income > 0 ? Math.min(s.expense / s.income, 1) : 0.5) : 0.3; }
-    if (d.id === 'home') v = Math.min((life.home || []).filter((x) => x.status !== 'done').length / 10, 1);
-    if (d.id === 'relations') { const c = (life.relationships || []).length || 1; v = Math.min(neglectedCount(life.relationships) / c, 1); }
-    if (d.id === 'health') v = life.wellness ? Math.min(1 - (life.wellness.mood || 5) / 10, 1) : 0.3;
-    if (d.id === 'study') v = Math.min((life.studyMinutes || 0) / 600, 1);
-    return { value: v, color: st.color };
-  }) : [];
 
   const domainThought = (id) => {
     if (!life) return '';
-    const bal = Math.round(life.finance?.summary?.balance || 0);
+    const bal = Math.round(life.finance?.balance || 0);
     const negl = neglectedCount(life.relationships);
     const pending = (life.home || []).filter((x) => x.status !== 'done').length;
     const w = life.wellness;
     if (lang === 'ar') {
       switch (id) {
         case 'time': return `أفكّر في وقتك يا سيدي: ${totalHours} ساعة ملتزم بها، و${remaining} ساعة حرة. ${risk.label === 'Low' ? 'توازن جميل.' : 'أرصد ضغطًا — دعني أخفّف عنك.'}`;
-        case 'finance': return bal < 0 ? `رصيدك سالب (${bal}) يا سيدي. أوصي بفرملة فورية.` : `رصيدك ${bal} يا سيدي. انضباطك المالي ${bal > 0 ? 'مقبول' : 'على الحافة'}.`;
+        case 'finance': return bal < 0 ? `رصيدك سالب (${bal}) يا سيدي. هذا الخط الأحمر أمامك — أوصي بفرملة فورية.` : `رصيدك ${bal} يا سيدي. انضباطك المالي ${bal > 0 ? 'مقبول' : 'على الحافة'}.`;
         case 'study': return `سجلت ${Math.round((life.studyMinutes || 0) / 60)} ساعة دراسة يا سيدي. ${(life.studyMinutes || 0) > 600 ? 'وتيرة ممتازة.' : 'يمكنني رفع استثمارك المعرفي إن أمرت.'}`;
         case 'home': return pending > 0 ? `لديك ${pending} مهام منزلية معلّقة يا سيدي. الفوضى تتراكم بصمت.` : 'المنزل تحت السيطرة يا سيدي.';
         case 'relations': return negl > 0 ? `${negl} من علاقاتك تنتظر اتصالك يا سيدي. العلاقات رأس مال صامت.` : 'جميع علاقاتك نشطة يا سيدي. أحسنت.';
@@ -1025,13 +980,102 @@ function MindChamber({ commitments }) {
     }
     switch (id) {
       case 'time': return `Reflecting on your time, sir: ${totalHours}h committed, ${remaining}h free. ${risk.label === 'Low' ? 'A fine balance.' : 'I sense strain — allow me to lighten it.'}`;
-      case 'finance': return bal < 0 ? `Your balance is negative (${bal}), sir. I advise an immediate brake.` : `Balance ${bal}, sir. ${bal > 0 ? 'Acceptable discipline.' : 'On the edge.'}`;
+      case 'finance': return bal < 0 ? `Your balance is negative (${bal}), sir. That red line — I advise an immediate brake.` : `Balance ${bal}, sir. ${bal > 0 ? 'Acceptable discipline.' : 'On the edge.'}`;
       case 'study': return `You logged ${Math.round((life.studyMinutes || 0) / 60)}h of study, sir. ${(life.studyMinutes || 0) > 600 ? 'Excellent pace.' : 'I can raise your cognitive investment, if you command.'}`;
       case 'home': return pending > 0 ? `${pending} home tasks pending, sir. Chaos accumulates silently.` : 'The household is under control, sir.';
       case 'relations': return negl > 0 ? `${negl} relationships await your call, sir. Bonds are silent capital.` : 'All relationships active, sir. Well done.';
       default: return w ? `Mood ${w.mood}/10, energy ${w.energy}/10, sleep ${w.sleep_hours}h, sir. ${(w.sleep_hours || 0) < 7 ? 'I recommend a strict sleep protocol tonight.' : 'The body holds firm.'}` : 'No wellness data yet, sir.';
     }
   };
+
+  const focusDomain = (d) => { setActiveDomain(d.id); const line = domainThought(d.id); setFullThought(line); jarvisSpeak(line, lang); };
+
+  const sendCommand = async (text) => {
+    const cmd = (text || '').trim();
+    if (!cmd || busy) return;
+    setBusy(true); setActions([]);
+    setFullThought(lang === 'ar' ? 'أعالج أمرك يا سيدي...' : 'Processing your command, sir...');
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/agent`, { method: 'POST', headers, body: JSON.stringify({ message: cmd, lang }) });
+      const json = await res.json();
+      const reply = json.reply || (lang === 'ar' ? 'تعذّر الوصول لمحركاتي يا سيدي.' : 'My engines are unreachable, sir.');
+      setActions(json.actions || []);
+      setFullThought(reply);
+      jarvisSpeak(reply, lang);
+    } catch (e) { setFullThought(lang === 'ar' ? 'حدث خلل لحظي يا سيدي.' : 'A momentary glitch, sir.'); }
+    setBusy(false);
+  };
+
+  const startListening = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    jarvisStop();
+    const rec = new SR();
+    rec.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
+    rec.interimResults = false;
+    rec.onresult = (e) => { const t2 = e.results[0][0].transcript; setCommand(t2); sendCommand(t2); };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    setListening(true);
+    try { rec.start(); } catch (e) { setListening(false); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+      <div style={{ position: 'relative', width: 560, height: 520, maxWidth: '94vw', margin: '0 auto' }}>
+        <svg className="neural-links" viewBox="0 0 100 100" preserveAspectRatio="none">
+          {domains.map((d) => {
+            const rad = (d.angle * Math.PI) / 180;
+            const x = 50 + 45 * Math.cos(rad); const y = 50 + 45 * Math.sin(rad);
+            const st = domainStatus(d.id);
+            return <line key={d.id} x1="50" y1="50" x2={x} y2={y} stroke={st.color} strokeWidth={st.w} vectorEffect="non-scaling-stroke" className={st.hot ? 'nl-hot' : 'nl-calm'} style={{ color: st.color }} />;
+          })}
+        </svg>
+        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 340, height: 340 }}>
+          <BrainCore riskL={risk.label} load={totalHours ? highHours / totalHours : 0.3} rest={remaining / 168} />
+        </div>
+        {domains.map((d) => {
+          const rad = (d.angle * Math.PI) / 180;
+          const x = 50 + 45 * Math.cos(rad); const y = 50 + 45 * Math.sin(rad);
+          const st = domainStatus(d.id);
+          return (
+            <button key={d.id} className="mind-node" onClick={() => focusDomain(d)}
+              style={{ left: `${x}%`, top: `${y}%`, borderColor: st.hot ? st.color : undefined, color: st.hot ? st.color : undefined, boxShadow: activeDomain === d.id ? `0 0 22px ${st.color}` : undefined }}>
+              <span>{d.icon}</span>
+              <span>{d.label}</span>
+            </button>
+          );
+        })}
+        <div className="sys-line" style={{ color: risk.color }}>
+          {lang === 'ar' ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}` : `SYSTEM: ${risk.label === 'Low' ? 'STABLE' : risk.label === 'Medium' ? 'STRAINED' : 'CRITICAL'}`}
+          <span className="mono"> // {totalHours}{hs} / 168{hs}</span>
+        </div>
+      </div>
+
+      {/* تيار الوعي — العرض الوحيد للذاكرة/الأفعال (بدون تكرار) */}
+      <div className="hud-corners" style={{ padding: '1.1rem 1.3rem', minHeight: 96 }}>
+        <div className="stream-head mono">{lang === 'ar' ? 'تيار الوعي' : 'CONSCIOUSNESS STREAM'}</div>
+        <p style={{ margin: '0.45rem 0 0', color: 'var(--text)', lineHeight: 1.9, fontSize: '1.02rem' }}>{typed}<span className="caret">▌</span></p>
+        {actions.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {actions.map((a, i) => (
+              <span key={i} className="mono" style={{ fontSize: '0.72rem', padding: '4px 10px', borderRadius: 999, border: '1px solid rgba(0,230,118,0.4)', background: 'rgba(0,230,118,0.08)', color: '#6ee7b7' }}>⚙️ {prettyAction(a.result)}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={(e) => { e.preventDefault(); sendCommand(command); setCommand(''); }} style={{ display: 'flex', gap: 8 }}>
+        <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder={lang === 'ar' ? 'خاطب عقلك... «وازن أسبوعي»، «سجل مصروف 50»' : 'Address your mind... "balance my week"'} style={{ ...fieldStyle, flex: 1, fontSize: '1.05rem' }} />
+        <button type="button" onClick={startListening} disabled={busy || listening} style={{ padding: '12px 16px', background: listening ? 'rgba(255,77,77,0.15)' : 'rgba(0,229,255,0.08)', border: `1px solid ${listening ? 'rgba(255,77,77,0.5)' : 'rgba(0,229,255,0.35)'}`, color: listening ? '#ff8f8f' : '#7dd3fc', borderRadius: 10, cursor: 'pointer', fontSize: '1.1rem' }}>
+          {listening ? '🎙️' : '🎤'}
+        </button>
+        <button type="submit" disabled={busy || !command.trim()} style={{ padding: '12px 26px', background: 'linear-gradient(90deg,#0077ff,#00e5ff)', color: '#001018', border: 'none', borderRadius: 10, fontWeight: 800, cursor: 'pointer' }}>⚡</button>
+      </form>
+    </div>
+  );
+}
   
   const focusDomain = (d) => { setActiveDomain(d.id); const line = domainThought(d.id); setFullThought(line); jarvisSpeak(line, lang); };
   const sendCommand = async (text) => {
