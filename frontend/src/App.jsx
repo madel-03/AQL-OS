@@ -649,6 +649,72 @@ function VoiceAgentBar({ onRefresh }) {
     </div>
   );
 }
+
+/* ========== الرادار الدوّار ========== */
+function RadarPanel({ risk }) {
+  return (
+    <div>
+      <div className="radar-wrap">
+        <div className="radar-sweep" />
+        <svg viewBox="0 0 200 200" className="radar-svg">
+          <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(0,229,255,.25)" strokeWidth="1" />
+          <circle cx="100" cy="100" r="62" fill="none" stroke="rgba(0,229,255,.18)" strokeWidth="1" strokeDasharray="3 6" />
+          <circle cx="100" cy="100" r="36" fill="none" stroke="rgba(0,229,255,.15)" strokeWidth="1" strokeDasharray="2 5" />
+          <line x1="100" y1="8" x2="100" y2="192" stroke="rgba(0,229,255,.1)" />
+          <line x1="8" y1="100" x2="192" y2="100" stroke="rgba(0,229,255,.1)" />
+          <circle cx="132" cy="70" r="3" fill="var(--cyan)" className="blip" />
+          <circle cx="70" cy="126" r="2.5" fill="var(--cyan)" className="blip b2" />
+          <circle cx="118" cy="138" r="2" fill={risk.color} className="blip b3" />
+        </svg>
+      </div>
+      <div className="searching mono">SEARCHING<span className="dots">...</span></div>
+      <div className="radar-read mono"><span>AZ 217.4°</span><span>RNG 0.42</span><span style={{ color: risk.color }}>SIG {risk.label.toUpperCase()}</span></div>
+    </div>
+  );
+}
+/* ========== الكرة الهولوغرامية ========== */
+function GlobePanel() {
+  const dots = Array.from({ length: 42 }, (_, i) => {
+    const a = (i / 42) * Math.PI * 2;
+    const r = 70 + Math.sin(i * 7.3) * 10;
+    return { x: 100 + Math.cos(a) * r, y: 100 + Math.sin(a) * r * 0.9, o: 0.3 + Math.abs(Math.sin(i * 3.1)) * 0.7 };
+  });
+  return (
+    <svg viewBox="0 0 200 200" className="globe-svg">
+      <circle cx="100" cy="100" r="78" fill="none" stroke="rgba(0,229,255,.3)" />
+      <ellipse cx="100" cy="100" rx="78" ry="26" fill="none" stroke="rgba(0,229,255,.18)" />
+      <ellipse cx="100" cy="100" rx="78" ry="52" fill="none" stroke="rgba(0,229,255,.12)" />
+      <ellipse cx="100" cy="100" rx="30" ry="78" fill="none" stroke="rgba(0,229,255,.15)" />
+      <ellipse cx="100" cy="100" rx="58" ry="78" fill="none" stroke="rgba(0,229,255,.1)" />
+      <g className="globe-dots">{dots.map((d, i) => <circle key={i} cx={d.x} cy={d.y} r="1.6" fill="var(--cyan)" opacity={d.o} />)}</g>
+      <line x1={dots[3].x} y1={dots[3].y} x2={dots[18].x} y2={dots[18].y} stroke="rgba(0,229,255,.35)" strokeWidth="0.6" />
+      <line x1={dots[10].x} y1={dots[10].y} x2={dots[30].x} y2={dots[30].y} stroke="rgba(0,229,255,.3)" strokeWidth="0.6" />
+      <line x1={dots[22].x} y1={dots[22].y} x2={dots[38].x} y2={dots[38].y} stroke="rgba(0,229,255,.3)" strokeWidth="0.6" />
+    </svg>
+  );
+}
+/* ========== أعمدة الطاقة ========== */
+function BatteryPanel({ commitments, life }) {
+  const total = commitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
+  const cols = [
+    { label: 'TIME', pct: total / 168 },
+    { label: 'FIN', pct: life?.finance ? Math.max(0, Math.min(1, (life.finance.balance + 2000) / 4000)) : 0.4 },
+    { label: 'REST', pct: Math.max(0, Math.min(1, (168 - total) / 80)) },
+    { label: 'MOOD', pct: (life?.wellness?.mood || 5) / 10 },
+  ];
+  return (
+    <div className="battery-row">
+      {cols.map((c) => (
+        <div key={c.label} className="battery-col">
+          <div className="battery-segs">{Array.from({ length: 12 }, (_, i) => <span key={i} className={(11 - i) / 12 <= c.pct ? 'seg lit' : 'seg'} />)}</div>
+          <span className="mono battery-lbl">{c.label}</span>
+          <span className="mono battery-pct">{Math.round(c.pct * 100)}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ========== غرفة الوعي — العقل الحي ========== */
 function MindChamber({ commitments }) {
   const { lang, hs } = useLang();
@@ -685,6 +751,7 @@ function MindChamber({ commitments }) {
   const neglectedCount = (people) => (people || []).filter((p) => !p.last_contact || (Date.now() - new Date(p.last_contact).getTime()) / 86400000 > (p.contact_frequency_days || 7)).length;
 
   useEffect(() => {
+    const riskPct = risk.label === 'Critical' ? 95 : risk.label === 'High' ? 70 : risk.label === 'Medium' ? 45 : 15;
     if (!life) return;
     const negl = neglectedCount(life.relationships);
     const pending = (life.home || []).filter((x) => x.status !== 'done').length;
@@ -782,36 +849,39 @@ function MindChamber({ commitments }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-      <div style={{ position: 'relative', width: 560, height: 520, maxWidth: '94vw', margin: '0 auto' }}>
-        {/* ٣) الخطوط العصبية من المركز لكل عقدة */}
-        <svg className="neural-links" viewBox="0 0 100 100" preserveAspectRatio="none">
-          {domains.map((d) => {
-            const rad = (d.angle * Math.PI) / 180;
-            const x = 50 + 45 * Math.cos(rad); const y = 50 + 45 * Math.sin(rad);
-            const st = domainStatus(d.id);
-            return <line key={d.id} x1="50" y1="50" x2={x} y2={y} stroke={st.color} strokeWidth={st.w} vectorEffect="non-scaling-stroke" className={st.hot ? 'nl-hot' : 'nl-calm'} style={{ color: st.color }} />;
-          })}
-        </svg>
-        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 340, height: 340 }}>
-          <BrainCore riskL={risk.label} load={totalHours ? highHours / totalHours : 0.3} rest={remaining / 168} />
-        </div>
-        {domains.map((d) => {
-          const rad = (d.angle * Math.PI) / 180;
-          const x = 50 + 45 * Math.cos(rad); const y = 50 + 45 * Math.sin(rad);
-          const st = domainStatus(d.id);
-          return (
-            <button key={d.id} className="mind-node" onClick={() => focusDomain(d)}
-              style={{ left: `${x}%`, top: `${y}%`, borderColor: st.hot ? st.color : undefined, color: st.hot ? st.color : undefined, boxShadow: activeDomain === d.id ? `0 0 22px ${st.color}` : undefined }}>
-              <span>{d.icon}</span>
-              <span>{d.label}</span>
-            </button>
-          );
-        })}
-        <div className="sys-line" style={{ color: risk.color }}>
-          {lang === 'ar' ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}` : `SYSTEM: ${risk.label === 'Low' ? 'STABLE' : risk.label === 'Medium' ? 'STRAINED' : 'CRITICAL'}`}
-          <span className="mono"> // {totalHours}{hs} / 168{hs}</span>
-        </div>
-      </div>
+     <div className="hud-grid">
+  <div className="glass-panel hud-panel hud-box">
+    <div className="holo-label mono">◈ LIFE SCAN // مسح الحياة</div>
+    <GlobePanel />
+    <div className="hex-nodes">
+      {domains.map((d) => { const st = domainStatus(d.id); return (
+        <button key={d.id} className="hex-btn" onClick={() => focusDomain(d)}
+          style={{ color: st.hot ? st.color : 'var(--cyan)', borderColor: st.hot ? st.color : undefined }}>
+          <span>{d.icon}</span><span>{d.label}</span>
+        </button>
+      );})}
+    </div>
+  </div>
+  <div className="glass-panel hud-panel hud-box">
+    <div className="holo-label mono">◈ VITAL RADAR // الرادار الحيوي</div>
+    <RadarPanel risk={risk} />
+  </div>
+  <div className="glass-panel hud-panel hud-box">
+    <div className="holo-label mono">◈ ENERGY // مستويات الطاقة</div>
+    <BatteryPanel commitments={commitments} life={life} />
+  </div>
+  <div className="glass-panel hud-panel hud-box">
+    <div className="holo-label mono">◈ CORE // المقاييس</div>
+    <div style={{ display: 'flex', gap: '1.2rem', justifyContent: 'center', flexWrap: 'wrap', padding: '0.5rem 0' }}>
+      <Gauge value={Math.round(totalHours)} max={168} label={lang === 'ar' ? 'ساعات' : 'Hours'} color="var(--cyan)" suffix={hs} />
+      <Gauge value={riskPct} max={100} label={lang === 'ar' ? 'الخطر' : 'Risk'} color={risk.color} suffix="%" />
+    </div>
+    <div className="sys-line" style={{ color: risk.color }}>
+      {lang === 'ar' ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}` : `SYSTEM: ${risk.label.toUpperCase()}`}
+      <span className="mono"> // {totalHours}{hs} / 168{hs}</span>
+    </div>
+  </div>
+</div>
 
       {/* ٥) تيار الوعي بإطار زوايا مفتوحة */}
       <div className="hud-corners" style={{ padding: '1.1rem 1.3rem', minHeight: 96 }}>
