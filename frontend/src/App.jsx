@@ -4,6 +4,7 @@ import { LangProvider } from './lib/i18n';
 import { useLang } from './lib/lang';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const emptyCommitment = { title: '', hours_per_week: 10, type: 'personal', intensity: 'medium', timeSlot: 'morning', flexible: true };
 const typeLabels = { study: 'دراسة', work: 'عمل', health: 'صحة', personal: 'شخصي', sleep: 'نوم' };
 const typeColors = { study: '#38bdf8', work: '#f59e0b', health: '#10b981', personal: '#c084fc', sleep: '#64748b' };
@@ -13,8 +14,8 @@ const fieldStyle = { width: '100%', padding: '10px 14px', borderRadius: '8px', b
 
 const NAV_ITEMS = [
   { id: 'dashboard', icon: '🧠', label: 'غرفة الوعي' },
-  { id: 'investigate', icon: '', label: 'غرفة التحليل' },
-  { id: 'commitments', icon: '', label: 'وحدات الوقت' },
+  { id: 'investigate', icon: '⌖', label: 'غرفة التحليل' },
+  { id: 'commitments', icon: '≣', label: 'وحدات الوقت' },
   { id: 'history', icon: '▤', label: 'سجل التحليلات' },
   { id: 'goals', icon: '◉', label: 'الأهداف الاستراتيجية' },
   { id: 'reports', icon: '▥', label: 'التقارير الحيوية' },
@@ -30,15 +31,13 @@ async function getAuthHeaders() {
 }
 
 const barWidth = (hours) => `${Math.max(0, Math.min((hours / 168) * 100, 100))}%`;
-
 function prettyAction(result) {
-  const m = String(result || '').match(/RESULTS: ([\s\S]*)$/);
+  const m = String(result || '').match(/RESULTS: (\[[\s\S]*\])$/);
   if (m) {
     try { return JSON.parse(m[1]).slice(0, 3).map((r) => '• ' + r.title).join('   '); } catch (e) { /* نتجاهل */ }
   }
   return String(result || '');
 }
-
 function riskOf(totalHours) {
   if (totalHours > 110) return { label: 'Critical', color: '#ef4444' };
   if (totalHours > 90) return { label: 'High', color: '#f59e0b' };
@@ -197,8 +196,7 @@ function BrainPanels({ result }) {
     </>
   );
 }
-
-/* ========== زر اللغة العائم ========== */
+/* ========== زر اللغة العائم (قبل الدخول) ========== */
 function FloatingLangButton() {
   const { lang, setLang } = useLang();
   return (
@@ -281,7 +279,7 @@ function AuthScreen() {
             <h2 style={{ margin: 0, color: '#f8fafc' }}>{t('أدخل رمز التفعيل')}</h2>
             <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.9rem' }}>{t('أرسلنا رمزًا مكونًا من 6 أرقام إلى بريدك')}</p>
           </div>
-          {error && <div style={box('err')}>️ {error}</div>}
+          {error && <div style={box('err')}>⚠️ {error}</div>}
           {message && <div style={box('ok')}>{message}</div>}
           <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <input inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))} placeholder="——————"
@@ -336,15 +334,33 @@ function AuthScreen() {
   );
 }
 
+/* ========== أيقونات الخط الرفيع (1px) — نفس روح الرادار ========== */
+function NavIcon({ id }) {
+  const p = { fill: 'none', stroke: 'currentColor', strokeWidth: 1, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  switch (id) {
+    case 'dashboard': return <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="3.5" /><path d="M12 3.5V6M12 18v2.5M3.5 12H6M18 12h2.5" /></svg>;
+    case 'investigate': return <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="7" /><path d="M12 2.5V7M12 17v4.5M2.5 12H7M17 12h4.5" /><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" /></svg>;
+    case 'commitments': return <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="8.5" /><path d="M12 7v5l3.5 2" /></svg>;
+    case 'history': return <svg viewBox="0 0 24 24" {...p}><rect x="5" y="3.5" width="14" height="17" rx="1" /><path d="M8.5 8h7M8.5 12h7M8.5 16h4.5" /></svg>;
+    case 'goals': return <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" /></svg>;
+    case 'reports': return <svg viewBox="0 0 24 24" {...p}><path d="M5.5 19.5v-7M10 19.5v-13M14.5 19.5v-9M19 19.5v-11" /></svg>;
+    case 'chat': return <svg viewBox="0 0 24 24" {...p}><path d="M12 3l2.1 6.9L21 12l-6.9 2.1L12 21l-2.1-6.9L3 12l6.9-2.1z" /></svg>;
+    case 'achievements': return <svg viewBox="0 0 24 24" {...p}><path d="M12 4l8 16H4z" /><path d="M12 10.5l3.2 6.5H8.8z" /></svg>;
+    case 'profile': return <svg viewBox="0 0 24 24" {...p}><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z" /><circle cx="12" cy="12" r="3" /></svg>;
+    case 'lifeos': return <svg viewBox="0 0 24 24" {...p}><path d="M8 3c0 6 8 6 8 12 0 3-1.5 4.5-4 6" /><path d="M16 3c0 6-8 6-8 12 0 3 1.5 4.5 4 6" /><path d="M9.5 7.5h5M9.5 12h5M9.5 16.5h5" /></svg>;
+    default: return null;
+  }
+}
+
 /* ========== الهيكل ========== */
 function Layout({ page, setPage, displayName, onLogout, children }) {
   const { lang, setLang, t } = useLang();
   const [railOpen, setRailOpen] = useState(false);
   const current = NAV_ITEMS.find((n) => n.id === page);
-
   return (
     <div className="app-shell app-layout" style={{ minHeight: '100vh', direction: lang === 'ar' ? 'rtl' : 'ltr', display: 'flex' }}>
       <aside className={`app-sidebar rail ${railOpen ? 'rail-open' : ''}`}>
+        <div className="rail-scan" aria-hidden="true" />
         <div className="rail-logo" onClick={() => setRailOpen(!railOpen)}>
           <div className="baseer-avatar" style={{ width: '40px', height: '40px' }}><span style={{ fontSize: '1.05rem' }}>🧠</span></div>
           <div className="rail-logo-text">
@@ -354,18 +370,20 @@ function Layout({ page, setPage, displayName, onLogout, children }) {
         </div>
         {NAV_ITEMS.map((item) => (
           <button key={item.id} className={`nav-btn ${page === item.id ? 'active' : ''}`} onClick={() => setPage(item.id)} title={t(item.label)}>
-            <span className="nav-icon">{item.icon}</span>
+            <span className="nav-icon"><NavIcon id={item.id} /></span>
             <span className="nav-label">{t(item.label)}</span>
           </button>
         ))}
       </aside>
       <div style={{ flex: 1, minWidth: 0, padding: '1.8rem 1.5rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.4rem' }}>
-          <h2 style={{ margin: 0, color: '#f8fafc', fontSize: '1.6rem', fontWeight: 800 }}>{current?.icon} {t(current?.label)}</h2>
+          <h2 style={{ margin: 0, color: '#f8fafc', fontSize: '1.6rem', fontWeight: 800 }}>
+            <span className="title-icon"><NavIcon id={page} /></span> {t(current?.label)}
+          </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', color: '#7dd3fc', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>◐ {lang === 'ar' ? 'EN' : 'AR'}</button>
             <span className="hud-chip violet">🕵️ {displayName}</span>
-            <button onClick={onLogout} style={{ background: 'rgba(255,77,77,0.08)', border: '1px solid rgba(255,77,77,0.35)', color: '#ffb3b3', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>{t('فصل')} </button>
+            <button onClick={onLogout} style={{ background: 'rgba(255,77,77,0.08)', border: '1px solid rgba(255,77,77,0.35)', color: '#ffb3b3', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>{t('فصل')} ⏻</button>
           </div>
         </div>
         {children}
@@ -386,6 +404,7 @@ function BrainCore({ riskL = 'Low', load = 0.3, rest = 0.7 }) {
     const W = (canvas.width = 420);
     const H = (canvas.height = 420);
     const cx = W / 2, cy = H / 2, R = 150;
+
     const dots = Array.from({ length: 380 }, () => ({
       a: Math.random() * Math.PI * 2,
       r: Math.sqrt(Math.random()) * R,
@@ -393,6 +412,7 @@ function BrainCore({ riskL = 'Low', load = 0.3, rest = 0.7 }) {
       tw: Math.random() * Math.PI * 2,
       sp: 0.002 + Math.random() * 0.004,
     }));
+
     let raf;
     const draw = (t) => {
       ctx.clearRect(0, 0, W, H);
@@ -556,7 +576,7 @@ function DirectivePanel() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
         <h3 style={{ margin: 0, color: 'var(--text)', fontSize: '1rem' }}>⚡ {lang === 'ar' ? 'توجيه اليوم' : 'Daily Directive'}</h3>
         <button onClick={generate} disabled={busy} style={{ padding: '8px 16px', background: 'linear-gradient(90deg,#0077ff,#00e5ff)', color: '#001018', border: 'none', borderRadius: '3px', fontWeight: 800, cursor: 'pointer' }}>
-          {busy ? (lang === 'ar' ? ' عَقْل يخطط...' : ' Planning...') : (lang === 'ar' ? '⚡ توليد التوجيه' : ' Generate')}
+          {busy ? (lang === 'ar' ? '⏳ عَقْل يخطط...' : '⏳ Planning...') : (lang === 'ar' ? '⚡ توليد التوجيه' : '⚡ Generate')}
         </button>
       </div>
       {directive && (
@@ -626,7 +646,7 @@ function VoiceAgentBar({ onRefresh }) {
       <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="button" onClick={listen} disabled={busy || listening}
           style={{ padding: '12px 16px', background: listening ? 'rgba(239,68,68,0.2)' : 'rgba(0,229,255,0.1)', border: `1px solid ${listening ? 'rgba(239,68,68,0.5)' : 'rgba(0,229,255,0.4)'}`, color: listening ? '#fca5a5' : 'var(--cyan)', borderRadius: '6px', cursor: 'pointer', fontSize: '1.1rem', boxShadow: listening ? '0 0 18px rgba(239,68,68,0.4)' : 'none' }}>
-          {listening ? '🎙️ أسمعك...' : ''}
+          {listening ? '🎙️ أسمعك...' : '🎤'}
         </button>
         <input value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') run(text); }}
@@ -651,10 +671,195 @@ function VoiceAgentBar({ onRefresh }) {
   );
 }
 
+/* ========== الرادار الدوّار ========== */
+function RadarPanel({ risk }) {
+  return (
+    <div>
+      <div className="radar-wrap">
+        <div className="radar-sweep" />
+        <svg viewBox="0 0 200 200" className="radar-svg">
+          <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(0,229,255,.25)" strokeWidth="1" />
+          <circle cx="100" cy="100" r="62" fill="none" stroke="rgba(0,229,255,.18)" strokeWidth="1" strokeDasharray="3 6" />
+          <circle cx="100" cy="100" r="36" fill="none" stroke="rgba(0,229,255,.15)" strokeWidth="1" strokeDasharray="2 5" />
+          <line x1="100" y1="8" x2="100" y2="192" stroke="rgba(0,229,255,.1)" />
+          <line x1="8" y1="100" x2="192" y2="100" stroke="rgba(0,229,255,.1)" />
+          <circle cx="132" cy="70" r="3" fill="var(--cyan)" className="blip" />
+          <circle cx="70" cy="126" r="2.5" fill="var(--cyan)" className="blip b2" />
+          <circle cx="118" cy="138" r="2" fill={risk.color} className="blip b3" />
+        </svg>
+      </div>
+      <div className="searching mono">SEARCHING<span className="dots">...</span></div>
+      <div className="radar-read mono"><span>AZ 217.4°</span><span>RNG 0.42</span><span style={{ color: risk.color }}>SIG {risk.label.toUpperCase()}</span></div>
+    </div>
+  );
+}
+
+/* ========== الكرة الهولوغرامية ========== */
+function GlobePanel() {
+  const dots = Array.from({ length: 42 }, (_, i) => {
+    const a = (i / 42) * Math.PI * 2;
+    const r = 70 + Math.sin(i * 7.3) * 10;
+    return { x: 100 + Math.cos(a) * r, y: 100 + Math.sin(a) * r * 0.9, o: 0.3 + Math.abs(Math.sin(i * 3.1)) * 0.7 };
+  });
+  return (
+    <svg viewBox="0 0 200 200" className="globe-svg">
+      <circle cx="100" cy="100" r="78" fill="none" stroke="rgba(0,229,255,.3)" />
+      <ellipse cx="100" cy="100" rx="78" ry="26" fill="none" stroke="rgba(0,229,255,.18)" />
+      <ellipse cx="100" cy="100" rx="78" ry="52" fill="none" stroke="rgba(0,229,255,.12)" />
+      <ellipse cx="100" cy="100" rx="30" ry="78" fill="none" stroke="rgba(0,229,255,.15)" />
+      <ellipse cx="100" cy="100" rx="58" ry="78" fill="none" stroke="rgba(0,229,255,.1)" />
+      <g className="globe-dots">{dots.map((d, i) => <circle key={i} cx={d.x} cy={d.y} r="1.6" fill="var(--cyan)" opacity={d.o} />)}</g>
+      <line x1={dots[3].x} y1={dots[3].y} x2={dots[18].x} y2={dots[18].y} stroke="rgba(0,229,255,.35)" strokeWidth="0.6" />
+      <line x1={dots[10].x} y1={dots[10].y} x2={dots[30].x} y2={dots[30].y} stroke="rgba(0,229,255,.3)" strokeWidth="0.6" />
+      <line x1={dots[22].x} y1={dots[22].y} x2={dots[38].x} y2={dots[38].y} stroke="rgba(0,229,255,.3)" strokeWidth="0.6" />
+    </svg>
+  );
+}
+
+/* ========== أعمدة الطاقة ========== */
+function BatteryPanel({ commitments, life }) {
+  const total = commitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0);
+  const cols = [
+    { label: 'TIME', pct: total / 168 },
+    { label: 'FIN', pct: life?.finance ? Math.max(0, Math.min(1, (life.finance.balance + 2000) / 4000)) : 0.4 },
+    { label: 'REST', pct: Math.max(0, Math.min(1, (168 - total) / 80)) },
+    { label: 'MOOD', pct: (life?.wellness?.mood || 5) / 10 },
+  ];
+  return (
+    <div className="battery-row">
+      {cols.map((c) => (
+        <div key={c.label} className="battery-col">
+          <div className="battery-segs">{Array.from({ length: 12 }, (_, i) => <span key={i} className={(11 - i) / 12 <= c.pct ? 'seg lit' : 'seg'} />)}</div>
+          <span className="mono battery-lbl">{c.label}</span>
+          <span className="mono battery-pct">{Math.round(c.pct * 100)}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ========== كرة الحياة المتحركة (3D) ========== */
+function AnimatedGlobe() {
+  useEffect(() => {
+    const canvas = document.getElementById('life-globe');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = (canvas.width = 260), H = (canvas.height = 260);
+    const cx = W / 2, cy = H / 2, R = 110;
+    const N = 70;
+    const dots = Array.from({ length: N }, (_, i) => ({
+      phi: Math.acos(1 - (2 * (i + 0.5)) / N),
+      theta: Math.PI * (1 + Math.sqrt(5)) * i,
+    }));
+    let rot = 0, raf;
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      rot += 0.004;
+      ctx.strokeStyle = 'rgba(0,229,255,0.22)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+      for (let m = 0; m < 3; m++) {
+        const w = Math.abs(Math.cos(rot * 0.7 + (m * Math.PI) / 3));
+        ctx.beginPath(); ctx.ellipse(cx, cy, Math.max(w * R, 6), R, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.beginPath(); ctx.ellipse(cx, cy, R, R * 0.35, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(cx, cy, R, R * 0.7, 0, 0, Math.PI * 2); ctx.stroke();
+      const pts = dots.map((d) => {
+        const x3 = Math.sin(d.phi) * Math.cos(d.theta + rot);
+        const y3 = Math.sin(d.phi) * Math.sin(d.theta + rot);
+        const z3 = Math.cos(d.phi);
+        return { x: cx + x3 * R, y: cy + y3 * R * 0.92, z: (z3 + 1) / 2 };
+      });
+      ctx.strokeStyle = 'rgba(0,229,255,0.18)';
+      for (let i = 0; i < pts.length; i += 6) {
+        const a = pts[i], b = pts[(i + 9) % pts.length];
+        if (a.z > 0.45 && b.z > 0.45) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+      }
+      for (const p of pts) {
+        ctx.beginPath(); ctx.arc(p.x, p.y, 1.2 + p.z * 1.6, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0,229,255,${0.2 + p.z * 0.7})`;
+        ctx.fill();
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return <canvas id="life-globe" className="globe-canvas" />;
+}
+
+/* ========== الرادار الحيوي المتحرك ========== */
+function AnimatedRadar({ risk }) {
+  return (
+    <div>
+      <div className="radar-box">
+        <div className="radar-sweep" />
+        <svg viewBox="0 0 200 200" className="radar-svg">
+          <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(0,229,255,0.3)" strokeWidth="1" />
+          <circle cx="100" cy="100" r="60" fill="none" stroke="rgba(0,229,255,0.2)" strokeWidth="1" strokeDasharray="3 6" />
+          <circle cx="100" cy="100" r="32" fill="none" stroke="rgba(0,229,255,0.15)" strokeWidth="1" strokeDasharray="2 5" />
+          <line x1="100" y1="12" x2="100" y2="188" stroke="rgba(0,229,255,0.12)" strokeWidth="1" />
+          <line x1="12" y1="100" x2="188" y2="100" stroke="rgba(0,229,255,0.12)" strokeWidth="1" />
+          <circle className="blip b1" cx="132" cy="68" r="3" fill="#00e5ff" />
+          <circle className="blip b2" cx="68" cy="122" r="2.5" fill="#00e5ff" />
+          <circle className="blip b3" cx="122" cy="132" r="2.5" fill={risk.color} />
+        </svg>
+      </div>
+      <div className="searching mono">SEARCHING<span className="dots">...</span></div>
+      <div className="radar-read mono">
+        <span>AZ 217.4°</span><span>RNG 0.42</span><span style={{ color: risk.color }}>SIG {risk.label.toUpperCase()}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ========== كرة الحياة + الرادار الحي ========== */
+function GlobeSVG() {
+  const dots = Array.from({ length: 40 }, (_, i) => {
+    const a = (i / 40) * Math.PI * 2;
+    const r = 34 + ((i * 37) % 12);
+    return { x: 50 + Math.cos(a) * r, y: 50 + Math.sin(a) * r * 0.9 };
+  });
+  return (
+    <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
+      <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(0,229,255,0.3)" />
+      <ellipse cx="50" cy="50" rx="46" ry="16" fill="none" stroke="rgba(0,229,255,0.18)" />
+      <ellipse cx="50" cy="50" rx="46" ry="30" fill="none" stroke="rgba(0,229,255,0.12)" />
+      <ellipse cx="50" cy="50" rx="18" ry="46" fill="none" stroke="rgba(0,229,255,0.15)" />
+      <ellipse cx="50" cy="50" rx="32" ry="46" fill="none" stroke="rgba(0,229,255,0.1)" />
+      {dots.map((d, i) => <circle key={i} cx={d.x} cy={d.y} r="1.2" fill="var(--cyan)" opacity={0.4 + ((i * 29) % 50) / 100} />)}
+    </svg>
+  );
+}
+function VitalRadar({ riskPct, riskColor, loads }) {
+  const rMain = 14 + (riskPct / 100) * 62;
+  const aMain = -Math.PI / 4;
+  const mx = 90 + Math.cos(aMain) * rMain;
+  const my = 90 + Math.sin(aMain) * rMain;
+  return (
+    <div style={{ position: 'relative', width: 210, height: 210, margin: '0 auto' }}>
+      <div className="radar-sweep" />
+      <svg viewBox="0 0 180 180" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+        <circle cx="90" cy="90" r="78" fill="none" stroke="rgba(0,229,255,0.25)" strokeWidth="1" />
+        <circle cx="90" cy="90" r="52" fill="none" stroke="rgba(0,229,255,0.15)" strokeWidth="1" strokeDasharray="3 6" />
+        <circle cx="90" cy="90" r="26" fill="none" stroke="rgba(0,229,255,0.12)" strokeWidth="1" strokeDasharray="2 5" />
+        <line x1="90" y1="12" x2="90" y2="168" stroke="rgba(0,229,255,0.1)" />
+        <line x1="12" y1="90" x2="168" y2="90" stroke="rgba(0,229,255,0.1)" />
+        <line x1="90" y1="90" x2={mx} y2={my} stroke={riskColor} strokeWidth="1" opacity="0.6" />
+        <circle cx={mx} cy={my} r="4" fill={riskColor} className="blip" />
+        {loads.map((d, i) => {
+          const a = (i / Math.max(loads.length, 1)) * Math.PI * 2 - Math.PI / 2;
+          const r = 14 + d.value * 60;
+          return <circle key={i} cx={90 + Math.cos(a) * r} cy={90 + Math.sin(a) * r} r="2.5" fill={d.color} className="blip" style={{ animationDelay: `${i * 0.3}s` }} />;
+        })}
+      </svg>
+    </div>
+  );
+}
 /* ========== غرفة الوعي — العقل الحي ========== */
 function MindChamber({ commitments }) {
   const { lang, hs } = useLang();
   const [life, setLife] = useState(null);
+  const [logs, setLogs] = useState([]);
   const [fullThought, setFullThought] = useState(lang === 'ar' ? 'أُوقظ وعيي... أقرأ ملفاتك يا سيدي.' : 'Waking my consciousness... reading your files, sir.');
   const [typed, setTyped] = useState('');
   const [command, setCommand] = useState('');
@@ -662,20 +867,22 @@ function MindChamber({ commitments }) {
   const [listening, setListening] = useState(false);
   const [actions, setActions] = useState([]);
   const [activeDomain, setActiveDomain] = useState(null);
+  const [lastEngine, setLastEngine] = useState(null);
 
   useEffect(() => {
     (async () => {
       try {
         const headers = await getAuthHeaders();
-        const [f, w, r, h, s] = await Promise.all([
+        const [f, w, r, h, s, lg] = await Promise.all([
           fetch(`${API_URL}/api/finance`, { headers }), fetch(`${API_URL}/api/wellness`, { headers }),
           fetch(`${API_URL}/api/relationships`, { headers }), fetch(`${API_URL}/api/home`, { headers }),
-          fetch(`${API_URL}/api/study`, { headers }),
+          fetch(`${API_URL}/api/study`, { headers }), fetch(`${API_URL}/api/analysis-logs`, { headers }),
         ]);
         const fj = f.ok ? await f.json() : null; const wj = w.ok ? await w.json() : null;
         const rj = r.ok ? await r.json() : null; const hj = h.ok ? await h.json() : null;
-        const sj = s.ok ? await s.json() : null;
-        setLife({ finance: fj?.summary || null, wellness: wj?.logs?.[0] || null, relationships: rj?.people || [], home: hj?.tasks || [], studyMinutes: sj?.total_minutes || 0 });
+        const sj = s.ok ? await s.json() : null; const lgj = lg.ok ? await lg.json() : null;
+        setLife({ finance: fj || null, wellness: wj?.logs?.[0] || null, relationships: rj?.people || [], home: hj?.tasks || [], studyMinutes: sj?.total_minutes || 0 });
+        setLogs(lgj?.logs || []);
       } catch (e) { /* نتجاهل */ }
     })();
   }, [commitments]);
@@ -683,17 +890,37 @@ function MindChamber({ commitments }) {
   const totalHours = Math.round(commitments.reduce((s, c) => s + Number(c.hours_per_week || 0), 0) * 10) / 10;
   const remaining = Math.max(168 - totalHours, 0);
   const risk = riskOf(totalHours);
+  const riskPct = risk.label === 'Critical' ? 95 : risk.label === 'High' ? 70 : risk.label === 'Medium' ? 45 : 15;
   const highHours = commitments.filter((c) => c.intensity === 'high').reduce((s, c) => s + Number(c.hours_per_week), 0);
   const neglectedCount = (people) => (people || []).filter((p) => !p.last_contact || (Date.now() - new Date(p.last_contact).getTime()) / 86400000 > (p.contact_frequency_days || 7)).length;
+  const RISK_ORDER = ['Low', 'Medium', 'High', 'Critical'];
 
+  /* اتجاهات عبر الزمن (بادرة + ذاكرة) */
+  const spendTrend = (() => {
+    const entries = life?.finance?.entries || [];
+    const now = Date.now();
+    const last7 = entries.filter((e) => e.type === 'expense' && now - new Date(e.entry_date).getTime() < 7 * 86400000).reduce((s, e) => s + Number(e.amount), 0);
+    const prev7 = entries.filter((e) => e.type === 'expense' && now - new Date(e.entry_date).getTime() >= 7 * 86400000 && now - new Date(e.entry_date).getTime() < 14 * 86400000).reduce((s, e) => s + Number(e.amount), 0);
+    if (prev7 <= 0) return null;
+    return Math.round(((last7 - prev7) / prev7) * 100);
+  })();
+  const riskTrend = logs.length >= 2 ? RISK_ORDER.indexOf(logs[0].burnout_risk) - RISK_ORDER.indexOf(logs[1].burnout_risk) : 0;
+
+  /* البادرة: تيار الوعي يفتح بملاحظات استباقية */
   useEffect(() => {
     if (!life) return;
+    const bal = Math.round(life.finance?.summary?.balance || 0);
     const negl = neglectedCount(life.relationships);
     const pending = (life.home || []).filter((x) => x.status !== 'done').length;
-    const bal = Math.round(life.finance?.balance || 0);
-    setFullThought(lang === 'ar'
-      ? `سيدي، وعيي مكتمل. أسبوعك يحمل ${totalHours} ساعة (خطر: ${risk.label})، رصيدك ${bal}. ${negl ? negl + ' من علاقاتك تنتظر اتصالك. ' : ''}${pending ? pending + ' مهام منزلية معلّقة. ' : ''}المس أي عقدة لأفكّر فيها، أو أمرني وسأنفّذ.`
-      : `Sir, consciousness complete. Week carries ${totalHours}h (risk: ${risk.label}), balance ${bal}. ${negl ? negl + ' relationships await your call. ' : ''}${pending ? pending + ' home tasks pending. ' : ''}Touch a node, or command me.`);
+    const notes = [lang === 'ar'
+      ? `سيدي، وعيي مكتمل. أسبوعك يحمل ${totalHours} ساعة (خطر: ${risk.label})، رصيدك ${bal}.`
+      : `Sir, consciousness complete. Week carries ${totalHours}h (risk: ${risk.label}), balance ${bal}.`];
+    if (spendTrend !== null && spendTrend >= 20) notes.push(lang === 'ar' ? `لاحظت أن مصروفك زاد ${spendTrend}% مقارنة بالأسبوع الماضي.` : `I noticed your spending rose ${spendTrend}% versus last week.`);
+    if (riskTrend > 0) notes.push(lang === 'ar' ? 'مستوى خطرك ارتفع منذ آخر تحليل — أوصي بالمراجعة.' : 'Your risk climbed since the last analysis — a review is advisable.');
+    else if (riskTrend < 0) notes.push(lang === 'ar' ? 'تحسّن ملحوظ منذ آخر تحليل — أحسنت يا سيدي.' : 'Marked improvement since the last analysis — well done, sir.');
+    if (negl) notes.push(lang === 'ar' ? `${negl} من علاقاتك تنتظر اتصالك.` : `${negl} relationships await your call.`);
+    if (pending) notes.push(lang === 'ar' ? `${pending} مهام منزلية معلّقة.` : `${pending} home tasks pending.`);
+    setFullThought(notes.join(' '));
   }, [life, lang]);
 
   useEffect(() => {
@@ -705,33 +932,43 @@ function MindChamber({ commitments }) {
   const CALM = 'rgba(0,229,255,0.5)'; const WARN = '#ffb020'; const DANGER = '#ff4d4d';
   const domainStatus = (id) => {
     if (!life) return { color: CALM, w: 1, hot: false };
-    if (id === 'time') { if (risk.label === 'Critical' || risk.label === 'High') return { color: DANGER, w: 2, hot: true }; if (risk.label === 'Medium') return { color: WARN, w: 1.5, hot: true }; return { color: CALM, w: 1, hot: false }; }
-    if (id === 'finance') return (life.finance?.balance || 0) < 0 ? { color: DANGER, w: 2, hot: true } : { color: CALM, w: 1, hot: false };
+    if (id === 'time') { if (risk.label === 'Critical' || risk.label === 'High' || totalHours > 168) return { color: totalHours > 168 ? WARN : DANGER, w: 2, hot: true }; if (risk.label === 'Medium') return { color: WARN, w: 1.5, hot: true }; return { color: CALM, w: 1, hot: false }; }
+    if (id === 'finance') return (life.finance?.summary?.balance || 0) < 0 ? { color: DANGER, w: 2, hot: true } : { color: CALM, w: 1, hot: false };
     if (id === 'home') return (life.home || []).filter((x) => x.status !== 'done').length > 5 ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false };
     if (id === 'relations') return neglectedCount(life.relationships) > 0 ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false };
     if (id === 'health') { const w = life.wellness; return w && ((w.sleep_hours || 0) < 7 || (w.mood || 10) < 5) ? { color: WARN, w: 1.5, hot: true } : { color: CALM, w: 1, hot: false }; }
     return { color: CALM, w: 1, hot: false };
   };
-
   const domains = [
     { id: 'time', icon: '⏳', label: lang === 'ar' ? 'الوقت' : 'Time', angle: -90 },
     { id: 'finance', icon: '💰', label: lang === 'ar' ? 'المال' : 'Finance', angle: -30 },
     { id: 'study', icon: '📚', label: lang === 'ar' ? 'الدراسة' : 'Study', angle: 30 },
     { id: 'home', icon: '🏠', label: lang === 'ar' ? 'البيت' : 'Home', angle: 90 },
     { id: 'relations', icon: '🤝', label: lang === 'ar' ? 'العلاقات' : 'Relations', angle: 150 },
-    { id: 'health', icon: '', label: lang === 'ar' ? 'الصحة' : 'Health', angle: 210 },
+    { id: 'health', icon: '🧘', label: lang === 'ar' ? 'الصحة' : 'Health', angle: 210 },
   ];
+  const domainLoads = life ? domains.map((d) => {
+    const st = domainStatus(d.id);
+    let v = 0.2;
+    if (d.id === 'time') v = Math.min(totalHours / 168, 1);
+    if (d.id === 'finance') { const s = life.finance?.summary; v = s ? (s.balance < 0 ? 0.9 : s.income > 0 ? Math.min(s.expense / s.income, 1) : 0.5) : 0.3; }
+    if (d.id === 'home') v = Math.min((life.home || []).filter((x) => x.status !== 'done').length / 10, 1);
+    if (d.id === 'relations') { const c = (life.relationships || []).length || 1; v = Math.min(neglectedCount(life.relationships) / c, 1); }
+    if (d.id === 'health') v = life.wellness ? Math.min(1 - (life.wellness.mood || 5) / 10, 1) : 0.3;
+    if (d.id === 'study') v = Math.min((life.studyMinutes || 0) / 600, 1);
+    return { value: v, color: st.color };
+  }) : [];
 
   const domainThought = (id) => {
     if (!life) return '';
-    const bal = Math.round(life.finance?.balance || 0);
+    const bal = Math.round(life.finance?.summary?.balance || 0);
     const negl = neglectedCount(life.relationships);
     const pending = (life.home || []).filter((x) => x.status !== 'done').length;
     const w = life.wellness;
     if (lang === 'ar') {
       switch (id) {
         case 'time': return `أفكّر في وقتك يا سيدي: ${totalHours} ساعة ملتزم بها، و${remaining} ساعة حرة. ${risk.label === 'Low' ? 'توازن جميل.' : 'أرصد ضغطًا — دعني أخفّف عنك.'}`;
-        case 'finance': return bal < 0 ? `رصيدك سالب (${bal}) يا سيدي. هذا الخط الأحمر أمامك — أوصي بفرملة فورية.` : `رصيدك ${bal} يا سيدي. انضباطك المالي ${bal > 0 ? 'مقبول' : 'على الحافة'}.`;
+        case 'finance': return bal < 0 ? `رصيدك سالب (${bal}) يا سيدي. أوصي بفرملة فورية.` : `رصيدك ${bal} يا سيدي. انضباطك المالي ${bal > 0 ? 'مقبول' : 'على الحافة'}.`;
         case 'study': return `سجلت ${Math.round((life.studyMinutes || 0) / 60)} ساعة دراسة يا سيدي. ${(life.studyMinutes || 0) > 600 ? 'وتيرة ممتازة.' : 'يمكنني رفع استثمارك المعرفي إن أمرت.'}`;
         case 'home': return pending > 0 ? `لديك ${pending} مهام منزلية معلّقة يا سيدي. الفوضى تتراكم بصمت.` : 'المنزل تحت السيطرة يا سيدي.';
         case 'relations': return negl > 0 ? `${negl} من علاقاتك تنتظر اتصالك يا سيدي. العلاقات رأس مال صامت.` : 'جميع علاقاتك نشطة يا سيدي. أحسنت.';
@@ -740,16 +977,14 @@ function MindChamber({ commitments }) {
     }
     switch (id) {
       case 'time': return `Reflecting on your time, sir: ${totalHours}h committed, ${remaining}h free. ${risk.label === 'Low' ? 'A fine balance.' : 'I sense strain — allow me to lighten it.'}`;
-      case 'finance': return bal < 0 ? `Your balance is negative (${bal}), sir. That red line — I advise an immediate brake.` : `Balance ${bal}, sir. ${bal > 0 ? 'Acceptable discipline.' : 'On the edge.'}`;
+      case 'finance': return bal < 0 ? `Your balance is negative (${bal}), sir. I advise an immediate brake.` : `Balance ${bal}, sir. ${bal > 0 ? 'Acceptable discipline.' : 'On the edge.'}`;
       case 'study': return `You logged ${Math.round((life.studyMinutes || 0) / 60)}h of study, sir. ${(life.studyMinutes || 0) > 600 ? 'Excellent pace.' : 'I can raise your cognitive investment, if you command.'}`;
       case 'home': return pending > 0 ? `${pending} home tasks pending, sir. Chaos accumulates silently.` : 'The household is under control, sir.';
       case 'relations': return negl > 0 ? `${negl} relationships await your call, sir. Bonds are silent capital.` : 'All relationships active, sir. Well done.';
       default: return w ? `Mood ${w.mood}/10, energy ${w.energy}/10, sleep ${w.sleep_hours}h, sir. ${(w.sleep_hours || 0) < 7 ? 'I recommend a strict sleep protocol tonight.' : 'The body holds firm.'}` : 'No wellness data yet, sir.';
     }
   };
-
   const focusDomain = (d) => { setActiveDomain(d.id); const line = domainThought(d.id); setFullThought(line); jarvisSpeak(line, lang); };
-
   const sendCommand = async (text) => {
     const cmd = (text || '').trim();
     if (!cmd || busy) return;
@@ -761,12 +996,12 @@ function MindChamber({ commitments }) {
       const json = await res.json();
       const reply = json.reply || (lang === 'ar' ? 'تعذّر الوصول لمحركاتي يا سيدي.' : 'My engines are unreachable, sir.');
       setActions(json.actions || []);
+      setLastEngine(json.engine || 'rules');
       setFullThought(reply);
       jarvisSpeak(reply, lang);
     } catch (e) { setFullThought(lang === 'ar' ? 'حدث خلل لحظي يا سيدي.' : 'A momentary glitch, sir.'); }
     setBusy(false);
   };
-
   const startListening = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
@@ -780,42 +1015,115 @@ function MindChamber({ commitments }) {
     setListening(true);
     try { rec.start(); } catch (e) { setListening(false); }
   };
+  const engineMeta = lastEngine === 'gemini' || lastEngine === 'cerebras'
+    ? { color: '#c4b5fd', label: lang === 'ar' ? 'تفكير عميق' : 'DEEP THINK' }
+    : lastEngine === 'groq'
+      ? { color: '#4dd8ff', label: lang === 'ar' ? 'تحليل سريع' : 'FAST ANALYSIS' }
+      : { color: '#7d9bb8', label: lang === 'ar' ? 'استجابة فورية' : 'INSTANT' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-      <div style={{ position: 'relative', width: 560, height: 520, maxWidth: '94vw', margin: '0 auto' }}>
-        <svg className="neural-links" viewBox="0 0 100 100" preserveAspectRatio="none">
-          {domains.map((d) => {
-            const rad = (d.angle * Math.PI) / 180;
-            const x = 50 + 45 * Math.cos(rad); const y = 50 + 45 * Math.sin(rad);
-            const st = domainStatus(d.id);
-            return <line key={d.id} x1="50" y1="50" x2={x} y2={y} stroke={st.color} strokeWidth={st.w} vectorEffect="non-scaling-stroke" className={st.hot ? 'nl-hot' : 'nl-calm'} style={{ color: st.color }} />;
-          })}
-        </svg>
-        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 340, height: 340 }}>
-          <BrainCore riskL={risk.label} load={totalHours ? highHours / totalHours : 0.3} rest={remaining / 168} />
+      <div className="hud-grid4">
+        {/* LIFE SCAN: كرة + أعصاب متصلة */}
+        <div className="glass-panel hud-panel hud-box">
+          <div className="holo-label">◈ {lang === 'ar' ? 'مسح الحياة' : 'LIFE SCAN'}</div>
+          <div className={busy ? 'core-thinking' : ''} style={{ position: 'relative', width: '100%', maxWidth: 320, aspectRatio: '1 / 1', margin: '0 auto' }}>
+            <svg className="neural-links" viewBox="0 0 100 100" preserveAspectRatio="none">
+              {domains.map((d) => {
+                const rad = (d.angle * Math.PI) / 180;
+                const x = 50 + 46 * Math.cos(rad); const y = 50 + 46 * Math.sin(rad);
+                const st = domainStatus(d.id);
+                return <line key={d.id} x1="50" y1="50" x2={x} y2={y} stroke={st.color} strokeWidth={st.w} vectorEffect="non-scaling-stroke" className={st.hot ? 'nl-hot' : 'nl-calm'} style={{ color: st.color }} />;
+              })}
+            </svg>
+            <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: '60%', height: '60%' }}>
+              <GlobeSVG />
+            </div>
+            {domains.map((d) => {
+              const rad = (d.angle * Math.PI) / 180;
+              const x = 50 + 46 * Math.cos(rad); const y = 50 + 46 * Math.sin(rad);
+              const st = domainStatus(d.id);
+              return (
+                <button key={d.id} className="mind-node" onClick={() => focusDomain(d)}
+                  style={{ left: `${x}%`, top: `${y}%`, borderColor: st.hot ? st.color : undefined, color: st.hot ? st.color : undefined, boxShadow: activeDomain === d.id ? `0 0 22px ${st.color}` : undefined, padding: '6px 10px', fontSize: '0.68rem' }}>
+                  <span>{d.icon}</span>
+                  <span>{d.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        {domains.map((d) => {
-          const rad = (d.angle * Math.PI) / 180;
-          const x = 50 + 45 * Math.cos(rad); const y = 50 + 45 * Math.sin(rad);
-          const st = domainStatus(d.id);
-          return (
-            <button key={d.id} className="mind-node" onClick={() => focusDomain(d)}
-              style={{ left: `${x}%`, top: `${y}%`, borderColor: st.hot ? st.color : undefined, color: st.hot ? st.color : undefined, boxShadow: activeDomain === d.id ? `0 0 22px ${st.color}` : undefined }}>
-              <span>{d.icon}</span>
-              <span>{d.label}</span>
-            </button>
-          );
-        })}
-        <div className="sys-line" style={{ color: risk.color }}>
-          {lang === 'ar' ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}` : `SYSTEM: ${risk.label === 'Low' ? 'STABLE' : risk.label === 'Medium' ? 'STRAINED' : 'CRITICAL'}`}
-          <span className="mono"> // {totalHours}{hs} / 168{hs}</span>
+        {/* VITAL RADAR: بيانات حقيقية */}
+        <div className="glass-panel hud-panel hud-box">
+          <div className="holo-label">◈ {lang === 'ar' ? 'الرادار الحيوي' : 'VITAL RADAR'}</div>
+          <VitalRadar riskPct={riskPct} riskColor={risk.color} loads={domainLoads} />
+          <div className="mono" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: 'var(--muted)' }}>
+            <span>AZ 217.4°</span>
+            <span>RNG {totalHours}{hs}</span>
+            <span style={{ color: risk.color }}>SIG {risk.label.toUpperCase()}</span>
+          </div>
+        </div>
+        {/* ENERGY */}
+        <div className="glass-panel hud-panel hud-box">
+          <div className="holo-label">◈ {lang === 'ar' ? 'الطاقة' : 'ENERGY'}</div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1.4rem', paddingTop: '0.6rem' }}>
+            {[
+              { l: 'TIME', v: Math.min(totalHours / 168, 1) },
+              { l: 'FIN', v: life?.finance?.summary ? Math.max(0, Math.min(1, (life.finance.summary.balance + 2000) / 4000)) : 0 },
+              { l: 'REST', v: Math.max(0, Math.min(1, remaining / 80)) },
+              { l: 'MOOD', v: (life?.wellness?.mood || 5) / 10 },
+            ].map((b) => (
+              <div key={b.l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column-reverse', gap: 3, height: 110 }}>
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <span key={i} style={{ width: 12, height: 6, background: (i / 12) <= b.v ? 'linear-gradient(90deg,#2979ff,#00e5ff)' : 'rgba(0,229,255,0.08)', boxShadow: (i / 12) <= b.v ? '0 0 8px rgba(0,229,255,0.5)' : 'none' }} />
+                  ))}
+                </div>
+                <span className="mono" style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>{b.l}</span>
+                <span className="mono" style={{ fontSize: '0.62rem', color: 'var(--cyan)' }}>{Math.round(b.v * 100)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* CORE */}
+        <div className="glass-panel hud-panel hud-box">
+          <div className="holo-label">◈ {lang === 'ar' ? 'النواة' : 'CORE'}</div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1.2rem', flexWrap: 'wrap' }}>
+            <Gauge value={Math.round(totalHours)} max={168} label={lang === 'ar' ? 'ساعات' : 'Hours'} color="#00e5ff" suffix={hs} />
+            <Gauge value={riskPct} max={100} label={lang === 'ar' ? 'الخطر' : 'Risk'} color={risk.color} suffix="%" />
+          </div>
+          <div className="sys-line" style={{ color: risk.color }}>
+            {lang === 'ar' ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}` : `SYSTEM: ${risk.label === 'Low' ? 'STABLE' : risk.label === 'Medium' ? 'STRAINED' : 'CRITICAL'}`}
+            <span className="mono"> // {totalHours}{hs} / 168{hs}</span>
+          </div>
         </div>
       </div>
-
+      {/* ذاكرة عَقْل المرئية */}
+      {logs.length > 0 && (
+        <div className="hud-corners" style={{ padding: '0.8rem 1.1rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <span className="stream-head mono">{lang === 'ar' ? 'ذاكرة عَقْل' : 'AQL MEMORY'}</span>
+          {logs.slice(0, 3).map((log, i) => {
+            const prev = logs[i + 1];
+            const li = RISK_ORDER.indexOf(log.burnout_risk);
+            const pi = prev ? RISK_ORDER.indexOf(prev.burnout_risk) : li;
+            const arrow = li > pi ? '▲' : li < pi ? '▼' : '•';
+            const col = log.burnout_risk === 'Critical' || log.burnout_risk === 'High' ? '#ff4d4d' : log.burnout_risk === 'Medium' ? '#ffb020' : '#00e676';
+            return (
+              <span key={log.id} className="mono" style={{ fontSize: '0.62rem', padding: '4px 10px', border: `1px solid ${col}55`, color: col, borderRadius: 999 }}>
+                {new Date(log.created_at).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en')} · {log.burnout_risk} {arrow}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {/* تيار الوعي + مؤشر مستوى الوعي */}
       <div className="hud-corners" style={{ padding: '1.1rem 1.3rem', minHeight: 96 }}>
-        <div className="stream-head mono">{lang === 'ar' ? 'تيار الوعي' : 'CONSCIOUSNESS STREAM'}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="stream-head mono">{lang === 'ar' ? 'تيار الوعي' : 'CONSCIOUSNESS STREAM'}</div>
+          {lastEngine && <span className="mono" style={{ fontSize: '0.6rem', color: engineMeta.color }}>◉ {engineMeta.label}</span>}
+        </div>
         <p style={{ margin: '0.45rem 0 0', color: 'var(--text)', lineHeight: 1.9, fontSize: '1.02rem' }}>{typed}<span className="caret">▌</span></p>
+        {busy && <div className="think-wave">{Array.from({ length: 24 }).map((_, i) => <span key={i} style={{ animationDelay: `${i * 0.05}s` }} />)}</div>}
         {actions.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             {actions.map((a, i) => (
@@ -824,7 +1132,6 @@ function MindChamber({ commitments }) {
           </div>
         )}
       </div>
-
       <form onSubmit={(e) => { e.preventDefault(); sendCommand(command); setCommand(''); }} style={{ display: 'flex', gap: 8 }}>
         <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder={lang === 'ar' ? 'خاطب عقلك... «وازن أسبوعي»، «سجل مصروف 50»' : 'Address your mind... "balance my week"'} style={{ ...fieldStyle, flex: 1, fontSize: '1.05rem' }} />
         <button type="button" onClick={startListening} disabled={busy || listening} style={{ padding: '12px 16px', background: listening ? 'rgba(255,77,77,0.15)' : 'rgba(0,229,255,0.08)', border: `1px solid ${listening ? 'rgba(255,77,77,0.5)' : 'rgba(0,229,255,0.35)'}`, color: listening ? '#ff8f8f' : '#7dd3fc', borderRadius: 10, cursor: 'pointer', fontSize: '1.1rem' }}>
@@ -868,6 +1175,7 @@ function DashboardPage({ commitments, goInvestigate, onRefresh }) {
   const rigidHours = commitments.filter((c) => !c.flexible).reduce((s, c) => s + Number(c.hours_per_week), 0);
   const flexibleHours = totalHours - rigidHours;
   const morningHours = commitments.filter((c) => c.timeSlot === 'morning').reduce((s, c) => s + Number(c.hours_per_week), 0);
+
   const riskPct = risk.label === 'Critical' ? 95 : risk.label === 'High' ? 70 : risk.label === 'Medium' ? 45 : 15;
 
   const typeData = Object.keys(typeLabels).map((k) => ({
@@ -875,12 +1183,14 @@ function DashboardPage({ commitments, goInvestigate, onRefresh }) {
     value: commitments.filter((c) => c.type === k).reduce((s, c) => s + Number(c.hours_per_week), 0),
     color: typeColors[k],
   }));
+
   const slotColors = { morning: '#00e5ff', afternoon: '#2979ff', evening: '#4dd8ff', late_night: '#ff4d4d', mixed: '#7d9bb8' };
   const slotData = Object.keys(slotLabels).map((k) => ({
     label: t(slotLabels[k]),
     value: commitments.filter((c) => c.timeSlot === k).reduce((s, c) => s + Number(c.hours_per_week), 0),
     color: slotColors[k],
   }));
+
   const radarAxes = [
     { label: t('راحة'), value: remaining / 168 },
     { label: t('هدوء'), value: totalHours ? 1 - Math.min(highHours / totalHours, 1) : 1 },
@@ -892,6 +1202,7 @@ function DashboardPage({ commitments, goInvestigate, onRefresh }) {
   useEffect(() => {
     const h = new Date().getHours();
     const part = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
+
     const pools = {
       Low: [
         `Good ${part}, sir. All systems stable; your schedule is under complete control.`,
@@ -914,14 +1225,14 @@ function DashboardPage({ commitments, goInvestigate, onRefresh }) {
     };
     const pool = pools[risk.label] || pools.Low;
     const line = pool[Math.floor(Math.random() * pool.length)];
+
     let done = false;
     const speakNow = () => {
       if (done) return;
-      if (Date.now() - lastGreetAt < 30000) return;
-      lastGreetAt = Date.now();
       done = true;
       jarvisSpeak(line, 'en', undefined, localStorage.getItem('aql-voice') || 'en-GB-RyanNeural');
     };
+
     const t = setTimeout(speakNow, 1200);
     window.addEventListener('pointerdown', speakNow, { once: true });
     window.addEventListener('keydown', speakNow, { once: true });
@@ -948,7 +1259,9 @@ function DashboardPage({ commitments, goInvestigate, onRefresh }) {
         <Gauge value={remaining} max={168} label={t('المتبقي للراحة')} color="#00e676" suffix={hs} />
         <Gauge value={riskPct} max={100} label={t('مستوى الخطر الحالي')} color={risk.color} suffix="%" />
       </div>
+
       <DirectivePanel />
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
         <div className="glass-panel hud-panel" style={{ padding: '1.2rem' }}>
           <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '1rem' }}>◤ {t('توزيع الأنواع')}</h3>
@@ -963,6 +1276,7 @@ function DashboardPage({ commitments, goInvestigate, onRefresh }) {
           <VBars data={slotData} hs={hs} />
         </div>
       </div>
+
       <button onClick={goInvestigate} style={{ width: '100%', padding: '14px', background: 'linear-gradient(90deg, #0077ff, #00e5ff)', color: '#001018', border: 'none', borderRadius: '3px', fontSize: '1.05rem', fontWeight: 800, cursor: 'pointer', boxShadow: '0 0 25px rgba(0,229,255,0.35)' }}>
         ⌖ {t('بدء تحليل جديد')}
       </button>
@@ -1017,6 +1331,7 @@ function InvestigatePage({ commitments, onSaved }) {
     <div>
       {error && <div className="glass-panel" style={{ padding: '1rem 1.2rem', marginBottom: '1.2rem', borderColor: 'rgba(239,68,68,0.4)', color: '#fecaca' }}>⚠️ {error}</div>}
       {success && <div className="glass-panel" style={{ padding: '1rem 1.2rem', marginBottom: '1.2rem', borderColor: 'rgba(16,185,129,0.4)', color: '#bbf7d0' }}>{success}</div>}
+
       <div className="glass-panel hud-panel" style={{ padding: '2rem', marginBottom: '1.5rem' }}>
         <h3 style={{ marginTop: 0, color: '#f8fafc', fontSize: '1.2rem' }}>📝 اختبر قراراً جديداً (إضافة التزام):</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.2rem', marginTop: '1.2rem' }}>
@@ -1045,6 +1360,7 @@ function InvestigatePage({ commitments, onSaved }) {
           {loading ? '⚡ جاري المعالجة وتحليل الخيوط...' : '🔍 تشغيل محاكاة المحقق'}
         </button>
       </div>
+
       {result && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <BrainPanels result={result} />
@@ -1059,9 +1375,10 @@ function InvestigatePage({ commitments, onSaved }) {
               <div style={{ width: barWidth(Math.max(result.remaining_hours, 0)), background: 'rgba(255,255,255,0.05)', height: '100%' }} />
             </div>
           </div>
+
           <div className="glass-panel glass-panel-glow deduction-panel" style={{ padding: '1.8rem', borderColor: riskColor }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#f8fafc' }}> استنتاج عَقْل:</span>
+              <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#f8fafc' }}>💡 استنتاج عَقْل:</span>
               <span style={{ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '800', backgroundColor: riskColor, color: '#0f172a' }}>الخطر: {result.burnout_risk}</span>
             </div>
             <p style={{ fontSize: '1.15rem', lineHeight: '1.7', color: '#f1f5f9', fontStyle: 'italic', margin: 0 }}>"{result.main_insight}"</p>
@@ -1069,6 +1386,7 @@ function InvestigatePage({ commitments, onSaved }) {
               {saving ? '⏳ جاري حفظ القرار...' : '💾 حفظ القرار النهائي'}
             </button>
           </div>
+
           <div className="glass-panel hud-panel" style={{ padding: '1.8rem' }}>
             <h4 style={{ marginTop: 0, color: '#38bdf8', fontSize: '1.1rem' }}>📌 الأدلة السلوكية المخفية:</h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
@@ -1182,7 +1500,6 @@ function CommitmentsPage({ commitments, refresh }) {
 function HistoryPage() {
   const [logs, setLogs] = useState([]);
   const [loaded, setLoaded] = useState(false);
-
   useEffect(() => {
     (async () => {
       try {
@@ -1194,10 +1511,8 @@ function HistoryPage() {
       setLoaded(true);
     })();
   }, []);
-
   if (!loaded) return <p style={{ color: '#94a3b8' }}>⏳ جاري فتح الأرشيف...</p>;
   if (logs.length === 0) return <div className="glass-panel hud-panel" style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>الأرشيف فارغ. شغّل أول محاكاة من غرفة التحليل. 🔍</div>;
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
       {logs.map((log) => (
@@ -1306,7 +1621,7 @@ function ChatPage() {
         >
           <option value="en-GB-RyanNeural">🎩 Ryan — British Butler</option>
           <option value="en-GB-ThomasNeural">🌑 Thomas — Deep Calm</option>
-          <option value="en-US-ChristopherNeural">️ Christopher — US Calm</option>
+          <option value="en-US-ChristopherNeural">⚙️ Christopher — US Calm</option>
           <option value="en-GB-SoniaNeural">🕵️ Sonia — Female Intel</option>
         </select>
         <button type="button" onClick={() => speak(lang === 'ar' ? 'مرحبًا يا سيدي، أنا عَقْل. كيف أخدمك اليوم؟' : 'At your service, sir.', 'test')}
@@ -1318,6 +1633,7 @@ function ChatPage() {
           {autoSpeak ? '🔊 الصوت: مفعّل' : '🔇 الصوت: مطفأ'}
         </button>
       </div>
+
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '0.5rem' }}>
         {messages.length === 0 && (
           <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: '2rem', lineHeight: 1.8 }}>
@@ -1343,12 +1659,14 @@ function ChatPage() {
         {busy && <div style={{ alignSelf: 'flex-start', color: '#94a3b8', fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}>⚡ عَقْل يفكر...</div>}
         <div id="chat-bottom" />
       </div>
+
       {error && <div style={{ color: '#fecaca', fontSize: '0.85rem', margin: '0.5rem 0' }}>⚠️ {error}</div>}
+
       <form onSubmit={send} style={{ display: 'flex', gap: '0.8rem', marginTop: '0.8rem' }}>
         <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="اكتب رسالتك... أو اضغط المايك وتكلم" style={{ ...fieldStyle, flex: 1, fontSize: '1.1rem' }} />
         <button type="button" onClick={startListening} disabled={busy || listening} title="تكلّم مع عَقْل"
           style={{ padding: '12px 16px', background: listening ? 'rgba(239,68,68,0.2)' : 'rgba(56,189,248,0.1)', border: `1px solid ${listening ? 'rgba(239,68,68,0.5)' : 'rgba(56,189,248,0.35)'}`, color: listening ? '#fca5a5' : '#7dd3fc', borderRadius: '10px', cursor: 'pointer', fontSize: '1.1rem', boxShadow: listening ? '0 0 18px rgba(239,68,68,0.4)' : 'none' }}>
-          {listening ? '🎙️ أسمعك...' : ''}
+          {listening ? '🎙️ أسمعك...' : '🎤'}
         </button>
         <button type="submit" disabled={busy || !input.trim()}
           style={{ padding: '12px 26px', fontSize: '1.05rem', background: 'linear-gradient(90deg,#0284c7,#6366f1)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '700', cursor: busy || !input.trim() ? 'not-allowed' : 'pointer', opacity: busy || !input.trim() ? 0.6 : 1 }}>
@@ -1430,7 +1748,7 @@ function GoalsPage() {
       const res = await fetch(`${API_URL}/api/commitments/${commitmentId}`, { method: 'PATCH', headers, body: JSON.stringify({ goal_id: goalId }) });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'تعذر الربط');
-      setMessage(' تم ربط الالتزام بالهدف.');
+      setMessage('🔗 تم ربط الالتزام بالهدف.');
       await fetchAll();
     } catch (err) { setError(err.message); }
   };
@@ -1451,7 +1769,7 @@ function GoalsPage() {
       {error && <div className="glass-panel" style={{ padding: '1rem 1.2rem', marginBottom: '1.2rem', borderColor: 'rgba(239,68,68,0.4)', color: '#fecaca' }}>⚠️ {error}</div>}
       {message && <div className="glass-panel" style={{ padding: '1rem 1.2rem', marginBottom: '1.2rem', borderColor: 'rgba(16,185,129,0.4)', color: '#bbf7d0' }}>{message}</div>}
       <form onSubmit={addGoal} className="glass-panel hud-panel" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-        <h3 style={{ marginTop: 0, color: '#f8fafc' }}> أضف هدفًا جديدًا</h3>
+        <h3 style={{ marginTop: 0, color: '#f8fafc' }}>🎯 أضف هدفًا جديدًا</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
           <div><label style={labelStyle}>اسم الهدف</label>
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثال: إطلاق مشروعي، حفظ القرآن..." style={fieldStyle} /></div>
@@ -1462,6 +1780,7 @@ function GoalsPage() {
           </div>
         </div>
       </form>
+
       {goals.length === 0 ? (
         <div className="glass-panel hud-panel" style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>لا توجد أهداف بعد. أضف هدفك الأول وابدأ بربط التزاماتك به. 🎯</div>
       ) : (
@@ -1531,7 +1850,7 @@ function buildSmoothPath(points) {
     const p0 = points[i - 1];
     const p1 = points[i];
     const cx = (p0.x + p1.x) / 2;
-    d += `C ${cx} ${p0.y}, ${cx} ${p1.y}, ${p1.x} ${p1.y}`;
+    d += ` C ${cx} ${p0.y}, ${cx} ${p1.y}, ${p1.x} ${p1.y}`;
   }
   return d;
 }
@@ -1590,12 +1909,12 @@ function ProjectionChart({ commitments }) {
           <text x={currentPoints[0].x + 10} y={currentPoints[0].y + 18} fill="#fdba74" fontSize="13" fontWeight="700">المسار الحالي</text>
           <text x={lastSim.x - 170} y={lastSim.y - 14} fill="#4ade80" fontSize="13" fontWeight="800">الهدف متحقق 🎯</text>
           <text x={PAD} y={H - 12} fill="#64748b" fontSize="11">اليوم</text>
-          <text x={W / 2 - 18} y={H - 12} fill="#64748b" fontSize="11"> أشهر</text>
+          <text x={W / 2 - 18} y={H - 12} fill="#64748b" fontSize="11">٦ أشهر</text>
           <text x={W - PAD - 28} y={H - 12} fill="#64748b" fontSize="11">سنة</text>
         </svg>
       </div>
       <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: '0.8rem', lineHeight: 1.7 }}>
-        🟠 الخط البرتقالي: استمرار نمطك الحالي كما هو دون تغيير.  الخط الأخضر: مسارك المتوقع إذا طبّقت توصيات عَقْل هذا الأسبوع.
+        🟠 الخط البرتقالي: استمرار نمطك الحالي كما هو دون تغيير. 🟢 الخط الأخضر: مسارك المتوقع إذا طبّقت توصيات عَقْل هذا الأسبوع.
       </p>
     </div>
   );
@@ -1654,6 +1973,7 @@ function ReportsPage() {
         <Gauge value={rigidHours} max={Math.max(totalHours, 1)} label={t('ساعات صارمة:')} color="#ff2d78" suffix={hs} />
         <Gauge value={riskPct} max={100} label={t('مستوى الخطر:')} color={risk.color} suffix="%" />
       </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
         <div className="glass-panel hud-panel" style={{ padding: '1.2rem' }}>
           <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '1rem' }}>◤ {t('توزيع الأنواع')}</h3>
@@ -1664,8 +1984,9 @@ function ReportsPage() {
           <VBars data={slotData} hs={hs} />
         </div>
       </div>
+
       <div className="glass-panel hud-panel" style={{ padding: '1.5rem' }}>
-        <h3 style={{ marginTop: 0, color: 'var(--text)' }}> {t('مسار الخطر عبر التحقيقات')}</h3>
+        <h3 style={{ marginTop: 0, color: 'var(--text)' }}>◉ {t('مسار الخطر عبر التحقيقات')}</h3>
         {trend.length === 0 ? (
           <p style={{ color: 'var(--muted)' }}>شغّل محاكاة أولاً ليبدأ سجل المخاطر بالتكوّن.</p>
         ) : (
@@ -1694,7 +2015,6 @@ function ReportsPage() {
 /* ========== شارات الأداء ========== */
 function AchievementsPage() {
   const [data, setData] = useState(null);
-
   useEffect(() => {
     (async () => {
       try {
@@ -1735,7 +2055,7 @@ function AchievementsPage() {
   if (!data) return <p style={{ color: '#94a3b8' }}>⏳ جاري فتح خزانة الأوسمة...</p>;
 
   const ACHIEVEMENTS = [
-    { id: 'first_step', icon: '', title: 'الخطوة الأولى', desc: 'أضفت أول التزام إلى ملف قضيتك.', check: (d) => d.commitments.length >= 1 },
+    { id: 'first_step', icon: '🌱', title: 'الخطوة الأولى', desc: 'أضفت أول التزام إلى ملف قضيتك.', check: (d) => d.commitments.length >= 1 },
     { id: 'planner', icon: '📅', title: 'مخطط منظم', desc: 'لديك ثلاثة التزامات نشطة أو أكثر.', check: (d) => d.commitments.length >= 3 },
     { id: 'visionary', icon: '🎯', title: 'صاحب رؤية', desc: 'أنشأت هدفًا يوجّه التزاماتك.', check: (d) => d.goals.length >= 1 },
     { id: 'strategist', icon: '🔗', title: 'عقل استراتيجي', desc: 'ربطت التزامًا واحدًا على الأقل بهدف.', check: (d) => d.linkedCount >= 1 },
@@ -1744,7 +2064,7 @@ function AchievementsPage() {
     { id: 'balanced', icon: '🧘', title: 'روح متوازنة', desc: 'مستوى خطرك الحالي Low مع ميزانية مريحة.', check: (d) => d.risk === 'Low' && d.totalHours >= 20 },
     { id: 'early_bird', icon: '🌅', title: 'طائر الصباح', desc: 'تستثمر 10 ساعات أسبوعيًا أو أكثر في الفترة الصباحية.', check: (d) => d.morningHours >= 10 },
     { id: 'night_owl', icon: '🦉', title: 'بومة الليل', desc: 'لديك أكثر من 10 ساعات ليل متأخر — عَقْل يراقبك.', check: (d) => d.lateHours > 10 },
-    { id: 'ambitious', icon: '', title: 'طموح جامح', desc: 'تجاوزت 90 ساعة التزام أسبوعيًا — جرأة تستحق الوسام.', check: (d) => d.totalHours > 90 },
+    { id: 'ambitious', icon: '🔥', title: 'طموح جامح', desc: 'تجاوزت 90 ساعة التزام أسبوعيًا — جرأة تستحق الوسام.', check: (d) => d.totalHours > 90 },
     { id: 'disciplined', icon: '💎', title: 'انضباط مرن', desc: 'تملك مزيجًا من الالتزامات المرنة والصارمة.', check: (d) => d.hasFlexible && d.hasRigid },
     { id: 'persistent', icon: '📈', title: 'محلل دائم', desc: 'أجريت خمسة تحليلات أو أكثر — ذاكرة قضيتك تكبر.', check: (d) => d.logsCount >= 5 },
   ];
@@ -1768,7 +2088,7 @@ function AchievementsPage() {
           const earned = a.check(data);
           return (
             <div key={a.id} className="glass-panel" style={{ padding: '1.3rem', textAlign: 'center', border: earned ? '1px solid rgba(251,191,36,0.45)' : '1px solid rgba(255,255,255,0.06)', boxShadow: earned ? '0 0 24px rgba(251,191,36,0.12)' : 'none', opacity: earned ? 1 : 0.55 }}>
-              <div style={{ fontSize: '2.2rem', filter: earned ? 'drop-shadow(0 0 12px rgba(251,191,36,0.5))' : 'grayscale(1)', marginBottom: '0.6rem' }}>{earned ? a.icon : ''}</div>
+              <div style={{ fontSize: '2.2rem', filter: earned ? 'drop-shadow(0 0 12px rgba(251,191,36,0.5))' : 'grayscale(1)', marginBottom: '0.6rem' }}>{earned ? a.icon : '🔒'}</div>
               <div style={{ color: earned ? '#fbbf24' : '#94a3b8', fontWeight: 800, fontSize: '1.05rem' }}>{a.title}</div>
               <p style={{ color: '#94a3b8', fontSize: '0.85rem', lineHeight: 1.7, margin: '0.5rem 0 0' }}>{a.desc}</p>
             </div>
@@ -1778,6 +2098,7 @@ function AchievementsPage() {
     </div>
   );
 }
+
 
 /* ========== صفحة Life OS ========== */
 function LifeOSPage() {
@@ -1814,7 +2135,6 @@ function LifeOSPage() {
     } catch (e) { /* نتجاهل */ }
     setLoaded(true);
   }, []);
-
   useEffect(() => { loadAll(); }, [loadAll]);
 
   const post = async (url, body) => {
@@ -1827,7 +2147,6 @@ function LifeOSPage() {
       await loadAll();
     } catch (e) { setMsg('⚠️ ' + e.message); }
   };
-
   const toggleHome = async (id, status) => {
     try {
       const headers = await getAuthHeaders();
@@ -1839,8 +2158,8 @@ function LifeOSPage() {
   const L = (ar, en) => (lang === 'ar' ? ar : en);
   const tabs = [
     { id: 'overview', label: L('◈ نظرة شاملة', '◈ Overview') },
-    { id: 'finance', label: L('💰 المال', ' Finance') },
-    { id: 'study', label: L('📚 الدراسة', ' Study') },
+    { id: 'finance', label: L('💰 المال', '💰 Finance') },
+    { id: 'study', label: L('📚 الدراسة', '📚 Study') },
     { id: 'home', label: L('🏠 البيت', '🏠 Home') },
     { id: 'relations', label: L('🤝 العلاقات', '🤝 Relations') },
     { id: 'wellness', label: L('🧘 الصحة', '🧘 Wellness') },
@@ -1849,7 +2168,6 @@ function LifeOSPage() {
   const btn = { padding: '10px 16px', background: 'linear-gradient(90deg,#0077ff,#00e5ff)', color: '#001018', border: 'none', borderRadius: '3px', fontWeight: 800, cursor: 'pointer' };
 
   if (!loaded) return <p style={{ color: 'var(--muted)' }}>⏳ {L('جاري تحميل حياتك...', 'Loading your life...')}</p>;
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -1863,6 +2181,7 @@ function LifeOSPage() {
         ))}
       </div>
       {msg && <div style={{ padding: '0.7rem 1rem', borderRadius: '4px', background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', color: '#00e676', fontSize: '0.9rem' }}>{msg}</div>}
+
       {tab === 'overview' && (
         <div className="glass-panel hud-panel" style={{ ...panel, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', justifyItems: 'center' }}>
           <Gauge value={finance.summary.balance} max={Math.max(finance.summary.income, 1)} label={L('الرصيد', 'Balance')} color={finance.summary.balance >= 0 ? '#00e676' : '#ff2d78'} suffix="$" />
@@ -1872,6 +2191,7 @@ function LifeOSPage() {
           <Gauge value={wellness.logs[0]?.mood || 0} max={10} label={L('المزاج', 'Mood')} color="#00e676" suffix="/10" />
         </div>
       )}
+
       {tab === 'finance' && (
         <div className="glass-panel hud-panel" style={panel}>
           <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--muted)' }}>
@@ -1896,6 +2216,7 @@ function LifeOSPage() {
           ))}
         </div>
       )}
+
       {tab === 'study' && (
         <div className="glass-panel hud-panel" style={panel}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.8rem', marginBottom: '1rem' }}>
@@ -1911,6 +2232,7 @@ function LifeOSPage() {
           ))}
         </div>
       )}
+
       {tab === 'home' && (
         <div className="glass-panel hud-panel" style={panel}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.8rem', marginBottom: '1rem' }}>
@@ -1921,7 +2243,7 @@ function LifeOSPage() {
           {home.tasks.map((tk) => (
             <div key={tk.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0', borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
               <span style={{ color: tk.status === 'done' ? 'var(--muted)' : 'var(--text)', textDecoration: tk.status === 'done' ? 'line-through' : 'none', fontSize: '0.9rem' }}>
-                {tk.priority === 'urgent' ? '' : tk.priority === 'high' ? '' : '🔵'} {tk.title}
+                {tk.priority === 'urgent' ? '🔴' : tk.priority === 'high' ? '🟠' : '🔵'} {tk.title}
               </span>
               <button onClick={() => toggleHome(tk.id, tk.status === 'done' ? 'pending' : 'done')}
                 style={{ background: 'none', border: `1px solid ${tk.status === 'done' ? '#00e676' : 'rgba(0,229,255,0.3)'}`, color: tk.status === 'done' ? '#00e676' : 'var(--muted)', borderRadius: '3px', padding: '3px 10px', cursor: 'pointer', fontSize: '0.75rem' }}>
@@ -1931,6 +2253,7 @@ function LifeOSPage() {
           ))}
         </div>
       )}
+
       {tab === 'relations' && (
         <div className="glass-panel hud-panel" style={panel}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.8rem', marginBottom: '1rem' }}>
@@ -1944,12 +2267,13 @@ function LifeOSPage() {
           </div>
           {people.people.map((p) => (
             <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid rgba(0,229,255,0.08)', fontSize: '0.9rem' }}>
-              <span style={{ color: 'var(--text)' }}>{p.relation_type === 'family' ? '👨‍‍👦' : p.relation_type === 'friend' ? '🤝' : '💼'} {p.person_name}</span>
+              <span style={{ color: 'var(--text)' }}>{p.relation_type === 'family' ? '👨👩‍👦' : p.relation_type === 'friend' ? '🤝' : '💼'} {p.person_name}</span>
               <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>{L('كل', 'every')} {p.contact_frequency_days} {L('يوم', 'days')}</span>
             </div>
           ))}
         </div>
       )}
+
       {tab === 'wellness' && (
         <div className="glass-panel hud-panel" style={panel}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.8rem', marginBottom: '1rem' }}>
@@ -1959,7 +2283,7 @@ function LifeOSPage() {
               <input type="range" min="1" max="10" value={wellForm.energy} onChange={(e) => setWellForm({ ...wellForm, energy: e.target.value })} style={{ width: '100%' }} /></div>
             <div><label style={labelStyle}>{L('النوم (ساعات)', 'Sleep (hrs)')}</label>
               <input type="number" min="0" max="14" step="0.5" value={wellForm.sleep_hours} onChange={(e) => setWellForm({ ...wellForm, sleep_hours: e.target.value })} style={fieldStyle} /></div>
-            <button style={btn} onClick={() => post('/api/wellness', wellForm)}> {L('سجّل', 'Log')}</button>
+            <button style={btn} onClick={() => post('/api/wellness', wellForm)}>📝 {L('سجّل', 'Log')}</button>
           </div>
           {wellness.logs.slice(0, 7).map((w) => (
             <div key={w.id} style={{ display: 'flex', gap: '1rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(0,229,255,0.08)', fontSize: '0.8rem', color: 'var(--muted)' }}>
@@ -2011,7 +2335,7 @@ function App() {
 
   return (
     <Layout page={page} setPage={setPage} displayName={displayName} onLogout={handleLogout}>
-      {page === 'dashboard' && <MindChamber commitments={commitments} />}
+      {page === 'dashboard' && <MindChamber commitments={commitments} />}      
       {page === 'investigate' && <InvestigatePage commitments={commitments} onSaved={fetchCommitments} />}
       {page === 'commitments' && <CommitmentsPage commitments={commitments} refresh={fetchCommitments} />}
       {page === 'history' && <HistoryPage />}
