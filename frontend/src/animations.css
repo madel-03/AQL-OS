@@ -119,17 +119,12 @@
   }
 }
 
-/* 7. تيار الوعي يكتب تلقائياً */
+/* 7. تيار الوعي (وميض المؤشر فقط لأن الكتابة تتم عبر JavaScript) */
 .consciousness-text {
   border-right: 2px solid var(--cyan);
-  animation: typing 3s steps(40) forwards, blink 0.75s step-end infinite;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-@keyframes typing {
-  from { width: 0; }
-  to { width: 100%; }
+  animation: blink 0.75s step-end infinite;
+  padding-right: 5px;
+  /* أزلنا overflow و white-space للسماح للنص الطويل بالنزول لسطر جديد بشكل طبيعي */
 }
 
 @keyframes blink {
