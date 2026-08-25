@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from './lib/supabase';
 import { LangProvider } from './lib/i18n';
 import { useLang } from './lib/lang';
-import './animations.css';
+
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
