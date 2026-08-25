@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from './lib/supabase';
 import { LangProvider } from './lib/i18n';
 import { useLang } from './lib/lang';
+import './animations.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -353,12 +354,14 @@ function NavIcon({ id }) {
 }
 
 /* ========== الهيكل ========== */
+/* ========== الهيكل ========== */
 function Layout({ page, setPage, displayName, onLogout, children }) {
   const { lang, setLang, t } = useLang();
   const [railOpen, setRailOpen] = useState(false);
   const current = NAV_ITEMS.find((n) => n.id === page);
   return (
-    <div className="app-shell app-layout" style={{ minHeight: '100vh', direction: lang === 'ar' ? 'rtl' : 'ltr', display: 'flex' }}>
+    // 👈 أضفنا كلاسات background-grid و scan-line هنا
+    <div className="app-shell app-layout background-grid scan-line" style={{ minHeight: '100vh', direction: lang === 'ar' ? 'rtl' : 'ltr', display: 'flex' }}>
       <aside className={`app-sidebar rail ${railOpen ? 'rail-open' : ''}`}>
         <div className="rail-scan" aria-hidden="true" />
         <div className="rail-logo" onClick={() => setRailOpen(!railOpen)}>
@@ -453,9 +456,11 @@ function Gauge({ value, max, label, color, suffix = '' }) {
         <svg width="130" height="130" viewBox="0 0 130 130">
           <circle cx="65" cy="65" r={R} fill="none" stroke="rgba(0,229,255,0.1)" strokeWidth="7" />
           <circle cx="65" cy="65" r={R + 8} fill="none" stroke="rgba(0,229,255,0.25)" strokeWidth="1" strokeDasharray="2 6" />
+          {/* 👈 أضفنا كلاس gauge-circle هنا */}
           <circle cx="65" cy="65" r={R} fill="none" stroke={color} strokeWidth="7" strokeLinecap="round"
             strokeDasharray={C} strokeDashoffset={C * (1 - pct)} transform="rotate(-90 65 65)"
-            style={{ transition: 'stroke-dashoffset 1.4s cubic-bezier(.4,0,.2,1)', filter: `drop-shadow(0 0 8px ${color})` }} />
+            className="gauge-circle"
+            style={{ filter: `drop-shadow(0 0 8px ${color})` }} />
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 900, color, fontFamily: 'Orbitron, Tajawal', textShadow: `0 0 14px ${color}` }}>{value}{suffix}</div>
@@ -820,13 +825,15 @@ function GlobeSVG() {
     return { x: 50 + Math.cos(a) * r, y: 50 + Math.sin(a) * r * 0.9 };
   });
   return (
-    <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
+    // 👈 أضفنا كلاس globe-container هنا
+    <svg viewBox="0 0 100 100" className="globe-container" style={{ width: '100%', height: '100%' }}>
       <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(0,229,255,0.3)" />
       <ellipse cx="50" cy="50" rx="46" ry="16" fill="none" stroke="rgba(0,229,255,0.18)" />
       <ellipse cx="50" cy="50" rx="46" ry="30" fill="none" stroke="rgba(0,229,255,0.12)" />
       <ellipse cx="50" cy="50" rx="18" ry="46" fill="none" stroke="rgba(0,229,255,0.15)" />
       <ellipse cx="50" cy="50" rx="32" ry="46" fill="none" stroke="rgba(0,229,255,0.1)" />
-      {dots.map((d, i) => <circle key={i} cx={d.x} cy={d.y} r="1.2" fill="var(--cyan)" opacity={0.4 + ((i * 29) % 50) / 100} />)}
+      {/* 👈 أضفنا كلاس globe-dot للنقاط */}
+      {dots.map((d, i) => <circle key={i} cx={d.x} cy={d.y} r="1.2" fill="var(--cyan)" className="globe-dot" opacity={0.4 + ((i * 29) % 50) / 100} />)}
     </svg>
   );
 }
@@ -845,11 +852,13 @@ function VitalRadar({ riskPct, riskColor, loads }) {
         <line x1="90" y1="12" x2="90" y2="168" stroke="rgba(0,229,255,0.1)" />
         <line x1="12" y1="90" x2="168" y2="90" stroke="rgba(0,229,255,0.1)" />
         <line x1="90" y1="90" x2={mx} y2={my} stroke={riskColor} strokeWidth="1" opacity="0.6" />
-        <circle cx={mx} cy={my} r="4" fill={riskColor} className="blip" />
+        {/* 👈 أضفنا radar-dot هنا */}
+        <circle cx={mx} cy={my} r="4" fill={riskColor} className="blip radar-dot" />
         {loads.map((d, i) => {
           const a = (i / Math.max(loads.length, 1)) * Math.PI * 2 - Math.PI / 2;
           const r = 14 + d.value * 60;
-          return <circle key={i} cx={90 + Math.cos(a) * r} cy={90 + Math.sin(a) * r} r="2.5" fill={d.color} className="blip" style={{ animationDelay: `${i * 0.3}s` }} />;
+          {/* 👈 أضفنا radar-dot هنا أيضاً للـ blips المتعددة */}
+          return <circle key={i} cx={90 + Math.cos(a) * r} cy={90 + Math.sin(a) * r} r="2.5" fill={d.color} className="blip radar-dot" style={{ animationDelay: `${i * 0.3}s` }} />;
         })}
       </svg>
     </div>
@@ -1074,7 +1083,7 @@ function MindChamber({ commitments }) {
               { l: 'MOOD', v: (life?.wellness?.mood || 5) / 10 },
             ].map((b) => (
               <div key={b.l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column-reverse', gap: 3, height: 110 }}>
+                <div className="energy-bar" style={{ display: 'flex', flexDirection: 'column-reverse', gap: 3, height: 110 }}>
                   {Array.from({ length: 12 }, (_, i) => (
                     <span key={i} style={{ width: 12, height: 6, background: (i / 12) <= b.v ? 'linear-gradient(90deg,#2979ff,#00e5ff)' : 'rgba(0,229,255,0.08)', boxShadow: (i / 12) <= b.v ? '0 0 8px rgba(0,229,255,0.5)' : 'none' }} />
                   ))}
@@ -1092,7 +1101,7 @@ function MindChamber({ commitments }) {
             <Gauge value={Math.round(totalHours)} max={168} label={lang === 'ar' ? 'ساعات' : 'Hours'} color="#00e5ff" suffix={hs} />
             <Gauge value={riskPct} max={100} label={lang === 'ar' ? 'الخطر' : 'Risk'} color={risk.color} suffix="%" />
           </div>
-          <div className="sys-line" style={{ color: risk.color }}>
+          <div className="sys-line brain-core" style={{ color: risk.color }}>
             {lang === 'ar' ? `حالة النظام: ${risk.label === 'Low' ? 'مستقر' : risk.label === 'Medium' ? 'متوتر' : 'حرج'}` : `SYSTEM: ${risk.label === 'Low' ? 'STABLE' : risk.label === 'Medium' ? 'STRAINED' : 'CRITICAL'}`}
             <span className="mono"> // {totalHours}{hs} / 168{hs}</span>
           </div>
@@ -1122,7 +1131,7 @@ function MindChamber({ commitments }) {
           <div className="stream-head mono">{lang === 'ar' ? 'تيار الوعي' : 'CONSCIOUSNESS STREAM'}</div>
           {lastEngine && <span className="mono" style={{ fontSize: '0.6rem', color: engineMeta.color }}>◉ {engineMeta.label}</span>}
         </div>
-        <p style={{ margin: '0.45rem 0 0', color: 'var(--text)', lineHeight: 1.9, fontSize: '1.02rem' }}>{typed}<span className="caret">▌</span></p>
+        <p className="consciousness-text" style={{ margin: '0.45rem 0 0', color: 'var(--text)', lineHeight: 1.9, fontSize: '1.02rem' }}>{typed}</p>
         {busy && <div className="think-wave">{Array.from({ length: 24 }).map((_, i) => <span key={i} style={{ animationDelay: `${i * 0.05}s` }} />)}</div>}
         {actions.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
