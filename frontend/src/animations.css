@@ -1,0 +1,231 @@
+/* ========== أنيميشنات حيوية لكل العناصر ========== */
+
+/* 1. العقد تنبض وتدور */
+.mind-node {
+  animation: nodePulse 2s ease-in-out infinite, nodeFloat 3s ease-in-out infinite;
+  transition: all 0.3s ease;
+}
+
+.mind-node:hover {
+  animation: nodeHover 0.5s ease-in-out;
+  transform: translate(-50%, -50%) scale(1.15);
+}
+
+@keyframes nodePulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(0, 212, 255, 0.3); }
+  50% { box-shadow: 0 0 25px rgba(0, 212, 255, 0.6), 0 0 40px rgba(0, 212, 255, 0.3); }
+}
+
+@keyframes nodeFloat {
+  0%, 100% { transform: translate(-50%, -50%) translateY(0); }
+  50% { transform: translate(-50%, -50%) translateY(-8px); }
+}
+
+@keyframes nodeHover {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.2); }
+  100% { transform: translate(-50%, -50%) scale(1.15); }
+}
+
+/* 2. الرادار يدور ويمسح */
+.radar-sweep {
+  animation: radarSpin 4s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes radarSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* نقاط الرادار تومض */
+.radar-dot {
+  animation: radarBlink 1.5s ease-in-out infinite;
+}
+
+.radar-dot:nth-child(2) { animation-delay: 0.3s; }
+.radar-dot:nth-child(3) { animation-delay: 0.6s; }
+.radar-dot:nth-child(4) { animation-delay: 0.9s; }
+
+@keyframes radarBlink {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+
+/* 3. أعمدة الطاقة تنبض */
+.energy-bar {
+  animation: energyPulse 2s ease-in-out infinite;
+  transform-origin: bottom;
+}
+
+.energy-bar:nth-child(1) { animation-delay: 0s; }
+.energy-bar:nth-child(2) { animation-delay: 0.2s; }
+.energy-bar:nth-child(3) { animation-delay: 0.4s; }
+.energy-bar:nth-child(4) { animation-delay: 0.6s; }
+
+@keyframes energyPulse {
+  0%, 100% { transform: scaleY(1); opacity: 0.8; }
+  50% { transform: scaleY(1.05); opacity: 1; }
+}
+
+/* 4. المقاييس الدائرية تتعبأ بحركة */
+.gauge-circle {
+  animation: gaugeFill 2s ease-out forwards;
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+}
+
+@keyframes gaugeFill {
+  to { stroke-dashoffset: 0; }
+}
+
+/* 5. الكرة الأرضية تدور */
+.globe-container {
+  animation: globeRotate 20s linear infinite;
+}
+
+@keyframes globeRotate {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(360deg); }
+}
+
+/* نقاط الكرة تلمع */
+.globe-dot {
+  animation: globeShine 3s ease-in-out infinite;
+}
+
+.globe-dot:nth-child(odd) { animation-delay: 1.5s; }
+
+@keyframes globeShine {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; filter: drop-shadow(0 0 5px rgba(0, 212, 255, 0.8)); }
+}
+
+/* 6. الذاكرة تظهر متتابعة */
+.memory-item {
+  animation: memorySlideIn 0.6s ease-out forwards;
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.memory-item:nth-child(1) { animation-delay: 0.1s; }
+.memory-item:nth-child(2) { animation-delay: 0.3s; }
+.memory-item:nth-child(3) { animation-delay: 0.5s; }
+
+@keyframes memorySlideIn {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 7. تيار الوعي يكتب تلقائياً */
+.consciousness-text {
+  border-right: 2px solid var(--cyan);
+  animation: typing 3s steps(40) forwards, blink 0.75s step-end infinite;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+@keyframes typing {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+@keyframes blink {
+  50% { border-color: transparent; }
+}
+
+/* 8. النواة الحية تنبض بقوة */
+.brain-core {
+  animation: coreBreath 3s ease-in-out infinite;
+}
+
+@keyframes coreBreath {
+  0%, 100% { 
+    transform: scale(1);
+    filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.4));
+  }
+  50% { 
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 40px rgba(0, 212, 255, 0.8));
+  }
+}
+
+/* 9. الخطوط العصبية تتدفق */
+.neural-line {
+  stroke-dasharray: 5 5;
+  animation: neuralFlow 2s linear infinite;
+}
+
+@keyframes neuralFlow {
+  to { stroke-dashoffset: -20; }
+}
+
+/* 10. الألواح تطفو */
+.hud-panel {
+  animation: panelFloat 6s ease-in-out infinite;
+}
+
+.hud-panel:nth-child(2) { animation-delay: 1s; }
+.hud-panel:nth-child(3) { animation-delay: 2s; }
+.hud-panel:nth-child(4) { animation-delay: 3s; }
+
+@keyframes panelFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+/* 11. الأيقونات تدور */
+.icon-spin {
+  animation: iconRotate 8s linear infinite;
+}
+
+@keyframes iconRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 12. تأثير التوهج المتحرك */
+.glow-effect {
+  animation: glowPulse 2s ease-in-out infinite;
+}
+
+@keyframes glowPulse {
+  0%, 100% { 
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+  }
+  50% { 
+    box-shadow: 0 0 30px rgba(0, 212, 255, 0.8), 0 0 50px rgba(0, 212, 255, 0.4);
+  }
+}
+
+/* 13. البيانات تتحدث */
+.data-update {
+  animation: dataFlash 0.5s ease-in-out;
+}
+
+@keyframes dataFlash {
+  0% { color: var(--cyan); transform: scale(1.1); }
+  100% { color: var(--text); transform: scale(1); }
+}
+
+/* 14. الخلفية تتحرك */
+.background-grid {
+  animation: gridMove 20s linear infinite;
+}
+
+@keyframes gridMove {
+  from { background-position: 0 0; }
+  to { background-position: 100px 100px; }
+}
+
+/* 15. الخطوط المسحية */
+.scan-line {
+  animation: scanMove 3s linear infinite;
+}
+
+@keyframes scanMove {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
