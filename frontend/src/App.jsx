@@ -901,6 +901,49 @@ function MindChamber({ commitments }) {
   const risk = riskOf(totalHours);
   const riskPct = risk.label === 'Critical' ? 95 : risk.label === 'High' ? 70 : risk.label === 'Medium' ? 45 : 15;
   const highHours = commitments.filter((c) => c.intensity === 'high').reduce((s, c) => s + Number(c.hours_per_week), 0);
+  /* تحية جارفس عند الدخول */
+useEffect(() => {
+  const h = new Date().getHours();
+  const part = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
+  const pools = {
+    Low: [
+      `Good ${part}, sir. All systems stable; your schedule is under complete control.`,
+      `Good ${part}, sir. A beautifully balanced week. Do carry on.`,
+      `Good ${part}, sir. Everything within safe parameters. Shall we push a little further?`,
+    ],
+    Medium: [
+      `Good ${part}, sir. A slight strain on the horizon. I advise a lighter evening.`,
+      `Good ${part}, sir. We are approaching the comfort limit. A touch of caution, perhaps.`,
+    ],
+    High: [
+      `Good ${part}, sir. Your weekly load is running hot. I recommend trimming a commitment or two.`,
+      `Good ${part}, sir. The schedule is strained. Rest is not optional, sir.`,
+    ],
+    Critical: [
+      `Good ${part}, sir. I must be frank: the system is in the red. We act today.`,
+      `Good ${part}, sir. More hours than the week contains... inventive, but unsustainable. Shall we fix it?`,
+      `Good ${part}, sir. Critical load detected. I strongly advise an immediate review, sir.`,
+    ],
+  };
+  const pool = pools[risk.label] || pools.Low;
+  const line = pool[Math.floor(Math.random() * pool.length)];
+  let done = false;
+  const speakNow = () => {
+    if (done) return;
+    if (Date.now() - lastGreetAt < 30000) return;
+    lastGreetAt = Date.now();
+    done = true;
+    jarvisSpeak(line, 'en', undefined, localStorage.getItem('aql-voice') || 'en-GB-RyanNeural');
+  };
+  const timer = setTimeout(speakNow, 1200);
+  window.addEventListener('pointerdown', speakNow, { once: true });
+  window.addEventListener('keydown', speakNow, { once: true });
+  return () => {
+    clearTimeout(timer);
+    window.removeEventListener('pointerdown', speakNow);
+    window.removeEventListener('keydown', speakNow);
+  };
+}, []);
   const neglectedCount = (people) => (people || []).filter((p) => !p.last_contact || (Date.now() - new Date(p.last_contact).getTime()) / 86400000 > (p.contact_frequency_days || 7)).length;
   const RISK_ORDER = ['Low', 'Medium', 'High', 'Critical'];
 
