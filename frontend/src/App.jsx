@@ -49,6 +49,8 @@ function riskOf(totalHours) {
 /* ========== محرك صوت جارفس (Edge Neural) ========== */
 let jarvisAudio = null;
 let jarvisSession = 0;
+let jarvisController = null;
+let cancelPlayback = null;
 let lastGreetAt = 0;
 
 function b64ToBlob(base64, type) {
@@ -75,43 +77,52 @@ function pcmToWav(base64, sampleRate) {
 
 function jarvisStop() {
   jarvisSession++;
+  jarvisController?.abort();
+  jarvisController = null;
+  cancelPlayback?.();
+  cancelPlayback = null;
   if (jarvisAudio) { jarvisAudio.pause(); jarvisAudio = null; }
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
 }
 
-function chunkText(text, max = 400) {
+function chunkText(text, max = 550) {
   const sentences = text.match(/[^.!؟?\n]+[.!؟?]*/g) || [text];
   const chunks = [];
   let cur = '';
-  for (const s of sentences) {
+  for (const sentence of sentences) {
+    const words = sentence.trim().split(/\s+/);
+    for (const word of words) {
+      if (word.length > max) {
+        if (cur) { chunks.push(cur); cur = ''; }
+        for (let i = 0; i < word.length; i += max) chunks.push(word.slice(i, i + max));
+        continue;
+      }
+      const s = `${cur ? ' ' : ''}${word}`;
     if ((cur + s).length > max && cur) { chunks.push(cur); cur = s; }
     else cur += s;
+    }
   }
   if (cur) chunks.push(cur);
   return chunks;
 }
 
-function voiceSummary(text) {
-  const sentences = String(text || '').match(/[^.!؟?\n]+[.!؟?]*/g) || [text];
-  let out = '';
-  for (const s of sentences) {
-    if ((out + s).length > 260) break;
-    out += s;
-  }
-  return out || String(text || '').slice(0, 260);
-}
-
-function playChunkLocal(chunk, lang) {
+function playChunkLocal(chunk, lang, signal) {
   return new Promise((resolve) => {
-    if (!('speechSynthesis' in window)) return resolve();
+    if (signal.aborted || !('speechSynthesis' in window)) return resolve();
     const parts = chunk.match(/[^.!؟?\n]+[.!؟?]*/g) || [chunk];
     let done = 0;
     const resumeTimer = setInterval(() => {
       if (window.speechSynthesis.speaking) window.speechSynthesis.resume();
     }, 8000);
+    const cleanup = () => {
+      clearInterval(resumeTimer);
+      signal.removeEventListener('abort', cleanup);
+      resolve();
+    };
+    signal.addEventListener('abort', cleanup, { once: true });
     const finish = () => {
       done++;
-      if (done === parts.length) { clearInterval(resumeTimer); resolve(); }
+      if (done === parts.length) cleanup();
     };
     parts.forEach((p) => {
       const u = new SpeechSynthesisUtterance(p.trim());
@@ -123,48 +134,80 @@ function playChunkLocal(chunk, lang) {
   });
 }
 
-async function playChunkTTS(chunk, lang, voice) {
+async function prepareChunkTTS(chunk, lang, voice, signal) {
   for (let attempt = 0; attempt < 3; attempt++) {
+    if (signal.aborted) return null;
+    const ctrl = new AbortController();
+    const abort = () => ctrl.abort();
+    signal.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(abort, 20000);
     try {
       const headers = await getAuthHeaders();
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 20000);
+      if (signal.aborted) return null;
       const res = await fetch(`${API_URL}/api/tts`, {
         method: 'POST', headers, signal: ctrl.signal,
         body: JSON.stringify({ text: chunk, lang, voice }),
       });
-      clearTimeout(timer);
       if (res.status === 429) { await new Promise((r) => setTimeout(r, 1500)); continue; }
       const json = await res.json();
-      if (!res.ok || !json.audio) return false;
+      if (!res.ok || !json.audio) return null;
       const isMpeg = (json.mime || '').includes('mpeg');
-      const url = URL.createObjectURL(isMpeg ? b64ToBlob(json.audio, 'audio/mpeg') : pcmToWav(json.audio, Number(((json.mime || '').match(/rate=(\d+)/) || [])[1] || 24000)));
-      const ok = await new Promise((resolve) => {
-        jarvisAudio = new Audio(url);
-        jarvisAudio.onended = () => resolve(true);
-        jarvisAudio.onerror = () => resolve(false);
-        jarvisAudio.play().catch(() => resolve(false));
-      });
-      jarvisAudio = null;
-      URL.revokeObjectURL(url);
-      return ok;
-    } catch (e) {
+      return isMpeg ? b64ToBlob(json.audio, 'audio/mpeg') : pcmToWav(json.audio, Number(((json.mime || '').match(/rate=(\d+)/) || [])[1] || 24000));
+    } catch {
+      if (signal.aborted) return null;
       await new Promise((r) => setTimeout(r, 800));
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
     }
   }
-  return false;
+  return null;
+}
+
+function playPreparedAudio(blob, signal) {
+  if (signal.aborted) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    let finished = false;
+    const finish = (ok = false) => {
+      if (finished) return;
+      finished = true;
+      audio.onended = audio.onerror = null;
+      audio.pause();
+      if (jarvisAudio === audio) jarvisAudio = null;
+      if (cancelPlayback === cancel) cancelPlayback = null;
+      signal.removeEventListener('abort', cancel);
+      URL.revokeObjectURL(url);
+      resolve(ok);
+    };
+    const cancel = () => finish(false);
+    jarvisAudio = audio;
+    cancelPlayback = cancel;
+    signal.addEventListener('abort', cancel, { once: true });
+    audio.onended = () => finish(true);
+    audio.onerror = () => finish(false);
+    audio.play().catch(cancel);
+  });
 }
 
 function jarvisSpeak(text, lang, onEnd, voice) {
   jarvisStop();
   const my = jarvisSession;
+  const controller = new AbortController();
+  jarvisController = controller;
+  const { signal } = controller;
   (async () => {
-    const chunks = chunkText(voiceSummary(text), 400);
-    for (const chunk of chunks) {
+    const chunks = chunkText(String(text || ''));
+    let pending = chunks.length ? prepareChunkTTS(chunks[0], lang, voice, signal) : null;
+    for (let i = 0; i < chunks.length; i++) {
       if (my !== jarvisSession) return;
-      const ok = await playChunkTTS(chunk, lang, voice);
+      const blob = await pending;
       if (my !== jarvisSession) return;
-      if (!ok) await playChunkLocal(chunk, lang);
+      pending = i + 1 < chunks.length ? prepareChunkTTS(chunks[i + 1], lang, voice, signal) : null;
+      const ok = blob && await playPreparedAudio(blob, signal);
+      if (my !== jarvisSession) return;
+      if (!ok) await playChunkLocal(chunks[i], lang, signal);
       if (my !== jarvisSession) return;
     }
     if (my === jarvisSession) onEnd && onEnd();
