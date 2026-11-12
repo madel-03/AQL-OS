@@ -11,6 +11,7 @@
 .research-progress a { color: #b9aaff; overflow-wrap: anywhere; }
 .research-progress li { margin-bottom: 8px; }
 .research-progress > button { justify-self: start; }
+.research-downloads { display: flex; flex-wrap: wrap; gap: 10px; }
 .research-report { font: inherit; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 480px; overflow: auto; padding: 20px; border-radius: 14px; background: #0d1020; }
 :root {
   --bg: #0c0d1c;

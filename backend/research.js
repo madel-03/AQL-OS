@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import https from 'node:https';
 import { lookup } from 'node:dns/promises';
 import { BlockList } from 'node:net';
+import { exportDocx, exportPdf } from './report-export.js';
 
 const blocked = new BlockList();
 for (const [ip, prefix] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 4], ['240.0.0.0', 4]]) blocked.addSubnet(ip, prefix, 'ipv4');
@@ -115,6 +116,7 @@ export async function runResearch({ topic, lang, generate, update, search = sear
 export function createResearchRouter({ requireAuth, generate, run = runResearch, directory = process.env.AQL_DATA_DIR || path.resolve('data/research') }) {
   const router = express.Router();
   let active = 0; const users = new Set(); const activeJobs = new Set();
+  let activeExports = 0;
   const filename = (userId, id) => {
     if (!/^[a-zA-Z0-9-]{1,80}$/.test(userId) || !/^[a-f0-9-]{36}$/.test(id)) throw new Error('Invalid task ID');
     return path.join(directory, `${userId}_${id}.json`);
@@ -123,9 +125,38 @@ export function createResearchRouter({ requireAuth, generate, run = runResearch,
     await fs.mkdir(directory, { recursive: true });
     const target = filename(job.userId, job.id);
     await fs.writeFile(`${target}.tmp`, JSON.stringify(job), { mode: 0o600 });
-    await fs.rename(`${target}.tmp`, target);
+    // Windows scanners/readers can briefly hold the destination during polling.
+    for (let attempt = 0; ; attempt++) {
+      try { await fs.rename(`${target}.tmp`, target); break; }
+      catch (error) {
+        if (attempt >= 5 || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 25 * (2 ** attempt)));
+      }
+    }
   };
   router.use(requireAuth);
+  router.get('/:id/export', async (req, res) => {
+    const format = req.query.format;
+    if (!['pdf', 'docx'].includes(format)) return res.status(400).json({ error: 'Unsupported export format.' });
+    let job;
+    try { job = JSON.parse(await fs.readFile(filename(req.user.id, req.params.id), 'utf8')); }
+    catch { return res.status(404).json({ error: 'Research task not found.' }); }
+    if (job.status !== 'completed' || typeof job.report !== 'string') return res.status(409).json({ error: 'The report is not ready.' });
+    if (activeExports >= 2) return res.status(429).json({ error: 'Report export is busy. Please retry shortly.' });
+    activeExports++;
+    try {
+      const file = await (format === 'pdf' ? exportPdf(job) : exportDocx(job));
+      res.set({
+        'Content-Type': format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': `attachment; filename="aql-research-${job.id}.${format}"`,
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      }).send(file);
+    } catch (error) {
+      console.error('Report export failed:', error.message);
+      res.status(500).json({ error: 'Could not export the report. Please retry or download Markdown.' });
+    } finally { activeExports--; }
+  });
   router.post('/', async (req, res) => {
     const topic = typeof req.body?.topic === 'string' ? req.body.topic.trim() : '';
     if (topic.length < 3 || topic.length > 500) return res.status(400).json({ error: 'Topic must contain 3–500 characters.' });

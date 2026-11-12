@@ -60,6 +60,14 @@ test('tasks require authentication, persist results and isolate users', async ()
     }
     assert.equal(job.status, 'completed'); assert.equal(job.report, 'Saved research');
     assert.equal((await fetch(`${base}/${id}`, { headers: { 'x-test-user': 'bob' } })).status, 404);
+    assert.equal((await fetch(`${base}/${id}/export?format=pdf`, { headers: { 'x-test-user': 'bob' } })).status, 404);
+    assert.equal((await fetch(`${base}/${id}/export?format=exe`, { headers: { 'x-test-user': 'alice' } })).status, 400);
+    assert.equal((await fetch(`${base}/${id}/export?format=docx`)).status, 401);
+    const word = await fetch(`${base}/${id}/export?format=docx`, { headers: { 'x-test-user': 'alice' } });
+    assert.equal(word.status, 200);
+    assert(word.headers.get('content-type').includes('wordprocessingml.document'));
+    assert(word.headers.get('content-disposition').includes('.docx'));
+    assert.equal(Buffer.from(await word.arrayBuffer()).subarray(0, 2).toString(), 'PK');
     const saved = JSON.parse(await fs.readFile(path.join(directory, `alice_${id}.json`), 'utf8'));
     assert.equal(saved.report, job.report);
   } finally {

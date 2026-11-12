@@ -18,6 +18,7 @@ export default function ResearchPanel() {
   const [job, setJob] = useState(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(null);
   const running = starting || (taskId && (!job || !terminal(job.status)));
   useEffect(() => {
     let cancelled = false;
@@ -62,17 +63,28 @@ export default function ResearchPanel() {
       setJob(null); setTaskId(result.id);
     } catch (err) { setError(err.message); } finally { setStarting(false); }
   };
-  const download = () => {
-    const url = URL.createObjectURL(new Blob(['\uFEFF', job.report], { type: 'text/markdown;charset=utf-8' }));
-    const link = document.createElement('a'); link.href = url; link.download = `aql-research-${job.id}.md`;
-    document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const download = async (format) => {
+    if (exporting) return;
+    setExporting(format); setError('');
+    try {
+      let file;
+      if (format === 'md') file = new Blob(['\uFEFF', job.report], { type: 'text/markdown;charset=utf-8' });
+      else {
+        const response = await fetch(`${API_URL}/api/research/${job.id}/export?format=${format}`, { headers: await headers() });
+        if (!response.ok) { const result = await response.json(); throw new Error(result.error || 'Export failed'); }
+        file = await response.blob();
+      }
+      const url = URL.createObjectURL(file);
+      const link = document.createElement('a'); link.href = url; link.download = `aql-research-${job.id}.${format}`;
+      document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) { setError(err.message); } finally { setExporting(null); }
   };
   const steps = en ? { queued: 'Queued', planning: 'Planning the research', searching: 'Searching for sources', reading: 'Reading and checking sources', writing: 'Comparing evidence and drafting', reviewing: 'Checking citations', completed: 'Report ready', failed: 'Research stopped' }
     : { queued: 'في الانتظار', planning: 'أخطط للبحث', searching: 'أبحث عن المصادر', reading: 'أقرأ المصادر وأفحصها', writing: 'أقارن الأدلة وأكتب التقرير', reviewing: 'أراجع المراجع', completed: 'التقرير جاهز', failed: 'توقف البحث' };
   return (
     <details className="research-panel glass-panel" open>
       <summary>{en ? '✦ Research & downloadable report' : '✦ بحث وتقرير قابل للتنزيل'}</summary>
-      <p>{en ? 'Give AQL a topic. It searches, reads sources, compares evidence and creates a cited Markdown report.' : 'أعطِ عقل موضوعًا: يبحث، يقرأ المصادر، يقارن الأدلة ويجهّز تقرير Markdown موثّقًا.'}</p>
+      <p>{en ? 'Give AQL a topic. It searches, compares sources and creates a cited report you can download as PDF or Word.' : 'أعطِ عقل موضوعًا: يبحث، يقارن المصادر ويجهّز تقريرًا موثّقًا للتنزيل بصيغة PDF أو Word.'}</p>
       <form onSubmit={start} className="research-form">
         <input aria-label={en ? 'Research topic' : 'موضوع البحث'} value={topic} onChange={(event) => setTopic(event.target.value)} minLength={3} maxLength={500} required placeholder={en ? 'e.g. Compare home solar energy storage options' : 'مثل: مقارنة خيارات تخزين الطاقة الشمسية للمنازل'} />
         <button className="primary-action" disabled={!!running || !storageKey || topic.trim().length < 3}>{running ? (en ? 'Working…' : 'أعمل على البحث…') : (en ? 'Start research ↗' : 'ابدأ البحث ↗')}</button>
@@ -84,7 +96,11 @@ export default function ResearchPanel() {
         {!!job.sources?.length && <ul>{job.sources.map((source) => <li key={source.id}><a href={source.url} target="_blank" rel="noopener noreferrer" data-skip-i18n="1">[{source.id}] {source.title}</a></li>)}</ul>}
         {job.error && <p role="alert">{en ? job.error : 'لم يكتمل البحث. قد تكون المصادر غير متاحة أو خدمة الذكاء الاصطناعي متوقفة. جرّب موضوعًا أدق؛ وإذا أُعيد تشغيل الخادم، ابدأ البحث مجددًا.'}</p>}
         {job.status === 'completed' && <>
-          <button type="button" className="primary-action" onClick={download}>{en ? 'Download report (.md) ↓' : 'تنزيل التقرير (.md) ↓'}</button>
+          <div className="research-downloads">
+            <button type="button" className="primary-action" disabled={!!exporting} onClick={() => download('pdf')}>{exporting === 'pdf' ? (en ? 'Preparing PDF…' : 'أجهّز PDF…') : (en ? 'Download PDF ↓' : 'تنزيل PDF ↓')}</button>
+            <button type="button" className="secondary-action" disabled={!!exporting} onClick={() => download('docx')}>{exporting === 'docx' ? (en ? 'Preparing Word…' : 'أجهّز Word…') : (en ? 'Editable Word ↓' : 'Word قابل للتعديل ↓')}</button>
+            <button type="button" className="secondary-action" disabled={!!exporting} onClick={() => download('md')}>Markdown ↓</button>
+          </div>
           <details><summary>{en ? 'Read the report' : 'اقرأ التقرير'}</summary><pre className="research-report" data-skip-i18n="1" dir={job.lang === 'en' ? 'ltr' : 'rtl'}>{job.report}</pre></details>
         </>}
       </div>}

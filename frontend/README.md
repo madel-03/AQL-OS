@@ -49,6 +49,9 @@ On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`.
 Open the chat page and use **Research & downloadable report**. Enter a topic;
 AQL plans search queries, searches the web, reads up to five different sites,
 compares excerpts, checks citation IDs, and produces a UTF-8 Markdown download.
+Completed reports can also be downloaded as a formatted PDF or editable Word
+document. Both exports include clickable references, headings and tables, with
+right-to-left formatting for Arabic. The Markdown option remains available.
 It requires at least two readable sources and never treats failed page reads as
 evidence. The report records source URLs, retrieval times, and limitations.
 
@@ -71,3 +74,26 @@ model-generated sentence. This is excerpt-based research, not an exhaustive revi
 
 Run `npm run test:research` in `backend/` to check the pipeline, citation rejection,
 source restrictions, authentication, persistence, and isolation between users.
+
+### PDF and Word export deployment
+
+The backend uses `docx` for Word and Puppeteer/Chromium for PDF. Run `npm ci` in
+the backend on deployment and allow Puppeteer's browser installation. The runtime
+must have the Chrome system libraries installed and be able to launch headless
+Chrome. If Chrome is provisioned separately, set `PUPPETEER_EXECUTABLE_PATH` to its
+executable. Run as a non-root user with browser sandbox support.
+
+The bundled open-source Noto Sans Arabic font lives in `backend/assets/fonts/`
+with its OFL license, so PDF generation does not fetch fonts from the internet.
+Keep this directory in the deployment. Word uses Arial and native RTL formatting.
+
+`GET /api/research/:id/export?format=pdf` or `format=docx` requires the same user
+authentication as the research task. Export failures leave the original report
+available; they do not rerun research. At most two exports run concurrently per
+backend process.
+
+Run `node scripts/verify-report-export.js` from the backend to create Arabic and
+English QA examples under ignored `data/export-qa/`. This launches headless
+Chromium. PDF layout was visually checked on both languages. DOCX structure,
+hyperlinks and RTL flags were checked; native Word/LibreOffice visual validation
+requires an Office renderer installed on the machine.
