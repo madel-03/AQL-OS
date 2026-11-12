@@ -30,6 +30,10 @@ test('invented citation IDs fail validation', () => {
   assert.throws(() => renderReport({ ...report, findings: [{ claim: 'Unsupported', source_ids: [99] }] }, sources, 'Test', 'en'), /invalid citations/);
 });
 
+test('off-topic evidence cannot produce a completed report', () => {
+  assert.throws(() => renderReport({ sufficient: false }, sources, 'Test', 'en'), /does not answer/);
+});
+
 test('source reader blocks private addresses and unsupported protocols', async () => {
   for (const url of ['https://127.0.0.1/', 'https://[::1]/', 'https://169.254.169.254/', 'https://10.0.0.1/', 'file:///etc/passwd', 'https://example.com:8443/']) await assert.rejects(readPublicPage(url), /not public|Unsupported/);
 });
