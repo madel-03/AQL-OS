@@ -106,10 +106,16 @@ function chunkText(text, max = 550) {
   return chunks;
 }
 
-function playChunkLocal(chunk, lang, signal) {
+function playChunkLocal(chunk, lang, signal, selectedVoice) {
   return new Promise((resolve) => {
     if (signal.aborted || !('speechSynthesis' in window)) return resolve();
-    const parts = chunk.match(/[^.!؟?\n]+[.!؟?]*/g) || [chunk];
+    const parts = chunkText(chunk, 160).filter((part) => part.trim());
+    if (!parts.length) return resolve();
+    const locale = /[\u0600-\u06ff]/.test(chunk) ? 'ar-SA' : lang === 'ar' ? 'ar-SA' : 'en-GB';
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find((voice) => voice.name.includes(selectedVoice))
+      || voices.find((voice) => voice.lang === locale)
+      || voices.find((voice) => voice.lang.startsWith(locale.slice(0, 2)));
     let done = 0;
     const resumeTimer = setInterval(() => {
       if (window.speechSynthesis.speaking) window.speechSynthesis.resume();
@@ -126,8 +132,9 @@ function playChunkLocal(chunk, lang, signal) {
     };
     parts.forEach((p) => {
       const u = new SpeechSynthesisUtterance(p.trim());
-      u.pitch = 0.75; u.rate = 0.95;
-      u.lang = lang === 'ar' ? 'ar-SA' : 'en-GB';
+      u.pitch = 1; u.rate = 1;
+      u.lang = locale;
+      if (preferred) u.voice = preferred;
       u.onend = u.onerror = finish;
       window.speechSynthesis.speak(u);
     });
@@ -140,7 +147,7 @@ async function prepareChunkTTS(chunk, lang, voice, signal) {
     const ctrl = new AbortController();
     const abort = () => ctrl.abort();
     signal.addEventListener('abort', abort, { once: true });
-    const timer = setTimeout(abort, 20000);
+    const timer = setTimeout(abort, 60000);
     try {
       const headers = await getAuthHeaders();
       if (signal.aborted) return null;
@@ -210,7 +217,7 @@ function jarvisSpeak(text, lang, onEnd, voice, onFallback) {
       if (my !== jarvisSession) return;
       if (!ok) {
         onFallback?.();
-        await playChunkLocal(chunks[i], lang, signal);
+        await playChunkLocal(chunks[i], lang, signal, selectedVoice);
       }
       if (my !== jarvisSession) return;
     }

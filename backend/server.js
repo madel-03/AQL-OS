@@ -2,10 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
-import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+import { synthesizeSpeech } from './edge-speech.js';
+
+
+
 import { AGENT_TOOLS, getOpenAITools, runAgentTool, liveWebSearch } from './agent-tools.js';
 
 const app = express();
@@ -240,27 +240,7 @@ async function askBaseerBrain(evidence, lang = 'ar') {
 }
 
 async function edgeSpeak(text, voiceName) {
-  let lastErr = null;
-  for (let i = 0; i < 3; i++) {
-    let dir = null;
-    try {
-      const tts = new MsEdgeTTS();
-      await tts.setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
-      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aql-tts-'));
-      await tts.toFile(dir, text);
-      const files = fs.readdirSync(dir);
-      if (!files.length) throw new Error('No audio file produced');
-      const buf = fs.readFileSync(path.join(dir, files[0]));
-      fs.rmSync(dir, { recursive: true, force: true });
-      if (!buf || buf.length < 3000) throw new Error('Truncated audio');
-      return buf;
-    } catch (e) {
-      if (dir) fs.rmSync(dir, { recursive: true, force: true });
-      lastErr = e;
-      await new Promise((r) => setTimeout(r, 700));
-    }
-  }
-  throw lastErr || new Error('Edge TTS failed');
+  return synthesizeSpeech(text, voiceName);
 }
 
 // ----------------------------------------------------
