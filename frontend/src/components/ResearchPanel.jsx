@@ -4,6 +4,18 @@ import { useLang } from '../lib/lang';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const terminal = (status) => ['completed', 'failed'].includes(status);
+const arabicErrors = {
+  SEARCH_UNAVAILABLE: 'لم تُرجع خدمة البحث نتائج قابلة للاستخدام. حاول بعد قليل أو بسّط الموضوع.',
+  INSUFFICIENT_EVIDENCE: 'المصادر المسترجعة لا تجيب عن الموضوع بما يكفي. حدّد سؤالك أو اختر موضوعًا أوسع.',
+  SOURCES_UNREADABLE: 'تعذّرت قراءة مصدرين مختلفين. بعض المواقع تمنع القراءة الآلية أو تتطلب تسجيل الدخول.',
+  REPORT_INVALID: 'ردّ النموذج بتقرير ناقص أو مراجع غير صحيحة، حتى بعد محاولة إصلاحه. أعد المحاولة بالموضوع الأصلي.',
+  AI_RATE_LIMIT: 'وصلت خدمة الذكاء الاصطناعي إلى حد الطلبات. انتظر قليلًا ثم أعد المحاولة.',
+  AI_CONFIGURATION: 'رفض مزوّد الذكاء الاصطناعي الطلب. يلزم فحص المفتاح والرصيد والموديلات المفعّلة في الخادم.',
+  TIMEOUT: 'انتهت مهلة أحد طلبات البحث أو الذكاء الاصطناعي. أعد المحاولة بالموضوع الأصلي.',
+  AI_UNAVAILABLE: 'تعذّر إكمال الطلب لدى مزوّد الذكاء الاصطناعي. حاول بعد قليل.',
+  SERVER_RESTARTED: 'أُعيد تشغيل الخادم أثناء المهمة. أعد المحاولة بالموضوع الأصلي.',
+  RESEARCH_FAILED: 'توقفت المهمة. أعد المحاولة بالموضوع الأصلي؛ راجع سجل الخادم إذا تكرر الفشل.',
+};
 async function headers() {
   const { data } = await supabase.auth.getSession();
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` };
@@ -40,7 +52,7 @@ export default function ResearchPanel() {
         const res = await fetch(`${API_URL}/api/research/${taskId}`, { headers: await headers(), signal: controller.signal });
         const result = await res.json();
         if (!res.ok) { keepPolling = false; throw new Error(result.error || 'Task unavailable'); }
-        if (!cancelled) { setJob(result); setError(''); }
+        if (!cancelled) { setJob(result); setError(''); setTopic((previous) => previous || result.topic || ''); }
         keepPolling = !terminal(result.status);
       } catch (err) {
         if (!cancelled) setError(err.message);
@@ -51,18 +63,18 @@ export default function ResearchPanel() {
     void poll();
     return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
   }, [taskId]);
-  const start = async (event) => {
-    event.preventDefault();
+  const startResearch = async (researchTopic) => {
     if (running || !storageKey) return;
     setStarting(true); setError('');
     try {
-      const res = await fetch(`${API_URL}/api/research`, { method: 'POST', headers: await headers(), body: JSON.stringify({ topic: topic.trim(), lang }) });
+      const res = await fetch(`${API_URL}/api/research`, { method: 'POST', headers: await headers(), body: JSON.stringify({ topic: researchTopic.trim(), lang }) });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Could not start research');
       localStorage.setItem(storageKey, result.id);
       setJob(null); setTaskId(result.id);
     } catch (err) { setError(err.message); } finally { setStarting(false); }
   };
+  const start = (event) => { event.preventDefault(); void startResearch(topic); };
   const download = async (format) => {
     if (exporting) return;
     setExporting(format); setError('');
@@ -92,9 +104,13 @@ export default function ResearchPanel() {
       {error && <p role="alert">{error} <button type="button" onClick={() => { setTaskId(null); setJob(null); if (storageKey) localStorage.removeItem(storageKey); setError(''); }}>{en ? 'Dismiss task' : 'إخفاء المهمة'}</button></p>}
       {job && <div className="research-progress" aria-live="polite">
         <strong>{steps[job.status]}</strong><span data-skip-i18n="1">{job.topic}</span>
-        {job.queries && <small data-skip-i18n="1">{job.queries.join(' · ')}</small>}
+        {job.queries && <details><summary>{en ? 'Search queries' : 'عبارات البحث'}</summary><ul data-skip-i18n="1">{job.queries.map((query, index) => <li key={index}>{query}</li>)}</ul></details>}
         {!!job.sources?.length && <ul>{job.sources.map((source) => <li key={source.id}><a href={source.url} target="_blank" rel="noopener noreferrer" data-skip-i18n="1">[{source.id}] {source.title}</a></li>)}</ul>}
-        {job.error && <p role="alert">{en ? job.error : 'لم يكتمل البحث. قد تكون المصادر غير متاحة أو خدمة الذكاء الاصطناعي متوقفة. جرّب موضوعًا أدق؛ وإذا أُعيد تشغيل الخادم، ابدأ البحث مجددًا.'}</p>}
+        {job.error && <div data-skip-i18n="1">
+          <p role="alert">{en ? job.error : (arabicErrors[job.error_code] || 'هذه مهمة قديمة فشلت دون حفظ السبب التفصيلي. أعدها بالموضوع الأصلي، وليس برسالة الخطأ.')}</p>
+          {job.failure_stage && <small>{en ? 'Stopped at: ' : 'توقفت عند: '}{steps[job.failure_stage] || job.failure_stage}</small>}
+          <div><button type="button" className="secondary-action" disabled={!!running || !storageKey} onClick={() => { setTopic(job.topic); void startResearch(job.topic); }}>{en ? 'Retry original topic' : 'إعادة البحث بالموضوع الأصلي'}</button></div>
+        </div>}
         {job.status === 'completed' && <>
           <div className="research-downloads">
             <button type="button" className="primary-action" disabled={!!exporting} onClick={() => download('pdf')}>{exporting === 'pdf' ? (en ? 'Preparing PDF…' : 'أجهّز PDF…') : (en ? 'Download PDF ↓' : 'تنزيل PDF ↓')}</button>
