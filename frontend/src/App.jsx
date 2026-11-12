@@ -432,8 +432,8 @@ function Layout({ page, setPage, displayName, onLogout, children }) {
           </button>
         ))}
       </aside>
-      <div style={{ flex: 1, minWidth: 0, padding: '1.8rem 1.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.4rem' }}>
+      <div className="app-content" style={{ flex: 1, minWidth: 0, padding: '1.8rem 1.5rem' }}>
+        <div className="page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.4rem' }}>
           <h2 style={{ margin: 0, color: '#f8fafc', fontSize: '1.6rem', fontWeight: 800 }}>
             <span className="title-icon"><NavIcon id={page} /></span> {t(current?.label)}
           </h2>
@@ -443,7 +443,25 @@ function Layout({ page, setPage, displayName, onLogout, children }) {
             <button onClick={onLogout} style={{ background: 'rgba(255,77,77,0.08)', border: '1px solid rgba(255,77,77,0.35)', color: '#ffb3b3', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>{t('فصل')} ⏻</button>
           </div>
         </div>
-        {children}
+        {page === 'dashboard' && (
+          <section className="welcome-card" data-skip-i18n="1">
+            <div className="welcome-copy">
+              <span className="welcome-eyebrow">✦ {lang === 'ar' ? 'مساحتك. إيقاعك. عَقْلك.' : 'YOUR SPACE. YOUR PACE. YOUR AQL.'}</span>
+              <h1>{lang === 'ar' ? 'يومك، على موجتك.' : 'Life, on your wavelength.'}</h1>
+              <p>{lang === 'ar' ? `أهلًا ${displayName?.split('@')[0]}، نرتّب الزحمة ونترك مساحة لشيء تحبّه؟` : `Hey ${displayName?.split('@')[0]}, let’s untangle the busy and make room for what you love.`}</p>
+              <div className="welcome-actions">
+                <button className="primary-action" onClick={() => setPage('chat')}>{lang === 'ar' ? 'خلّنا نسولف' : 'Let’s talk'} <span aria-hidden="true">↗</span></button>
+                <button className="secondary-action" onClick={() => setPage('investigate')}>{lang === 'ar' ? 'عندي فكرة جديدة' : 'I have an idea'} <span aria-hidden="true">✧</span></button>
+              </div>
+            </div>
+            <div className="aql-companion" aria-hidden="true">
+              <span className="companion-orbit" /><span className="companion-spark spark-one">✦</span><span className="companion-spark spark-two">✧</span>
+              <div className="companion-body"><div className="companion-eyes"><i /><i /></div><span className="companion-smile" /></div>
+              <span className="companion-note">{lang === 'ar' ? 'أفكار كثيرة؟ أنا معك.' : 'Big thoughts? I’m here.'}</span>
+            </div>
+          </section>
+        )}
+        <div className="page-content" key={page}>{children}</div>
       </div>
     </div>
   );
@@ -1761,7 +1779,7 @@ function ChatPage() {
   const send = (e) => { e.preventDefault(); sendText(input.trim()); };
 
   return (
-    <div className="glass-panel hud-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', height: '70vh' }}>
+    <div className="glass-panel hud-panel chat-shell" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', height: '70vh' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1rem', flexWrap: 'wrap' }}>
         <div className="baseer-avatar" style={{ width: '44px', height: '44px' }}><span style={{ fontSize: '1.2rem' }}>🧠</span></div>
         <div style={{ flex: 1 }}>
@@ -1799,7 +1817,7 @@ function ChatPage() {
         {messages.map((m, i) => {
           const mid = m.id || i;
           return (
-            <div key={mid} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '80%', padding: '0.8rem 1rem', borderRadius: '14px', background: m.role === 'user' ? 'rgba(56,189,248,0.12)' : 'rgba(139,92,246,0.12)', border: `1px solid ${m.role === 'user' ? 'rgba(56,189,248,0.3)' : 'rgba(139,92,246,0.3)'}`, color: '#e2e8f0', lineHeight: 1.7, fontSize: '1.05rem', whiteSpace: 'pre-wrap' }}>
+            <div key={mid} className={`chat-bubble ${m.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-assistant'}`}>
               <span data-skip-i18n="1">{m.content}</span>
               {m.role === 'assistant' && (
                 <div style={{ marginTop: '6px' }}>
