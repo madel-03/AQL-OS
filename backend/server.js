@@ -632,8 +632,10 @@ app.post('/api/tts', requireAuth, async (req, res) => {
     const text = (body.text || '').slice(0, 600);
     const lang = body.lang === 'en' ? 'en' : 'ar';
     if (!text) return res.status(400).json({ error: 'No text' });
-    const rawVoice = body.voice || 'en-GB-RyanNeural';
-    const voiceName = lang === 'ar' ? 'ar-SA-HamedNeural' : (rawVoice.includes('Neural') ? rawVoice : 'en-GB-RyanNeural');
+    const defaultVoice = lang === 'ar' ? 'ar-SA-HamedNeural' : 'en-GB-RyanNeural';
+    const allowedVoices = ['en-GB-RyanNeural', 'en-GB-ThomasNeural', 'en-US-ChristopherNeural', 'en-GB-SoniaNeural', 'ar-SA-HamedNeural', 'ar-SA-ZariyahNeural'];
+    const voiceName = body.voice || defaultVoice;
+    if (!allowedVoices.includes(voiceName)) return res.status(400).json({ error: 'Unsupported voice' });
     const buf = await edgeSpeak(text, voiceName);
     console.log(`🔊 TTS via Edge: ${voiceName}`);
     res.json({ audio: buf.toString('base64'), mime: 'audio/mpeg' });

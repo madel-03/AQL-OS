@@ -191,23 +191,27 @@ function playPreparedAudio(blob, signal) {
   });
 }
 
-function jarvisSpeak(text, lang, onEnd, voice) {
+function jarvisSpeak(text, lang, onEnd, voice, onFallback) {
   jarvisStop();
   const my = jarvisSession;
   const controller = new AbortController();
   jarvisController = controller;
   const { signal } = controller;
+  const selectedVoice = voice || localStorage.getItem('aql-voice') || (lang === 'ar' ? 'ar-SA-HamedNeural' : 'en-GB-RyanNeural');
   (async () => {
     const chunks = chunkText(String(text || ''));
-    let pending = chunks.length ? prepareChunkTTS(chunks[0], lang, voice, signal) : null;
+    let pending = chunks.length ? prepareChunkTTS(chunks[0], lang, selectedVoice, signal) : null;
     for (let i = 0; i < chunks.length; i++) {
       if (my !== jarvisSession) return;
       const blob = await pending;
       if (my !== jarvisSession) return;
-      pending = i + 1 < chunks.length ? prepareChunkTTS(chunks[i + 1], lang, voice, signal) : null;
+      pending = i + 1 < chunks.length ? prepareChunkTTS(chunks[i + 1], lang, selectedVoice, signal) : null;
       const ok = blob && await playPreparedAudio(blob, signal);
       if (my !== jarvisSession) return;
-      if (!ok) await playChunkLocal(chunks[i], lang, signal);
+      if (!ok) {
+        onFallback?.();
+        await playChunkLocal(chunks[i], lang, signal);
+      }
       if (my !== jarvisSession) return;
     }
     if (my === jarvisSession) onEnd && onEnd();
@@ -1707,7 +1711,13 @@ function ChatPage() {
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   }, [messages, busy]);
 
-  const speak = (text, id) => { setSpeakingId(id); jarvisSpeak(text, lang, () => setSpeakingId(null), voiceName); };
+  const speak = (text, id) => {
+    setError('');
+    setSpeakingId(id);
+    jarvisSpeak(text, lang, () => setSpeakingId(null), voiceName, () => {
+      setError(lang === 'ar' ? 'تعذّر تشغيل الصوت المختار؛ يُستخدم صوت المتصفح الاحتياطي.' : 'The selected voice is unavailable; using the browser fallback voice.');
+    });
+  };
   const stopSpeaking = () => { jarvisStop(); setSpeakingId(null); };
 
   const startListening = () => {
@@ -1753,15 +1763,17 @@ function ChatPage() {
         </div>
         <select
           value={voiceName}
-          onChange={(e) => { setVoiceName(e.target.value); localStorage.setItem('aql-voice', e.target.value); }}
+          onChange={(e) => { stopSpeaking(); setError(''); setVoiceName(e.target.value); localStorage.setItem('aql-voice', e.target.value); }}
           style={{ ...fieldStyle, width: '170px' }}
         >
           <option value="en-GB-RyanNeural">🎩 Ryan — British Butler</option>
           <option value="en-GB-ThomasNeural">🌑 Thomas — Deep Calm</option>
           <option value="en-US-ChristopherNeural">⚙️ Christopher — US Calm</option>
           <option value="en-GB-SoniaNeural">🕵️ Sonia — Female Intel</option>
+          <option value="ar-SA-HamedNeural">حامد — عربي</option>
+          <option value="ar-SA-ZariyahNeural">زارية — عربي</option>
         </select>
-        <button type="button" onClick={() => speak(lang === 'ar' ? 'مرحبًا يا سيدي، أنا عَقْل. كيف أخدمك اليوم؟' : 'At your service, sir.', 'test')}
+        <button type="button" onClick={() => speak(voiceName.startsWith('ar-') ? 'مرحبًا يا سيدي، أنا عَقْل. كيف أخدمك اليوم؟' : 'At your service, sir.', 'test')}
           style={{ padding: '7px 14px', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.35)', color: '#c4b5fd' }}>
           🔊 جرّب الصوت
         </button>
