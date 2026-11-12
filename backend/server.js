@@ -25,17 +25,12 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 // 1️⃣ المفاتيح والموديلات مرتبة حسب الأولوية
 const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY || '';
-const CEREBRAS_MODEL = 'llama-3.3-70b';
+const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || 'gpt-oss-120b';
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GROQ_MODEL = 'llama-3.1-70b-versatile';
+const GROQ_MODELS = (process.env.GROQ_MODELS || 'openai/gpt-oss-120b,openai/gpt-oss-20b').split(',').map((model) => model.trim()).filter(Boolean);
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const MODEL_FALLBACKS = [
-'gemini-3-flash-preview',
-'gemini-3.1-pro-preview',
-'gemini-2.5-flash',
-'gemini-2.0-flash',
-];
+const MODEL_FALLBACKS = (process.env.GEMINI_MODELS || 'gemini-2.5-flash,gemini-2.5-flash-lite,gemini-3-flash-preview').split(',').map((model) => model.trim()).filter(Boolean);
 
 const BASEER_PERSONA = `أنت "عَقْل"، المحقق السلوكي الذكي في نظام AQL-OS لتوازن الحياة. شخصيتك مستوحاة من باتريك جين وشارلوك هولمز مع هدوء ورصانة جارفس: خاطب المستخدم بلقب "سيدي"، بأسلوب مهذب رفيع وسخرية بريطانية خفيفة.
 مهمتك: تحليل المعطيات (التزامات، مقاييس، ذاكرة تحليلات، ملف الحياة) وإرجاع JSON فقط بهذه المفاتيح:
@@ -518,7 +513,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       try {
         console.log('💬 Trying Gemini...');
         // دمج السياق مع رسالة المستخدم في حزمة واحدة لتجنب خطأ تعاقب الأدوار في Gemini
-        const safeMessage = `System Info:\n${systemPrompt}\n\nUser Message:\n${message}`;
+        const safeMessage = message;
         
         const geminiContents = [
           ...history.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.content }] })),
@@ -526,13 +521,15 @@ app.post('/api/chat', requireAuth, async (req, res) => {
         ];
 
         // تنظيف الـ history في حال كان هناك رسالتين متتاليتين لنفس الدور (لتجنب Crash)
-        const cleanedContents = geminiContents.filter((msg, index, arr) => {
-          if (index === 0) return true;
-          return msg.role !== arr[index - 1].role;
-        });
+        const cleanedContents = geminiContents.reduce((contents, msg) => {
+          const previous = contents[contents.length - 1];
+          if (previous?.role === msg.role) previous.parts.push(...msg.parts);
+          else contents.push({ role: msg.role, parts: [...msg.parts] });
+          return contents;
+        }, []);
 
         const data = await geminiGenerate({
-          system_instruction: { parts: [{ text: CHAT_PERSONA }] },
+          system_instruction: { parts: [{ text: systemPrompt }] },
           contents: cleanedContents,
           generationConfig: { temperature: 0.8 },
         });
@@ -543,10 +540,12 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       }
     }
 
-    if (!reply) {
-      reply = lang === 'en'
-        ? 'Pardon me, sir — my thinking engines are momentarily offline.'
-        : 'عذرًا سيدي — محركات التفكير تشهد انقطاعاً لحظياً.';
+    if (!reply.trim()) {
+      return res.status(503).json({
+        error: lang === 'en'
+          ? 'AI services are unavailable. Please retry shortly.'
+          : 'تعذّر الاتصال بخدمات الذكاء الاصطناعي. حاول مجددًا بعد قليل.',
+      });
     }
 
     await supabase.from('chat_messages').insert([
