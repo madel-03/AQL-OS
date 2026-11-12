@@ -3,6 +3,7 @@ import cors from 'cors';
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import { synthesizeSpeech } from './edge-speech.js';
+import { createResearchRouter } from './research.js';
 
 
 
@@ -106,6 +107,7 @@ async function cerebrasChat(system, messages, tools = null) {
     body.tool_choice = 'auto';
   }
   const response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+    signal: AbortSignal.timeout(45000),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${CEREBRAS_API_KEY}` },
     body: JSON.stringify(body),
@@ -123,6 +125,7 @@ async function groqChat(system, messages, tools = null) {
       const body = { model, temperature: 0.7, messages: [{ role: 'system', content: system }, ...messages] };
       if (tools) { body.tools = tools; body.tool_choice = 'auto'; }
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        signal: AbortSignal.timeout(45000),
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
         body: JSON.stringify(body),
@@ -142,6 +145,7 @@ async function geminiGenerate(payload) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
     try {
       const response = await fetch(url, {
+        signal: AbortSignal.timeout(45000),
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -243,6 +247,23 @@ async function edgeSpeak(text, voiceName) {
 // ----------------------------------------------------
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'AQL-OS backend' }));
+
+app.use('/api/research', createResearchRouter({ requireAuth, generate: async (system, input) => {
+  for (const provider of [cerebrasChat, groqChat]) {
+    try {
+      const data = await provider(system, [{ role: 'user', content: input }]);
+      const text = data.choices?.[0]?.message?.content || '';
+      return JSON.stringify(parseBrainJson(text));
+    } catch (error) { console.warn('Research provider failed:', error.message); }
+  }
+  const data = await geminiGenerate({
+    system_instruction: { parts: [{ text: system }] },
+    contents: [{ role: 'user', parts: [{ text: input }] }],
+    generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+  });
+  const text = (data.candidates?.[0]?.content?.parts || []).map((part) => part.text || '').join('');
+  return JSON.stringify(parseBrainJson(text));
+} }));
 
 app.get('/api/commitments', requireAuth, async (req, res) => {
   try {

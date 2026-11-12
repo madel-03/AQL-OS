@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from './lib/supabase';
 import { LangProvider } from './lib/i18n';
 import { useLang } from './lib/lang';
+import ResearchPanel from './components/ResearchPanel';
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -1779,6 +1780,8 @@ function ChatPage() {
   const send = (e) => { e.preventDefault(); sendText(input.trim()); };
 
   return (
+    <>
+    <ResearchPanel />
     <div className="glass-panel hud-panel chat-shell" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', height: '70vh' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1rem', flexWrap: 'wrap' }}>
         <div className="baseer-avatar" style={{ width: '44px', height: '44px' }}><span style={{ fontSize: '1.2rem' }}>🧠</span></div>
@@ -1848,6 +1851,7 @@ function ChatPage() {
         </button>
       </form>
     </div>
+    </>
   );
 }
 

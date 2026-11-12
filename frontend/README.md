@@ -43,3 +43,31 @@ Frontend: `npm run build` and `npm run lint`.
 Backend: `node --check server.js` and `node --check agent-tools.js`.
 Existing lint errors remain to be addressed separately.
 On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`.
+
+## Research tasks
+
+Open the chat page and use **Research & downloadable report**. Enter a topic;
+AQL plans search queries, searches the web, reads up to five different sites,
+compares excerpts, checks citation IDs, and produces a UTF-8 Markdown download.
+It requires at least two readable sources and never treats failed page reads as
+evidence. The report records source URLs, retrieval times, and limitations.
+
+The authenticated API is `POST /api/research` with `{ topic, lang }`, followed
+by `GET /api/research/:id` for progress and results. Each user can run one task
+at a time. Refreshing or leaving the page does not stop a task while the backend
+process remains running; the browser restores the most recent task for that user.
+
+Tasks are saved in `backend/data/research/` when the backend starts from its own
+directory. Set `AQL_DATA_DIR` to an absolute path on a persistent volume in
+production. Ephemeral deployments can lose this data. This first implementation
+requires a continuously running Node process: interrupted tasks must be restarted
+after a server restart. It does not yet provide a distributed worker or scheduler.
+Download reports before replacing local storage or redeploying without a volume.
+
+Source pages are treated as untrusted evidence. Only public HTTPS HTML/text pages
+are read; PDF parsing and pages requiring JavaScript or sign-in are not supported.
+Automated citation checks validate reference IDs, not the factual truth of every
+model-generated sentence. This is excerpt-based research, not an exhaustive review.
+
+Run `npm run test:research` in `backend/` to check the pipeline, citation rejection,
+source restrictions, authentication, persistence, and isolation between users.

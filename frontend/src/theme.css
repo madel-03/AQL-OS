@@ -1,4 +1,17 @@
 /* AQL Playground: a softer, more expressive layer over the existing HUD. */
+.research-panel { padding: 20px; margin-bottom: 20px; }
+.research-panel summary { cursor: pointer; color: var(--cyan); font-weight: 800; }
+.research-panel p { color: var(--muted); font-size: .9rem; line-height: 1.8; }
+.research-form { display: flex; flex-wrap: wrap; gap: 12px; }
+.research-form input { flex: 1 1 260px; min-width: 0; border: 1px solid var(--line); border-radius: 12px; background: #111426; color: var(--text); padding: 12px; }
+.research-panel button { padding: 10px 16px; border-radius: 12px; cursor: pointer; }
+.research-panel button:disabled { opacity: .5; cursor: wait; }
+.research-progress { display: grid; gap: 10px; margin-top: 20px; }
+.research-progress small { color: var(--muted); }
+.research-progress a { color: #b9aaff; overflow-wrap: anywhere; }
+.research-progress li { margin-bottom: 8px; }
+.research-progress > button { justify-self: start; }
+.research-report { font: inherit; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 480px; overflow: auto; padding: 20px; border-radius: 14px; background: #0d1020; }
 :root {
   --bg: #0c0d1c;
   --panel: rgba(26, 28, 51, .82);
