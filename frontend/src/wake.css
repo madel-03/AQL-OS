@@ -3,3 +3,5 @@
 @media(max-width:760px) { .wake-trigger span { max-width:120px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }.wake-dialog { padding:18px; } }
 
 .page-heading > div:has(.wake-assistant) { flex-wrap: wrap; max-width: 100%; }
+
+.wake-privacy-details { margin-block: 14px; border-block: 1px solid #ffffff18; padding-block: 12px; }.wake-privacy-details summary { cursor: pointer; color: #bfb0cd; font-size: .75rem; }

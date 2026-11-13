@@ -100,7 +100,7 @@ export default function WorkHub({ displayName, onCompose, onNavigate, compact = 
         <div className="quick-modes" role="group" aria-label={en ? 'Task type' : 'نوع المهمة'}>{quickModes.map(([id, icon, label]) => <button key={id} aria-pressed={mode === id} className={mode === id ? 'mode-active' : ''} onClick={() => setMode(id)}><span aria-hidden="true">{icon}</span>{label}</button>)}</div>
         {!!active.length && <p className="launcher-hint">{en ? 'AQL is already researching. You can view progress below or plan something in chat.' : 'عقل يبحث الآن. تابع التقدم تحت، أو خطّط لشيء ثاني في المحادثة.'}</p>}
       </div>
-      <div className="hero-companion"><span className="companion-sticker">{en ? 'BIG IDEAS WELCOME' : 'الأفكار الكبيرة مرحّب بها'}</span><AssistantCompanion /><span className="handwritten-note">{en ? 'Your brain’s +1' : 'عقل إضافي لليوم'}</span></div>
+      {compact ? <div className="hero-companion"><span className="companion-sticker">{en ? 'BIG IDEAS WELCOME' : 'الأفكار الكبيرة مرحّب بها'}</span><AssistantCompanion /><span className="handwritten-note">{en ? 'Your brain’s +1' : 'عقل إضافي لليوم'}</span></div> : <div id="aql-voice-stage" className="voice-stage-slot" />} 
     </section>
     {!compact && <TodayCard onNavigate={(id, taskId) => window.dispatchEvent(new CustomEvent('aql-navigate', { detail: { id, taskId } }))} />}
     {!compact && <LivingSpace onCompose={onCompose} onNavigate={onNavigate} />}

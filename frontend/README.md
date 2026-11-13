@@ -504,3 +504,23 @@ other microphone arbitration and mobile layout. It **does not validate real
 microphone recognition or acoustic accuracy**. Existing real TTS tests cover voice
 synthesis separately. QA screenshots are under ignored `backend/data/wake-qa/`.
 Deploy frontend and backend updates; no migration or new API key is needed.
+
+
+### Home voice presence
+
+The home hero now renders the wake assistant as a CSS light creature with
+orbits and a waveform, direct enable/stop controls, a settings shortcut, and
+the last request/reply. Movement reflects session state (idle, waiting, command,
+processing, speaking, hidden/error); it is **not** a microphone amplitude or
+frequency measurement. It honors both OS reduced-motion and the app motion
+preference. Hiding the decorative companion hides the creature but retains
+voice controls. The full privacy explanation is available in settings; a short
+online-recognition disclosure remains next to the home controls before enabling.
+
+The visual is portaled into the home hero from the single persistent wake
+controller. Changing pages or returning home does not create a second recognition
+session. The header settings/stop controls remain available on other pages.
+`verify-wake-ui.js` also checks home activation, visual states, reduced motion,
+mobile layout and navigation without an extra microphone session. Screenshots
+include `backend/data/wake-qa/home-presence-ar.png`. No new runtime dependencies
+or backend changes are needed for this presentation update.
