@@ -26,6 +26,9 @@
 .device-run-consent input { margin-inline-end: 10px; }
 .device-job { background: #07132050; border: 1px solid #ffffff20; border-radius: 16px; padding: 18px; margin-block: 16px; }
 .device-jobs { margin-block: 24px; }
+.calendar-events { list-style: none; padding: 0; }
+.calendar-events li { padding: 16px; border: 1px solid #ffffff20; border-radius: 12px; margin-block: 12px; background: #07132030; }
+.calendar-events p { font-size: .82rem; line-height: 1.8; color: #cec7dc; }
 .device-job li { line-height: 1.8; font-size: .82rem; overflow-wrap: anywhere; }
 .device-quick { border-top: 1px solid #ffffff20; padding-block: 16px; margin-top: 20px; }
 .device-space button:focus-visible { outline: 2px solid var(--accent, #6ee7ff); outline-offset: 3px; }

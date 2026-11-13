@@ -1,0 +1,41 @@
+import { useCallback, useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+import { useLang } from '../lib/lang';
+import '../device.css';
+
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const empty = { title: '', start: '', end: '', description: '' };
+export default function CalendarSpace() {
+  const { lang } = useLang(); const en = lang === 'en';
+  const [status, setStatus] = useState(null); const [events, setEvents] = useState([]); const [pageToken, setPageToken] = useState(null);
+  const [form, setForm] = useState(empty); const [draft, setDraft] = useState(null); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const call = useCallback(async (path, method = 'GET', body) => {
+    const { data } = await supabase.auth.getSession(); if (!data.session) throw new Error('سجّل الدخول مجددًا / Please sign in again.');
+    const response = await fetch(`${API}/api/calendar/${path}`, { method, headers: { Authorization: `Bearer ${data.session.access_token}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(30000) });
+    const value = await response.json(); if (!response.ok) throw new Error(value.error || 'Calendar request failed'); return value;
+  }, []);
+  const load = useCallback(async () => { const value = await call('status'); setStatus(value); if (value.connected) { const data = await call('events'); setEvents(data.events); setPageToken(data.nextPageToken); } else { setEvents([]); setPageToken(null); } }, [call]);
+  useEffect(() => { let active = true; call('status').then(async value => { if (!active) return; setStatus(value); if (value.connected) { const data = await call('events'); if (active) { setEvents(data.events); setPageToken(data.nextPageToken); } } }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [call]);
+  const perform = async action => { setBusy(true); setError(''); try { await action(); } catch (e) { setError(e.message); } finally { setBusy(false); } };
+  const format = value => value?.date ? new Intl.DateTimeFormat(en ? 'en' : 'ar', { dateStyle: 'medium' }).format(new Date(`${value.date}T00:00:00`)) : new Intl.DateTimeFormat(en ? 'en' : 'ar', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value.dateTime));
+  const range = event => {
+    if (!event.start.date) return `${format(event.start)} — ${format(event.end)}`;
+    const last = new Date(Date.parse(`${event.end.date}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+    return `${format(event.start)}${last > event.start.date ? ` — ${format({ date: last })}` : ''}${en ? ' · All day' : ' · طوال اليوم'}`;
+  };
+  const review = e => { e.preventDefault(); setError(''); if (!form.start || !form.end || new Date(form.end) <= new Date(form.start)) { setError(en ? 'End must follow the start.' : 'نهاية الموعد يجب أن تكون بعد بدايته.'); return; } setDraft({ ...form, start: new Date(form.start).toISOString(), end: new Date(form.end).toISOString(), requestId: crypto.randomUUID().replaceAll('-', '') }); };
+  const save = () => perform(async () => { await call('events', 'POST', draft); setDraft(null); setForm(empty); setNotice(en ? 'Saved in Google Calendar.' : 'حُفظ الموعد في تقويم Google.'); await load(); });
+  const field = (name, value) => { setForm(previous => ({ ...previous, [name]: value })); setDraft(null); setNotice(''); };
+  return <section className="device-space calendar-space"><div className="section-heading"><div><span className="section-kicker">GOOGLE CALENDAR</span><h3>{en ? 'Your schedule, in one place.' : 'مواعيدك، قدّامك.'}</h3></div><span className="status-pill">{status?.connected ? (en ? 'Connected' : 'متصل') : (en ? 'Not connected' : 'غير متصل')}</span></div>
+    <p className="studio-muted">{en ? `Your primary Google calendar · next 14 days · times in ${zone}.` : `تقويم Google الأساسي · الأسبوعان القادمان · الأوقات حسب ${zone}.`}</p>
+    {error && <p className="studio-warning" role="alert">{error}<button className="studio-text-button" disabled={busy} onClick={() => perform(load)}>{en ? 'Retry' : 'إعادة المحاولة'}</button></p>}{notice && <p role="status">{notice}</p>}
+    {status && !status.configured && <div className="device-setup"><h4>{en ? 'One-time server setup needed' : 'نحتاج إعداد الربط مرة واحدة'}</h4><p>{en ? 'The project owner needs to enable Google Calendar API, create a Web OAuth client, add the callback URL, and configure the server. Do not paste client secrets into this page.' : 'صاحب المشروع يحتاج تفعيل Google Calendar API وإنشاء عميل OAuth للويب، ثم إضافة رابط العودة والمفاتيح في الخادم. لا تضع المفاتيح في هذه الصفحة.'}</p><p className="studio-muted">{en ? 'Setup instructions are in the project README, under Google Calendar.' : 'الخطوات بالتفصيل في README المشروع تحت Google Calendar.'}</p></div>}
+    {status?.configured && !status.connected && <div className="device-setup"><p>{en ? 'Connect to read and create events in your primary calendar. This version does not add guests or send invitations. Calendar data is not sent to the AI.' : 'اربط حسابك لعرض وإنشاء مواعيد في تقويمك الأساسي. هذه النسخة لا تضيف ضيوفًا ولا ترسل دعوات. بيانات التقويم لا تُرسل للذكاء الاصطناعي.'}</p><button className="studio-primary" disabled={busy} onClick={() => perform(async () => { const data = await call('connect', 'POST'); window.location.assign(data.url); })}>{en ? 'Connect Google Calendar' : 'اربط Google Calendar'}</button></div>}
+    {status?.connected && <><div className="studio-actions"><button className="studio-text-button" disabled={busy} onClick={() => perform(load)}>{en ? 'Refresh events' : 'تحديث المواعيد'}</button><button className="studio-text-button" disabled={busy} onClick={() => perform(async () => { await call('connection', 'DELETE'); setStatus({ configured: true, connected: false }); setEvents([]); setDraft(null); })}>{en ? 'Disconnect and revoke permission' : 'افصل الحساب وألغِ الإذن'}</button></div>
+    <div className="device-grid"><section><h4>{en ? 'Upcoming events' : 'المواعيد القادمة'}</h4>{!events.length && <p className="studio-muted">{en ? 'No upcoming events in this window.' : 'ما فيه مواعيد خلال الفترة المعروضة.'}</p>}<ol className="calendar-events">{events.map(event => <li key={event.id}><strong dir="auto">{event.title}</strong><p>{range(event)}</p></li>)}</ol>{pageToken && <button className="studio-text-button" disabled={busy} onClick={() => perform(async () => { const data = await call(`events?pageToken=${encodeURIComponent(pageToken)}`); setEvents(previous => [...new Map([...previous, ...data.events].map(event => [event.id, event])).values()]); setPageToken(data.nextPageToken); })}>{en ? 'Load more' : 'عرض المزيد'}</button>}</section>
+    <section><h4>{en ? 'New event' : 'موعد جديد'}</h4><form onSubmit={review} className="studio-form"><label>{en ? 'Title' : 'العنوان'}<input required maxLength={200} value={form.title} onChange={e => field('title', e.target.value)} /></label><label>{en ? 'Starts' : 'البداية'}<input required type="datetime-local" value={form.start} onChange={e => field('start', e.target.value)} /></label><label>{en ? 'Ends' : 'النهاية'}<input required type="datetime-local" value={form.end} onChange={e => field('end', e.target.value)} /></label><label>{en ? 'Notes' : 'ملاحظات'}<textarea maxLength={2000} value={form.description} onChange={e => field('description', e.target.value)} /></label><button className="studio-primary" disabled={busy}>{en ? 'Review event' : 'راجع الموعد'}</button></form>
+    {draft && <div className="device-preview"><h4>{en ? 'Save this event?' : 'نحفظ هذا الموعد؟'}</h4><strong>{draft.title}</strong><p>{format({ dateTime: draft.start })} — {format({ dateTime: draft.end })}</p><p dir="auto">{draft.description}</p><button className="studio-primary" disabled={busy} onClick={save}>{en ? 'Confirm and save in Google Calendar' : 'أكّد واحفظ في تقويم Google'}</button></div>}</section></div></>}
+    {!status && !error && <p role="status">{en ? 'Checking connection…' : 'أتحقق من الاتصال…'}</p>}
+  </section>;
+}

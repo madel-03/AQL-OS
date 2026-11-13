@@ -7,6 +7,8 @@ import { createResearchRouter } from './research.js';
 import { memoryContext } from './user-memory.js';
 import { executeToolCalls } from './agent-execution.js';
 import { createDevicePlanRouter } from './device-plan.js';
+import { createCalendarRouter } from './calendar.js';
+import { calendarStore } from './calendar-store.js';
 
 
 
@@ -270,6 +272,7 @@ async function generateStructured(system, input) {
 }
 app.use('/api/research', createResearchRouter({ requireAuth, generate: generateStructured }));
 app.use('/api/device', createDevicePlanRouter({ requireAuth, generate: generateStructured }));
+app.use('/api/calendar', createCalendarRouter({ requireAuth, store: calendarStore(supabase) }));
 
 app.get('/api/commitments', requireAuth, async (req, res) => {
   try {

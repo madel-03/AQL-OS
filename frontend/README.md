@@ -348,3 +348,27 @@ consent, timeouts, cancellation, bounded logs, stale sources, install/pre/post-h
 suppression and secret-free environments. The live smoke test separately checks
 real AI generation through local execution and optional HTTP server startup.
 Screenshots and sample projects remain under ignored `backend/data/device-qa/`.
+
+
+## Google Calendar
+
+The **My calendar / تقويمي** tab connects the primary Google calendar, lists the
+next 14 days (with pagination), and creates timed events after explicit review.
+Times use the browser's timezone and are sent as ISO instants. Google all-day end
+dates are exclusive and rendered accordingly. Stable event IDs prevent duplicate
+inserts when retrying the same save after a lost response. No guests, invitations,
+event editing/deletion, Google Tasks, or automatic AI calendar access are included.
+
+Follow [the Arabic setup guide](../backend/CALENDAR-SETUP.md). Run
+`backend/migrations/calendar.sql` in Supabase, configure GOOGLE_CLIENT_ID,
+GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, APP_URL and CALENDAR_TOKEN_KEY on the
+backend, then deploy both sides. The interface shows setup-required status until
+credentials are configured. Tokens are encrypted in Supabase with AES-256-GCM,
+not returned to browsers. OAuth uses single-use server state and an HttpOnly
+browser-binding cookie established by top-level navigation. Scopes are restricted
+to owned-calendar events. Disconnect revokes Google access before local deletion.
+
+Backend checks: `npm.cmd run test:calendar`. UI checks (frontend on 5175):
+`node scripts/verify-calendar-ui.js`. These use mock Google responses; real account
+authorization must be tested after setup. Keep the encryption key stable across
+deployments; losing it requires reconnecting accounts.
