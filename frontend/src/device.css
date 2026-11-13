@@ -15,12 +15,18 @@
 .device-files li button:hover { background: #ffffff12; }
 .device-space label { display: block; line-height: 1.8; }
 .device-space textarea { width: 100%; resize: vertical; margin-block: 10px; box-sizing: border-box; }
-.device-space textarea, .device-space input[type="password"] { background: #08132180; color: inherit; border: 1px solid #ffffff30; border-radius: 12px; padding: 12px; font: inherit; box-sizing: border-box; }
+.device-space textarea, .device-space input:not([type="checkbox"]) { background: #08132180; color: inherit; border: 1px solid #ffffff30; border-radius: 12px; padding: 12px; font: inherit; box-sizing: border-box; max-width: 100%; }
 .device-space input[type="password"] { max-width: 100%; }
 .device-space textarea:focus, .device-space input[type="password"]:focus { outline: 2px solid #b0baff; outline-offset: 2px; }
 .device-space .device-consent { display: flex; align-items: start; flex-wrap: wrap; gap: 8px; margin-block: 16px; font-size: .85rem; }
 .device-consent input { flex: 0 0 auto; margin-block-start: 7px; }
 .device-code { margin-block: 16px; padding: 12px; border: 1px solid #ffffff18; border-radius: 12px; }
 .device-code summary { cursor: pointer; overflow-wrap: anywhere; line-height: 1.8; }
+.device-run-consent { background: #ffce8b12; border: 1px solid #ffce8b45; border-radius: 12px; padding: 16px; margin-block: 20px; font-size: .85rem; }
+.device-run-consent input { margin-inline-end: 10px; }
+.device-job { background: #07132050; border: 1px solid #ffffff20; border-radius: 16px; padding: 18px; margin-block: 16px; }
+.device-jobs { margin-block: 24px; }
+.device-job li { line-height: 1.8; font-size: .82rem; overflow-wrap: anywhere; }
+.device-quick { border-top: 1px solid #ffffff20; padding-block: 16px; margin-top: 20px; }
 .device-space button:focus-visible { outline: 2px solid var(--accent, #6ee7ff); outline-offset: 3px; }
 @media (max-width: 700px) { .device-grid { grid-template-columns: minmax(0, 1fr); } .device-files { border-inline-end: 0; padding-inline-end: 0; border-bottom: 1px solid #ffffff18; } .device-setup, .device-preview, .device-results { padding: 12px; } }

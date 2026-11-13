@@ -14,7 +14,9 @@ const session = { access_token: `${encode({ alg: 'HS256' })}.${encode({ sub: id,
 await fs.mkdir('data/device-qa', { recursive: true });
 const root = await fs.mkdtemp(path.resolve('data/device-qa/workspace-'));
 await fs.writeFile(path.join(root, 'note.md'), 'Original local note');
-const bridge = await createDeviceBridge({ workspace: root, token: 'isolated-qa-device-key', origins: ['http://127.0.0.1:5175'] });
+await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'aql-device-ui-qa', private: true, version: '1.0.0', scripts: { dev: 'node server.js' } }));
+await fs.writeFile(path.join(root, 'server.js'), "const http = require('node:http'); const server = http.createServer((req, res) => res.end('actual local server')); server.listen(0, '127.0.0.1', () => console.log('http://127.0.0.1:' + server.address().port));");
+const bridge = await createDeviceBridge({ workspace: root, allowRun: true, token: 'isolated-qa-device-key', origins: ['http://127.0.0.1:5175'] });
 const server = bridge.app.listen(47831, '127.0.0.1'); await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
 const browser = await puppeteer.launch({ headless: true });
 try {
@@ -66,6 +68,31 @@ try {
   await page.click('.device-preview .studio-primary');
   await page.waitForFunction(() => document.querySelector('.device-results')?.textContent.includes('اكتملت المهمة'));
   assert.equal(await fs.readFile(path.join(root, 'note.md'), 'utf8'), 'Updated after review');
+  await page.$$eval('.device-files button', buttons => buttons.find(button => button.textContent.includes('package.json')).click());
+  await page.waitForSelector('.device-quick input[name="script"]');
+  await page.type('.device-quick input[name="script"]', 'dev');
+  await page.click('.device-quick form button'); await page.waitForSelector('.device-run-consent');
+  assert.equal(await page.$eval('.device-preview .studio-primary', element => element.disabled), true);
+  assert.match(await page.$eval('.device-preview', element => element.textContent), /node server.js/);
+  assert.equal(JSON.stringify(plans).includes('isolated-qa-device-key'), false);
+  await page.click('.device-run-consent input'); await page.click('.device-preview .studio-primary');
+  await page.waitForFunction(() => document.querySelector('.device-job pre')?.textContent.includes('http://127.0.0.1:'));
+  const runningOutput = await page.$eval('.device-job pre', element => element.textContent);
+  const localUrl = runningOutput.match(/http:\/\/127\.0\.0\.1:[0-9]+/)[0];
+  assert.equal(await (await fetch(localUrl)).text(), 'actual local server');
+  assert.equal(await page.$eval('.device-job a', element => element.href.replace(/\/$/, '')), localUrl);
+  await page.$eval('.device-jobs', element => element.scrollIntoView({ block: 'start' }));
+  await page.screenshot({ path: 'data/device-qa/running-npm-ar.png' });
+  await page.click('.device-job .studio-primary');
+  await page.waitForFunction(() => document.querySelector('.device-job .status-pill')?.textContent.includes('تم إيقافه'));
+  await assert.rejects(fetch(localUrl, { signal: AbortSignal.timeout(2000) }), 'Stopping npm must also stop its server child');
+  assert.equal(plans.length, 2, 'Quick program review must remain local and not call AI');
+  await page.$$eval('.device-files button', buttons => buttons.find(button => button.textContent.includes('package.json')).click());
+  await page.waitForSelector('.device-quick > button');
+  await page.click('.device-quick > button'); await page.waitForSelector('.device-run-consent');
+  await page.click('.device-run-consent input'); await page.click('.device-preview .studio-primary');
+  await page.waitForFunction(() => document.querySelector('.device-job .status-pill')?.textContent.includes('اكتمل'));
+  await fs.access(path.join(root, 'package-lock.json'));
   await page.setViewport({ width: 390, height: 844 });
   await page.$eval('.device-space', element => element.scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: 'data/device-qa/mobile-ar.png' });
@@ -77,8 +104,8 @@ try {
   assert.equal(await page.$eval('.device-setup input', element => element.value), '');
   assert.equal(await page.evaluate(() => JSON.stringify(localStorage).includes('isolated-qa-device-key')), false);
   assert.deepEqual(errors, []);
-  console.log('PASS: real device connection, review without writes, actual project creation and syntax check, explicit selected-file sharing, overwrite review and backup, no cloud key/root leakage, disconnect, Arabic/English mobile layout');
+  console.log('PASS: real device connection, review without writes, project creation, syntax check, explicit file sharing, overwrite backup, no cloud key/root leakage, code approval gate, actual npm server with live output and open link, process-tree stop verified by closed HTTP port, package installation, local quick actions, disconnect, Arabic/English mobile layout');
 } finally {
-  await browser.close(); await new Promise(resolve => server.close(resolve));
+  await browser.close(); await bridge.close(); await new Promise(resolve => server.close(resolve));
   // Keep isolated QA outputs and screenshots under ignored data/device-qa for review.
 }

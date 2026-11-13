@@ -9,7 +9,7 @@
     "test:memory": "node --test user-memory.test.js",
     "test:agent": "node --test agent-execution.test.js",
     "device": "node device-bridge.js",
-    "test:device": "node --test device-bridge.test.js"
+    "test:device": "node --test device-bridge.test.js device-processes.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

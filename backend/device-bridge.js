@@ -6,17 +6,19 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { validateDevicePlan } from './device-plan.js';
+import { createProcessJobs, npmInvocation, PROCESS_TYPES } from './device-processes.js';
 
 const executeFile = promisify(execFile);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const TEXT = new Set(['.txt', '.md', '.json', '.html', '.css', '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.csv', '.svg', '.yml', '.yaml']);
 const BLOCKED = /^(node_modules|dist|build|vendor|coverage|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|desktop\.ini|thumbs\.db)$/i;
 
-export async function createDeviceBridge({ workspace, token = randomBytes(32).toString('hex'), origins = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://127.0.0.1:5175', 'https://aql-os-orcin.vercel.app'] }) {
+export async function createDeviceBridge({ workspace, token = randomBytes(32).toString('hex'), allowRun = false, jobOptions = {}, origins = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://127.0.0.1:5175', 'https://aql-os-orcin.vercel.app'] }) {
   const root = await fs.realpath(workspace);
   if (!(await fs.stat(root)).isDirectory()) throw new Error('Workspace must be a directory');
   const app = express(); const plans = new Map(); const history = [];
   const addLog = entry => { history.unshift({ at: new Date().toISOString(), ...entry }); history.splice(100); };
+  const jobs = createProcessJobs({ ...jobOptions, onFinish: job => addLog({ type: 'process', path: job.summary, status: job.status }) });
   const fail = (message, status = 400) => Object.assign(new Error(message), { status });
   function partsFor(relative, allowRoot = false) {
     if (typeof relative !== 'string' || relative.length > 240 || /[\\:\x00-\x1f]/.test(relative) || path.isAbsolute(relative)) throw fail('Use a relative path with / separators');
@@ -68,7 +70,9 @@ export async function createDeviceBridge({ workspace, token = randomBytes(32).to
     next();
   });
   app.use(express.json({ limit: '400kb' }));
-  app.get('/status', (req, res) => res.json({ name: 'AQL Device Bridge', version: 1, workspace: root, capabilities: ['list', 'read', 'write_file', 'make_directory', 'check_javascript'], history }));
+  app.get('/status', (req, res) => res.json({ name: 'AQL Device Bridge', version: 2, workspace: root, capabilities: ['list', 'read', 'write_file', 'make_directory', 'check_javascript', ...(allowRun ? [...PROCESS_TYPES] : [])], history }));
+  app.get('/jobs', (req, res) => res.json({ jobs: jobs.list() }));
+  app.post('/stop', async (req, res, next) => { try { res.json(await jobs.stop(req.body.id)); } catch (error) { next(error); } });
   app.post('/list', async (req, res, next) => {
     try {
       const relative = req.body.path || '';
@@ -94,13 +98,40 @@ export async function createDeviceBridge({ workspace, token = randomBytes(32).to
   app.post('/preview', async (req, res, next) => {
     try {
       const plan = validateDevicePlan(req.body);
-      const seen = new Set(); const operations = [];
+      const seen = new Set(); const operations = []; const virtual = new Map(); let processPhase = false;
       for (const operation of plan.operations) {
-        await resolve(operation.path, { missing: true });
+        const isProcess = PROCESS_TYPES.has(operation.type);
+        if (!isProcess && processPhase) throw fail('All file changes and syntax checks must precede process operations');
+        await resolve(operation.path, { missing: true, allowRoot: operation.type.startsWith('npm_') });
+        if (isProcess) {
+          if (!allowRun) throw fail('Restart the bridge with --allow-run to enable local programs');
+          processPhase = true;
+          const inputPath = operation.type === 'run_node' ? operation.path : (operation.path ? `${operation.path}/package.json` : 'package.json');
+          if (operation.type === 'run_node' && !/\.(js|mjs|cjs)$/i.test(operation.path)) throw fail('Run supports .js, .mjs and .cjs only');
+          const source = virtual.has(inputPath) ? { exists: true, before: virtual.get(inputPath), version: hash(virtual.get(inputPath)) } : await snapshot(inputPath);
+          if (!source.exists) throw fail(`Missing runtime input: ${inputPath}`);
+          let scriptContent;
+          if (operation.type.startsWith('npm_')) {
+            const manifest = JSON.parse(source.before);
+            if (manifest.workspaces) throw fail('npm workspaces are not supported in this version');
+            if (operation.type === 'npm_script') {
+              scriptContent = manifest.scripts?.[operation.script];
+              if (typeof scriptContent !== 'string' || !scriptContent.trim()) throw fail('Selected npm script does not exist');
+            }
+            if (operation.type === 'npm_install') {
+              for (const [name, version] of Object.entries({ ...manifest.dependencies, ...manifest.devDependencies, ...manifest.optionalDependencies })) {
+                if (!/^(@[a-z0-9._-]+\/)?[a-z0-9._-]+$/i.test(name) || typeof version !== 'string' || !/^[a-z0-9.*^~+<>=| -]+$/i.test(version)) throw fail('Use public npm package names with registry versions; file, URL and git dependencies are unsupported');
+              }
+            }
+          }
+          operations.push({ ...operation, inputPath, inputVersion: source.version, source: source.before, scriptContent, command: operation.type === 'run_node' ? `node ${operation.path}` : operation.type === 'npm_install' ? 'npm install --ignore-scripts --no-audit --no-fund' : `npm run ${operation.script} --ignore-scripts` });
+          continue;
+        }
         if (operation.type === 'write_file') {
           if (!TEXT.has(path.extname(operation.path).toLowerCase())) throw fail('Unsupported file extension');
           if (seen.has(operation.path.toLowerCase())) throw fail('A file can only be written once in a plan');
           seen.add(operation.path.toLowerCase());
+          virtual.set(operation.path, operation.content);
           operations.push({ ...operation, ...await snapshot(operation.path) });
         } else {
           if (operation.type === 'check_javascript' && !/\.(mjs|cjs|js)$/i.test(operation.path)) throw fail('Syntax checks support .js, .mjs and .cjs');
@@ -120,6 +151,9 @@ export async function createDeviceBridge({ workspace, token = randomBytes(32).to
     if (busy) return res.status(409).json({ error: 'Another device task is running' });
     const plan = plans.get(req.body.id);
     if (!plan || plan.expires < Date.now()) return res.status(409).json({ error: 'Plan expired or already used. Preview it again.' });
+    const processes = plan.operations.filter(operation => PROCESS_TYPES.has(operation.type));
+    if (processes.length && req.body.allowCodeExecution !== true) return res.status(400).json({ error: 'Explicit local code execution approval is required' });
+    if (processes.length && jobs.list().filter(job => ['running', 'stopping'].includes(job.status)).length >= 2) return res.status(409).json({ error: 'Stop a running job first (maximum 2).' });
     plans.delete(req.body.id); busy = true;
     const results = [];
     try {
@@ -127,7 +161,10 @@ export async function createDeviceBridge({ workspace, token = randomBytes(32).to
       for (const operation of plan.operations.filter(item => item.type === 'write_file')) {
         if ((await snapshot(operation.path)).version !== operation.version) throw fail(`File changed since preview: ${operation.path}`, 409);
       }
-      for (const operation of plan.operations) {
+      for (const operation of processes) {
+        if (!plan.operations.some(item => item.type === 'write_file' && item.path.toLowerCase() === operation.inputPath.toLowerCase()) && (await snapshot(operation.inputPath)).version !== operation.inputVersion) throw fail(`Runtime input changed since preview: ${operation.inputPath}`, 409);
+      }
+      for (const operation of plan.operations.filter(operation => !PROCESS_TYPES.has(operation.type))) {
         try {
           const filename = await resolve(operation.path, { missing: operation.type !== 'check_javascript' });
           if (operation.type === 'make_directory') await fs.mkdir(filename, { recursive: true });
@@ -158,11 +195,27 @@ export async function createDeviceBridge({ workspace, token = randomBytes(32).to
           results.push(result); addLog(result); break;
         }
       }
+      if (processes.length && results.every(result => result.status === 'completed')) {
+        const job = jobs.start(plan.summary, processes.map(operation => ({ ...operation, prepare: async () => {
+          if ((await snapshot(operation.inputPath)).version !== operation.inputVersion) throw fail(`Runtime input changed since preview: ${operation.inputPath}`, 409);
+          if (operation.type === 'run_node') {
+            const filename = await resolve(operation.path);
+            return { file: process.execPath, args: [filename], cwd: path.dirname(filename) };
+          }
+          const cwd = await resolve(operation.path, { allowRoot: true });
+          // Do not silently consume project-specific npm settings or alternate shrinkwrap inputs.
+          for (const name of ['.npmrc', 'npm-shrinkwrap.json']) {
+            try { await fs.lstat(path.join(cwd, name)); throw fail(`Remove or review ${name} manually before running npm through AQL`); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+          }
+          return npmInvocation(operation.type, cwd, operation.script);
+        } })));
+        return res.json({ summary: plan.summary, results, completed: false, accepted: true, jobId: job.id });
+      }
       res.json({ summary: plan.summary, results, completed: results.length === plan.operations.length && results.every(result => result.status === 'completed') });
     } catch (error) { next(error); } finally { busy = false; }
   });
   app.use((error, req, res, next) => { void next; res.status(error.status || 400).json({ error: error.code === 'ENOENT' ? 'Path does not exist' : error.message }); });
-  return { app, token, workspace: root };
+  return { app, token, workspace: root, close: () => jobs.close() };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -174,11 +227,14 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   } else {
     try {
       const extra = args.includes('--origin') ? [new URL(option('--origin')).origin] : [];
-      const bridge = await createDeviceBridge({ workspace: option('--workspace'), ...(extra.length ? { origins: extra } : {}) });
+      const bridge = await createDeviceBridge({ workspace: option('--workspace'), allowRun: args.includes('--allow-run'), ...(extra.length ? { origins: extra } : {}) });
       const port = 47831;
       const server = bridge.app.listen(port, '127.0.0.1', () => {
-        console.log(`AQL device bridge: http://127.0.0.1:${port}\nWorkspace: ${bridge.workspace}\nDevice key (paste into AQL, never share):\n${bridge.token}\nStop with Ctrl+C. Key expires when the bridge stops.`);
+        console.log(`AQL device bridge: http://127.0.0.1:${port}\nWorkspace: ${bridge.workspace}\nProgram execution: ${args.includes('--allow-run') ? 'ENABLED (normal user permissions, not an OS sandbox)' : 'disabled (use --allow-run to enable)'}\nDevice key (paste into AQL, never share):\n${bridge.token}\nStop with Ctrl+C. Key expires when the bridge stops.`);
       });
+      let closing = false;
+      const shutdown = async () => { if (closing) return; closing = true; await bridge.close(); server.close(() => { process.exitCode = 0; }); };
+      process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
       server.on('error', error => { console.error(error.message); process.exitCode = 1; });
     } catch (error) { console.error(error.message); process.exitCode = 1; }
   }

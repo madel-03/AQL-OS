@@ -215,14 +215,15 @@ The workspace now includes a **My device / جهازي** tab. This is a separate 
 bridge; the hosted backend never obtains filesystem access or the bridge key.
 It supports browsing and reading text files, AI-generated project/file plans,
 reviewing complete before/after content, approved writes and folder creation,
-and JavaScript **syntax checks**. It does not run generated programs, install
-packages, delete files, or accept arbitrary shell commands.
+and JavaScript **syntax checks**. With local `--allow-run` opt-in it also supports
+Node programs, npm dependency installation, and named project scripts. It does
+not expose a general shell-command operation or a file-deletion operation.
 
 On Windows, from `backend`, after installing its existing dependencies:
 
 ```powershell
 New-Item -ItemType Directory -Force "$env:USERPROFILE\Desktop\AQL-Workspace"
-npm.cmd run device -- --workspace "$env:USERPROFILE\Desktop\AQL-Workspace"
+npm.cmd run device -- --workspace "$env:USERPROFILE\Desktop\AQL-Workspace" --allow-run
 ```
 
 Paste the printed key into **جهازي** and keep the terminal running. The bridge
@@ -238,18 +239,20 @@ port 5173 and 127.0.0.1 ports 5173/5175. For another deployment, pass
 Browsers may request local-network permission or block loopback access under
 their security settings. The UI reports a connection failure; local-network
 permissions must be enabled by the user. No tunneling or public listening port
-is used. The local bridge is not an OS sandbox against another malicious local
-process changing the filesystem concurrently.
+is used. File browsing/editing is confined by the bridge's path checks, but
+**executed programs run with the normal permissions of your OS account** and
+can access other device files and the network. This is not an OS sandbox.
 
 The authenticated hosted endpoint `POST /api/device/plan` only **plans**. It
 receives the task, up to 100 currently visible filenames, and optionally the
 selected file's first 45,000 characters after an explicit checkbox. The absolute
 workspace path and device key remain local. No automatic recursive indexing or
-background filesystem access occurs. The existing AI provider fallback is reused.
+background indexing occurs. The existing AI provider fallback is reused.
 
 Every generated plan is revalidated by the local bridge. Preview IDs expire in
-10 minutes and are single-use. Execution is serial and stops at the first failed
-operation; earlier changes remain, so the result lists actual outcomes. Changed
+10 minutes and are single-use. Operations within a plan are serial and stop at
+the first failure; earlier changes remain. File changes and syntax checks must
+precede process steps. Changed
 files are checked against the preview hash, and existing text is backed up in
 `<workspace>/.aql-backups/` before replacement. Backups are JSON with `path` and
 `content` for manual recovery. They stay on disk and may contain private text;
@@ -263,6 +266,49 @@ files are rejected. Text files are limited to 180 KB; plans to 12 operations and
 `--check`, no shell, a timeout, bounded output and stripped Node option variables.
 See [Node child-process documentation](https://nodejs.org/api/child_process.html).
 
+### Running projects
+
+Restart an older bridge with `--allow-run`, then reconnect using the new key.
+Without that flag, `run_node`, `npm_install`, and `npm_script` are rejected.
+Plans containing these steps also require checking the explicit code-execution
+consent box before the execute button becomes available. The bridge enforces
+that approval too. Review shows the command, Node source or package manifest,
+and the actual selected npm script content.
+
+- Select a JS/MJS/CJS file to review running it directly with Node (no extra args).
+- Select `package.json` to review dependency installation or enter a named script,
+  such as `dev`, `build`, or `test`. These quick actions remain entirely local.
+- Or ask the AI to build and run a project. Its process steps are enabled only
+  when the connected bridge advertises the execution capability.
+
+`npm install` uses `--ignore-scripts --no-audit --no-fund`, the public npm registry,
+and disables npm workspaces. It installs versions listed in the project manifest,
+never global packages. Direct file/URL/git dependency specs are rejected.
+Project `.npmrc` and `npm-shrinkwrap.json` require manual review/removal before
+bridge npm execution. User/global npm config are replaced by temporary empty
+configs and backend secret/Node-option environment variables are not inherited.
+Some packages requiring install-time build scripts may need manual setup.
+`npm run <name> --ignore-scripts` executes the selected script while skipping
+its automatic pre/post hooks; the selected script itself can run shell commands
+and other programs. See [npm's script behavior](https://docs.npmjs.com/cli/v11/commands/npm-run/)
+and [ignore-scripts](https://docs.npmjs.com/cli/v11/commands/npm-install/#ignore-scripts).
+
+Process work returns a job ID immediately and is monitored through authenticated
+`GET /jobs`; `POST /stop` stops that job. Output stays local, bounded to the latest
+100,000 characters per job, with up to 30 retained jobs and at most two concurrent
+jobs. The default total job deadline is 15 minutes. Nonzero exits, stopping,
+timeouts and skipped downstream steps are reported separately. Input file hashes
+are checked again before launch. The UI links loopback HTTP addresses printed by
+running servers. It never embeds untrusted process output as HTML.
+
+Leaving the tab, disconnecting, or reloading does **not** stop jobs. Reconnect with
+the same bridge key to regain controls. Ctrl+C/SIGTERM asks the bridge to stop
+its jobs. On Windows it uses `taskkill /PID <pid> /T /F`; on POSIX it kills the
+spawned process group. This is process-tree cleanup, not containment of hostile
+code that deliberately escapes its tree. **Only direct bridge file replacements
+are backed up**; package installs and runtime side effects are not backed up or
+rolled back.
+
 Verification:
 
 ```powershell
@@ -271,9 +317,16 @@ npm.cmd run test:device
 node scripts/verify-device-ui.js
 # Optional: calls the configured Groq account with a synthetic cafe-page request
 node scripts/verify-device-live.js
+node scripts/verify-device-live.js --run
+# Optional: actual public-registry package download and project-script execution
+node scripts/verify-device-packages.js
 ```
 
 UI QA requires frontend at 127.0.0.1:5175 and bridge port 47831 to be free. It uses
 isolated fake auth and AI responses, a **real** local bridge and real QA files.
-The live smoke test separately checks real AI generation through local execution.
+UI QA also starts a real npm server, checks its HTTP response, stops it and
+verifies its child-server port closed. Unit tests cover execution opt-in and
+consent, timeouts, cancellation, bounded logs, stale sources, install/pre/post-hook
+suppression and secret-free environments. The live smoke test separately checks
+real AI generation through local execution and optional HTTP server startup.
 Screenshots and sample projects remain under ignored `backend/data/device-qa/`.

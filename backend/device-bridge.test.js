@@ -8,12 +8,12 @@ import { createDevicePlanRouter, validateDevicePlan } from './device-plan.js';
 import express from 'express';
 import http from 'node:http';
 
-async function fixture(t) {
+async function fixture(t, options = {}) {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'aql-device-test-'));
   const root = path.join(base, 'workspace'); await fs.mkdir(root);
-  const bridge = await createDeviceBridge({ workspace: root, token: 'test-device-key', origins: ['https://allowed.example'] });
+  const bridge = await createDeviceBridge({ workspace: root, token: 'test-device-key', origins: ['https://allowed.example'], ...options });
   const server = bridge.app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
-  t.after(async () => { await new Promise(resolve => server.close(resolve)); await fs.rm(base, { recursive: true, force: true }); });
+  t.after(async () => { await bridge.close(); await new Promise(resolve => server.close(resolve)); await fs.rm(base, { recursive: true, force: true }); });
   const url = `http://127.0.0.1:${server.address().port}`;
   const request = async (route, body, headers = {}) => {
     if (headers.Host) return new Promise((resolve, reject) => {
@@ -35,6 +35,91 @@ test('device key, exact origin and loopback host are enforced', async t => {
   assert.equal((await request('status', null, { Origin: 'https://evil.example' })).status, 403);
   assert.equal((await request('status', null, { Host: 'evil.example' })).status, 403);
   assert.equal((await request('status', null, { Origin: 'https://allowed.example' })).status, 200);
+});
+
+async function waitJob(request, id, predicate = job => !['running', 'stopping'].includes(job.status)) {
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    const job = (await request('jobs')).data.jobs.find(item => item.id === id);
+    if (job && predicate(job)) return job;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  throw new Error('Timed out waiting for local test job');
+}
+
+test('programs require bridge opt-in and explicit preview approval', async t => {
+  const locked = await fixture(t);
+  await fs.writeFile(path.join(locked.root, 'app.js'), 'console.log("ok")');
+  assert.notEqual((await locked.request('preview', { summary: 'Run', operations: [{ type: 'run_node', path: 'app.js' }] })).status, 200);
+  const enabled = await fixture(t, { allowRun: true });
+  const plan = { summary: 'Write and run', operations: [{ type: 'write_file', path: 'app.js', content: 'console.log("local-success")' }, { type: 'run_node', path: 'app.js' }] };
+  const preview = (await enabled.request('preview', plan)).data;
+  assert.match(preview.operations[1].source, /local-success/);
+  assert.equal((await enabled.request('execute', { id: preview.id })).status, 400);
+  await assert.rejects(fs.access(path.join(enabled.root, 'app.js')));
+  const outcome = (await enabled.request('execute', { id: preview.id, allowCodeExecution: true })).data;
+  assert.equal(outcome.accepted, true);
+  const job = await waitJob(enabled.request, outcome.jobId);
+  assert.equal(job.status, 'completed'); assert.match(job.output, /local-success/);
+  assert.equal((await enabled.request('execute', { id: preview.id, allowCodeExecution: true })).status, 409);
+});
+
+test('local job failure skips later commands and cannot silently turn into success', async t => {
+  const { root, request } = await fixture(t, { allowRun: true });
+  await fs.writeFile(path.join(root, 'bad.js'), 'process.exit(7)');
+  await fs.writeFile(path.join(root, 'later.js'), 'console.log("must-not-run")');
+  const preview = (await request('preview', { summary: 'Failure', operations: [{ type: 'run_node', path: 'bad.js' }, { type: 'run_node', path: 'later.js' }] })).data;
+  const outcome = (await request('execute', { id: preview.id, allowCodeExecution: true })).data;
+  const job = await waitJob(request, outcome.jobId);
+  assert.equal(job.status, 'failed'); assert.equal(job.exitCode, 7);
+  assert.deepEqual(job.steps.map(step => step.status), ['failed', 'skipped']);
+  assert.equal(job.output.includes('must-not-run'), false);
+});
+
+test('running processes can be stopped and output is bounded', async t => {
+  const { root, request } = await fixture(t, { allowRun: true, jobOptions: { outputLimit: 1000 } });
+  await fs.writeFile(path.join(root, 'server.js'), 'console.log("x".repeat(3000)); setInterval(() => console.log("heartbeat"), 20);');
+  const preview = (await request('preview', { summary: 'Server', operations: [{ type: 'run_node', path: 'server.js' }] })).data;
+  const outcome = (await request('execute', { id: preview.id, allowCodeExecution: true })).data;
+  const running = await waitJob(request, outcome.jobId, job => job.output.includes('heartbeat'));
+  assert.equal(running.truncated, true); assert(running.output.length <= 1000);
+  assert.equal((await request('stop', { id: outcome.jobId })).status, 200);
+  assert.equal((await waitJob(request, outcome.jobId)).status, 'stopped');
+});
+
+test('timeouts stop programs and stale source versions reject execution', async t => {
+  const { root, request } = await fixture(t, { allowRun: true, jobOptions: { timeoutMs: 500 } });
+  await fs.writeFile(path.join(root, 'app.js'), 'setInterval(() => {}, 1000)');
+  const plan = { summary: 'Timeout', operations: [{ type: 'run_node', path: 'app.js' }] };
+  const stale = (await request('preview', plan)).data;
+  await fs.writeFile(path.join(root, 'app.js'), 'setInterval(() => {}, 2000)');
+  assert.equal((await request('execute', { id: stale.id, allowCodeExecution: true })).status, 409);
+  const preview = (await request('preview', plan)).data;
+  const outcome = (await request('execute', { id: preview.id, allowCodeExecution: true })).data;
+  assert.equal((await waitJob(request, outcome.jobId)).status, 'timed_out');
+});
+
+test('npm installation skips lifecycle hooks and selected scripts skip pre/post hooks', async t => {
+  const { root, request } = await fixture(t, { allowRun: true });
+  const manifest = { name: 'aql-test-project', version: '1.0.0', private: true, scripts: { postinstall: 'node -e "require(\'fs\').writeFileSync(\'install-hook.txt\',\'bad\')"', predemo: 'node -e "require(\'fs\').writeFileSync(\'pre-hook.txt\',\'bad\')"', demo: 'node -e "console.log(\'script-success\')"', postdemo: 'node -e "require(\'fs\').writeFileSync(\'post-hook.txt\',\'bad\')"' } };
+  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify(manifest));
+  const preview = (await request('preview', { summary: 'Install and run', operations: [{ type: 'npm_install', path: '' }, { type: 'npm_script', path: '', script: 'demo' }] })).data;
+  assert.equal(preview.operations[1].scriptContent, manifest.scripts.demo);
+  const outcome = (await request('execute', { id: preview.id, allowCodeExecution: true })).data;
+  const job = await waitJob(request, outcome.jobId);
+  assert.equal(job.status, 'completed', job.output); assert.match(job.output, /script-success/);
+  for (const name of ['install-hook.txt', 'pre-hook.txt', 'post-hook.txt']) await assert.rejects(fs.access(path.join(root, name)));
+  await fs.access(path.join(root, 'package-lock.json'));
+});
+
+test('process plans reject commands after file phase, missing scripts and external dependency specs', async t => {
+  const { root, request } = await fixture(t, { allowRun: true });
+  await fs.writeFile(path.join(root, 'app.js'), 'console.log("ok")');
+  const invalidOrder = { summary: 'Bad order', operations: [{ type: 'run_node', path: 'app.js' }, { type: 'write_file', path: 'later.txt', content: 'no' }] };
+  assert.notEqual((await request('preview', invalidOrder)).status, 200);
+  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ dependencies: { bad: 'file:../private' } }));
+  assert.notEqual((await request('preview', { summary: 'Bad dependencies', operations: [{ type: 'npm_install', path: '' }] })).status, 200);
+  assert.notEqual((await request('preview', { summary: 'Missing script', operations: [{ type: 'npm_script', path: '', script: 'missing' }] })).status, 200);
 });
 test('paths, hidden secrets, links, binary and large files are rejected', async t => {
   const { root, base, request } = await fixture(t);
