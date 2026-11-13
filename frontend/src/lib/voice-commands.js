@@ -6,6 +6,9 @@ export function voiceIntent(text) {
     const routes = { tasks: ['مهام', 'tasks'], calendar: ['تقويم', 'calendar'], projects: ['مشاريع', 'projects'], device: ['جهاز', 'device'], chat: ['محادث', 'chat', 'مساعد'] };
     for (const [id, words] of Object.entries(routes)) if (words.some(word => value.includes(word))) return { type: 'navigate', id };
   }
+  if (/^(?:نعم )?(?:اكد(?: لي)? (?:الموعد|الحفظ)|احفظ(?: لي)? الموعد|نفذ(?: لي)? الموعد|confirm (?:the )?(?:event|appointment))(?: (?:لو سمحت|من فضلك|please))?$/.test(value)) return { type: 'calendar-confirm' };
+  if (/^(الغ طلب الموعد|الغي طلب الموعد|الغ الموعد|الغي الموعد|cancel (the )?(event|appointment)( request)?)$/.test(value)) return { type: 'calendar-cancel' };
+  if (/(موعد|اجتماع|تقويم|calendar|appointment|meeting)/.test(value) && /(اضف|تضيف|ضيف|احجز|حجز|حدد|حط|سجل|رتب|انشئ|جهز|add|create|schedule|book)/.test(value)) return { type: 'calendar-prepare' };
   if (/^(اضف|احذف|عدل|انشئ|شغل|ارسل|سجل|add|delete|edit|create|run|send|schedule)(?:\s|$)/.test(value)) return { type: 'review-required' };
   if (/(اليوم|today)/.test(value) && /(وش|ايش|ماذا|عندي|جدول|مواعيد|مهام|what|schedule|agenda|appointments|tasks)/.test(value)) return { type: 'today' };
   if (/^(مهامي|المهام|مواعيدي|المواعيد|my tasks|my appointments|my schedule)$/.test(value)) return { type: 'today' };

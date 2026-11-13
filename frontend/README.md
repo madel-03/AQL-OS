@@ -472,7 +472,7 @@ including overdue pending tasks, and reports unavailable/disconnected sources
 explicitly. Calendar/task data is not sent to AI chat for this summary. Other
 questions use the existing authenticated chat with read-only voice instructions
 and existing account memory; those questions/replies are saved by the existing
-chat route. Change/run/send requests are not executed by voice. Navigation such
+chat route. Appointment creation is now supported after explicit confirmation as described below; other change/run/send requests stay in their tools. Navigation such
 as “افتح المهام” and “افتح التقويم” opens the relevant existing tool.
 
 Speech recognition is the browser Web Speech API, **not an offline/local wake-word
@@ -524,3 +524,46 @@ session. The header settings/stop controls remain available on other pages.
 mobile layout and navigation without an extra microphone session. Screenshots
 include `backend/data/wake-qa/home-presence-ar.png`. No new runtime dependencies
 or backend changes are needed for this presentation update.
+
+
+### Executing a calendar task by voice
+
+Jarvis can now prepare and actually save a new primary-calendar event. Example:
+“يا جارفس، أضف موعد بكرة الساعة الخامسة مساءً لمراجعة المشروع لمدة نصف ساعة”.
+The authenticated `POST /api/calendar/plan` uses the existing structured AI
+provider fallback and requires a connected account. It returns a clarification
+or a canonical event draft, never a Google write. Missing/ambiguous day or time
+produces a follow-up question. The next utterance can answer it within the
+existing ten-second window, otherwise repeat the wake name.
+
+The planner receives only this request, up to six previous user messages for
+the same draft, and authoritative local clock/timezone context. Local wall time
+is converted to an instant by the backend with IANA timezone rules; nonexistent
+or repeated DST times are rejected instead of silently chosen. An omitted
+duration proposes one hour, visible/spoken before saving. Title, day, start, end,
+duration and timezone are shown in the main voice card and settings dialog.
+
+Say “يا جارفس، أكّد الموعد” (or click Confirm and save) to invoke the existing
+Google events endpoint. No write occurs while asking or preparing. A successful
+API response is required before Jarvis says the appointment was saved. Repeated
+confirmation after success does nothing. Drafts expire after ten minutes.
+Unknown save outcomes retain the exact request ID for retry, leveraging the
+existing event-ID deduplication. The UI explicitly marks an uncertain save and
+blocks replacing it with a new draft until resolved or cancelled. Cancelling
+an unsaved draft or a retry never deletes a Google event. No invitations or
+modification/deletion of saved events are supported in this voice feature.
+
+Pending drafts and clarification context are session-memory only. If the page
+is reloaded after an uncertain save, check Google Calendar before requesting
+a new event; draft IDs are not persisted across reload. Actual audio still
+depends on browser recognition support. Other action types remain in their
+existing tool review flows; this is not an unrestricted device agent.
+
+Deploy backend and frontend; no extra Google scope, migration or API key is
+needed. Checks: `npm.cmd run test:calendar`, frontend `npm.cmd run test:wake`,
+`node scripts/verify-voice-calendar-ui.js` with frontend on 5175. The optional
+`node scripts/verify-voice-calendar-live.js` tests real configured Groq planning
+with synthetic requests; it never creates a Google event. Browser QA mocks
+recognition/playback/Google writes and exercises clarification, review, explicit
+confirmation, uncertain retries, success and cancellation. Existing calendar
+router tests cover actual Google-call construction and idempotency behavior.

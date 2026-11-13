@@ -59,3 +59,18 @@ test('voice intents remain read-only and today summary excludes completed/future
   const text = spokenToday(snapshot, true); assert.match(text, /Due/); assert(!text.includes('Done')); assert(!text.includes('Future'));
   const failed = spokenToday({ ...snapshot, errors: { calendar: 'offline', tasks: 'offline' } }, true); assert.match(failed, /could not be read/); assert(!failed.includes('0 appointments')); assert(!failed.includes('0 tasks'));
 });
+test('calendar action and explicit confirmation are distinguished from conversation', () => {
+  assert.equal(voiceIntent('أضف موعد بكرة الخامسة مساءً لمراجعة المشروع').type, 'calendar-prepare');
+  assert.equal(voiceIntent('أبغاك تضيف لي موعد اجتماع').type, 'calendar-prepare');
+  assert.equal(voiceIntent('أكد الموعد').type, 'calendar-confirm');
+  assert.equal(voiceIntent('confirm the appointment').type, 'calendar-confirm');
+  assert.equal(voiceIntent('إلغي طلب الموعد').type, 'calendar-cancel');
+  assert.equal(voiceIntent('نعم').type, 'chat');
+  assert.equal(voiceIntent('متى أؤكد الموعد').type, 'chat');
+  assert.equal(voiceIntent('احذف موعد اليوم').type, 'review-required');
+});
+test('clarification outcomes allow one bounded conversational follow-up', async () => {
+  const calls = []; const { engine, instances } = fixture(async command => { calls.push(command); return { followUp: calls.length === 1 }; });
+  engine.start(); instances[0].result('يا جارفس أضف موعد'); await tick(); instances.at(-1).result('بكرة الخامسة مساء'); await tick(); instances.at(-1).result('محادثة جانبية');
+  assert.deepEqual(calls, ['اضف موعد', 'بكرة الخامسة مساء']); engine.stop();
+});

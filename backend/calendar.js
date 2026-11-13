@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { randomBytes, createHash, createCipheriv, createDecipheriv } from 'node:crypto';
+import { planCalendarRequest } from './calendar-planning.js';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const scope = 'https://www.googleapis.com/auth/calendar.events.owned';
@@ -19,7 +20,7 @@ export function calendarEvent(value) {
   return { id: `a${value.requestId}`, summary: value.title.trim(), description: typeof value.description === 'string' ? value.description.slice(0, 2000) : '', start: { dateTime: new Date(value.start).toISOString() }, end: { dateTime: new Date(value.end).toISOString() } };
 }
 
-export function createCalendarRouter({ requireAuth, store, config = process.env, fetcher = fetch }) {
+export function createCalendarRouter({ requireAuth, store, config = process.env, fetcher = fetch, generate }) {
   config = Object.fromEntries(['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'APP_URL', 'CALENDAR_TOKEN_KEY'].map(name => [name, typeof config[name] === 'string' ? config[name].trim() : '']));
   const router = Router();
   const configured = () => !!(config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET && config.GOOGLE_REDIRECT_URI && config.APP_URL && config.CALENDAR_TOKEN_KEY && Buffer.from(config.CALENDAR_TOKEN_KEY, 'base64').length === 32);
@@ -44,6 +45,15 @@ export function createCalendarRouter({ requireAuth, store, config = process.env,
   const asyncRoute = action => async (req, res, next) => { try { await action(req, res); } catch (error) { next(error); } };
   const requireConfig = (req, res, next) => configured() ? next() : res.status(503).json({ error: 'ربط Google Calendar يحتاج إعداد الخادم أولًا.', code: 'CALENDAR_SETUP_REQUIRED' });
   const done = (res, ok) => res.redirect(`${config.APP_URL.replace(/\/$/, '')}/?calendar=${ok ? 'connected' : 'failed'}`);
+  router.post('/plan', requireAuth, requireConfig, asyncRoute(async (req, res) => {
+    if (!await store.get(req.user.id)) return res.status(409).json({ error: 'اربط تقويم Google أولًا من تبويب تقويمي.' });
+    if (!generate) return res.status(503).json({ error: 'خدمة تجهيز الموعد غير متاحة.' });
+    const { message, context, timeZone, lang } = req.body || {};
+    if (typeof timeZone !== 'string' || timeZone.length > 100) return res.status(400).json({ error: 'حدّد المنطقة الزمنية للجهاز.' });
+    try { new Intl.DateTimeFormat('en', { timeZone }).format(new Date()); } catch { return res.status(400).json({ error: 'المنطقة الزمنية غير صالحة.' }); }
+    try { res.json(await planCalendarRequest({ generate, message, context, timeZone, lang })); }
+    catch { res.status(422).json({ error: 'تعذّر فهم الموعد. حدّد العنوان واليوم والوقت بوضوح.' }); }
+  }));
   router.get('/status', requireAuth, asyncRoute(async (req, res) => res.json({ configured: configured(), connected: configured() && !!await store.get(req.user.id), diagnostics: { clientId: config.GOOGLE_CLIENT_ID, redirectUri: config.GOOGLE_REDIRECT_URI } })));
   router.post('/connect', requireAuth, requireConfig, asyncRoute(async (req, res) => {
     const ticket = randomBytes(32).toString('hex');

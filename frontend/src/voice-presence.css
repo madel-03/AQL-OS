@@ -25,3 +25,6 @@
 .appearance-root[data-motion="off"] .voice-presence * { animation:none!important; }
 
 .appearance-root[data-companion="off"] .voice-creature { display: none; }
+.voice-calendar-card { margin-block:18px; padding:16px; border:1px solid #a4d7bd44; border-radius:16px; background:#122c242b; text-align:start; font:.78rem/1.9 'Tajawal',sans-serif; }
+.voice-calendar-card h3 { font:800 1rem 'Tajawal',sans-serif; margin:10px 0; }.voice-calendar-card small { color:#c0b2ce; }.voice-calendar-card .voice-main-toggle { font-size:.76rem; padding:9px 16px; margin-block:12px; }.voice-calendar-card .voice-settings-link { display:block; margin-top:10px; }
+.voice-executing .voice-orbit { animation:voice-orbit 2s linear infinite; }.voice-executing .voice-wave i { animation:voice-bars .8s ease-in-out var(--bar-delay) infinite; }

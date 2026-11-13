@@ -23,7 +23,7 @@ export function createWakeListener({ createRecognition, name, lang, onCommand, o
     if (!enabled || busy || external) return;
     busy = true; clearRestart(); detach(); clearTimeout(deadlineTimer); deadline = 0;
     const token = generation; transaction = new AbortController(); status('processing');
-    try { await onCommand(command, { signal: transaction.signal, wakeOnly }); }
+    try { const outcome = await onCommand(command, { signal: transaction.signal, wakeOnly }); if (outcome?.followUp) wakeOnly = true; }
     catch (error) { if (enabled && token === generation && error.name !== 'AbortError') await onError?.('command-failed', { signal: transaction.signal }); }
     finally {
       if (enabled && token === generation) {
