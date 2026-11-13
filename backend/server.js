@@ -4,6 +4,7 @@ import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import { synthesizeSpeech } from './edge-speech.js';
 import { createResearchRouter } from './research.js';
+import { memoryContext } from './user-memory.js';
 
 
 
@@ -499,7 +500,8 @@ app.post('/api/chat', requireAuth, async (req, res) => {
      const live = await liveWebSearch(message, lang);
      const systemPrompt = CHAT_PERSONA + (lang === 'en' ? '\nRespond in English, address the user as "sir".' : '\nخاطب المستخدم بلقب "سيدي".')
      + `\nCurrent Case Data:\n- Commitments: ${JSON.stringify(list)}\n- Total Weekly Hours: ${totalHours}h\n- Life & Finance Summary: ${JSON.stringify(life)}`
-     + (live ? `\nLIVE WEB RESULTS (اعتمد عليها إذا كانت ذات صلة واذكر المصادر بالروابط):\n${live}` : '');
+      + (live ? `\nLIVE WEB RESULTS (اعتمد عليها إذا كانت ذات صلة واذكر المصادر بالروابط):\n${live}` : '')
+      + memoryContext(body.memory);
     const messagesPayload = [
       ...history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
       { role: 'user', content: message }

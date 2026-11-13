@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test:research": "node --test research.test.js"
+    "test:research": "node --test research.test.js",
+    "test:memory": "node --test user-memory.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

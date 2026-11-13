@@ -147,3 +147,64 @@ English QA examples under ignored `data/export-qa/`. This launches headless
 Chromium. PDF layout was visually checked on both languages. DOCX structure,
 hyperlinks and RTL flags were checked; native Word/LibreOffice visual validation
 requires an Office renderer installed on the machine.
+
+## Living workspace tools
+
+The home page includes six tool tabs and a suggestions box:
+
+- **Focus:** a deadline-based timer with pause/resume, early finish, outcome notes,
+  and saved session history. It continues to count elapsed running time across a
+  page reload; a timer that expired while away opens the reflection screen when
+  you return. This does not create operating-system notifications with the site
+  closed. Sessions can be linked to projects; early finishes count only elapsed
+  running time, and recording a session does not complete project steps.
+- **My desk:** editable notes and pinned reports/projects. Reorder using the drag
+  grip or the accessible earlier/later buttons. Report pins open the saved report.
+- **Ideas:** a map of up to 24 recent research tasks, existing server goals, and
+  local projects. Connections come from at least two shared title words or a
+  user-created project link, not model-inferred semantic similarity. Select ideas
+  to create a linked project or draft a planning conversation.
+- **Projects:** editable checklists with a plant that grows from checked steps.
+  A project without steps starts at zero, and deleting or unchecking steps updates
+  its stage. Linked focus outcomes are visible on the project card.
+- **Memory:** editable notes plus transparent activity facts. Forgetting an
+  automatic fact hides it from future memory context; editing it replaces the
+  generated wording. The first 12 visible entries accompany new chat requests.
+  This does not erase old chat messages or source reports.
+- **Atmosphere:** locally synthesized rain and café-like room textures, volume
+  control, and optional lighting based on device time. Audio requires an explicit
+  play action, never autoplays after reload, softens during AQL speech, mutes during
+  microphone use, and stops when signing out. No recordings are fetched.
+- **Suggestions:** at most two suggestions derived from failed tasks, repeated
+  topics, unchanged projects or month-old reports. They never run automatically.
+  Snooze for 24 hours, dismiss, or restore them from the box.
+
+These new notes/projects/memories/sessions are stored under
+`aql-studio-v1:<userId>` in browser localStorage, separate for each account.
+They are **not cloud-synced** and clearing browser data removes them. Research
+reports and server goals keep their existing server persistence. The local store
+retains up to 75 notes, 60 pins, 30 projects with 30 steps each, 40 memory overrides,
+and 100 focus sessions. Browser storage failures are surfaced in the tool panel.
+
+The authenticated chat endpoint accepts `memory: string[]`; the backend limits
+it to 12 non-empty entries of 280 characters each and labels it as user context,
+not authority to change system rules or tool permissions.
+
+Checks:
+
+```sh
+# frontend
+npm run test:studio
+npm run test:appearance
+npm run build
+# backend
+npm run test:memory
+npm run test:research
+```
+
+With the frontend running on `127.0.0.1:5175`, run
+`node scripts/verify-studio-ui.js` from the backend for isolated browser QA.
+It intercepts API calls, creates synthetic session data, verifies timer recovery,
+project growth, desk ordering, memory transmission/deletion, linked ideas,
+suggestion controls, Web Audio lifecycle/ducking, mobile layout and account
+isolation. QA screenshots are saved under ignored `backend/data/studio-qa/`.

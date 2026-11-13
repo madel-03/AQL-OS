@@ -8,6 +8,9 @@ import WorkHub, { CompletionNotice, TaskPreview } from './components/WorkHub';
 import AssistantCompanion from './components/AssistantCompanion';
 import AppearanceProvider from './components/AppearanceProvider';
 import AppearancePanel from './components/AppearancePanel';
+import StudioProvider from './components/StudioProvider';
+import { StudioDock } from './components/LivingSpace';
+import { useStudio } from './lib/studio-context';
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -459,6 +462,7 @@ function Layout({ page, setPage, displayName, onLogout, onCompose, children }) {
         <div className="page-content" key={page}>{children}</div>
         <TaskPreview onContinue={onCompose} />
         <CompletionNotice />
+        <StudioDock onReturn={() => setPage('dashboard')} />
       </div>
     </div>
   );
@@ -1709,6 +1713,7 @@ function ProfilePage({ displayName, email, onLogout }) {
 
 /* ========== اتصال مباشر ========== */
 function ChatPage({ initialDraft = '' }) {
+  const { memoryForChat } = useStudio();
   const { lang } = useLang();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState(initialDraft);
@@ -1767,7 +1772,7 @@ function ChatPage({ initialDraft = '' }) {
     setInput('');
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_URL}/api/chat`, { method: 'POST', headers, body: JSON.stringify({ message: text, lang }) });
+      const response = await fetch(`${API_URL}/api/chat`, { method: 'POST', headers, body: JSON.stringify({ message: text, lang, memory: memoryForChat }) });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || 'تعذر إرسال الرسالة');
       const replyId = `live-${Date.now()}`;
@@ -2516,8 +2521,9 @@ function App() {
 
   return (
     <ResearchProvider key={session.user.id} userId={session.user.id}>
+    <StudioProvider userId={session.user.id}>
     <Layout page={page} setPage={setPage} displayName={displayName} onLogout={handleLogout} onCompose={compose}>
-      {page === 'dashboard' && <><WorkHub displayName={displayName} onCompose={compose} /><details className="balance-disclosure" onToggle={(event) => setShowBalance(event.currentTarget.open)}><summary>{lang === 'ar' ? 'توازن حياتك ومؤشراتك' : 'Your life balance & metrics'}</summary>{showBalance && <MindChamber commitments={commitments} />}</details></>}
+      {page === 'dashboard' && <><WorkHub displayName={displayName} onCompose={compose} onNavigate={setPage} /><details className="balance-disclosure" onToggle={(event) => setShowBalance(event.currentTarget.open)}><summary>{lang === 'ar' ? 'توازن حياتك ومؤشراتك' : 'Your life balance & metrics'}</summary>{showBalance && <MindChamber commitments={commitments} />}</details></>}
       {page === 'investigate' && <InvestigatePage commitments={commitments} onSaved={fetchCommitments} />}
       {page === 'commitments' && <CommitmentsPage commitments={commitments} refresh={fetchCommitments} />}
       {page === 'history' && <HistoryPage />}
@@ -2528,6 +2534,7 @@ function App() {
       {page === 'profile' && <ProfilePage displayName={displayName} email={session.user.email} onLogout={handleLogout} />}
       {page === 'lifeos' && <LifeOSPage />}
     </Layout>
+    </StudioProvider>
     </ResearchProvider>
   );
 }

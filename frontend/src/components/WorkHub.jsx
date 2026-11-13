@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../lib/lang';
 import { arabicResearchErrors, stageLabels, taskFinished, taskStages, useResearch } from '../lib/research-context';
 import AssistantCompanion from './AssistantCompanion';
+import LivingSpace from './LivingSpace';
 
 function TaskCard({ task, en }) {
   const { openTask, opening } = useResearch();
@@ -74,7 +75,7 @@ export function CompletionNotice() {
   return <div className="completion-notice" role="status" data-skip-i18n="1"><span className="completion-check">✓</span><div><strong>{en ? 'Your next step is ready.' : 'جاهزة، وباقي خطوتك.'}</strong><button onClick={() => { openTask(celebration.id); dismissCelebration(); }}>{celebration.topic} ↗</button></div><button className="icon-button" onClick={dismissCelebration} aria-label={en ? 'Dismiss notification' : 'إغلاق الإشعار'}>×</button></div>;
 }
 
-export default function WorkHub({ displayName, onCompose, compact = false }) {
+export default function WorkHub({ displayName, onCompose, onNavigate, compact = false }) {
   const { lang } = useLang(); const en = lang === 'en';
   const { tasks, active, loading, error, creating, startTask, refresh } = useResearch();
   const [draft, setDraft] = useState(''); const [mode, setMode] = useState('research');
@@ -100,6 +101,7 @@ export default function WorkHub({ displayName, onCompose, compact = false }) {
       </div>
       <div className="hero-companion"><span className="companion-sticker">{en ? 'BIG IDEAS WELCOME' : 'الأفكار الكبيرة مرحّب بها'}</span><AssistantCompanion /><span className="handwritten-note">{en ? 'Your brain’s +1' : 'عقل إضافي لليوم'}</span></div>
     </section>
+    {!compact && <LivingSpace onCompose={onCompose} onNavigate={onNavigate} />}
     {error && <div className="workspace-error" role="alert"><span>{error}</span><button onClick={refresh}>{en ? 'Retry' : 'حاول مجددًا'} ↻</button></div>}
     <section className="workspace-section" aria-labelledby={compact ? 'chat-progress-title' : 'progress-title'}><div className="section-heading"><div><span className="section-kicker">{en ? 'IN MOTION' : 'في الطريق'}</span><h2 id={compact ? 'chat-progress-title' : 'progress-title'}>{en ? 'AQL is on it' : 'عقل ماسكها'} <span className="count-badge">{active.length}</span></h2></div><span className="quiet-text">{en ? 'Real progress, as it happens' : 'خطوة بخطوة، قدّامك'}</span></div>
       {loading ? <div className="workspace-empty" role="status">{en ? 'Loading your workspace…' : 'أجهّز مساحة إنجازك…'}</div> : active.length ? <div className="work-grid">{active.map((task) => <TaskCard key={task.id} task={task} en={en} />)}</div> : <div className="workspace-empty"><span aria-hidden="true">✧</span><div><strong>{en ? 'Room for your next idea.' : 'المساحة جاهزة لفكرتك.'}</strong><p>{en ? 'Start a research task above. Its progress will appear here.' : 'ابدأ بحثك من فوق، ومراحل تنفيذه بتظهر هنا.'}</p></div></div>}
