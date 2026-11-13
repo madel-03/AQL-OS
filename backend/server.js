@@ -5,6 +5,8 @@ import { createClient } from '@supabase/supabase-js';
 import { synthesizeSpeech } from './edge-speech.js';
 import { createResearchRouter } from './research.js';
 import { memoryContext } from './user-memory.js';
+import { executeToolCalls } from './agent-execution.js';
+import { createDevicePlanRouter } from './device-plan.js';
 
 
 
@@ -21,6 +23,7 @@ app.use(cors({
     /^https:\/\/.*\.vercel\.app$/,
   ],
 }));
+app.use('/api/device', express.json({ limit: '400kb' }));
 app.use(express.json());
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -249,7 +252,7 @@ async function edgeSpeak(text, voiceName) {
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'AQL-OS backend' }));
 
-app.use('/api/research', createResearchRouter({ requireAuth, generate: async (system, input) => {
+async function generateStructured(system, input) {
   for (const provider of [cerebrasChat, groqChat]) {
     try {
       const data = await provider(system, [{ role: 'user', content: input }]);
@@ -264,7 +267,9 @@ app.use('/api/research', createResearchRouter({ requireAuth, generate: async (sy
   });
   const text = (data.candidates?.[0]?.content?.parts || []).map((part) => part.text || '').join('');
   return JSON.stringify(parseBrainJson(text));
-} }));
+}
+app.use('/api/research', createResearchRouter({ requireAuth, generate: generateStructured }));
+app.use('/api/device', createDevicePlanRouter({ requireAuth, generate: generateStructured }));
 
 app.get('/api/commitments', requireAuth, async (req, res) => {
   try {
@@ -669,6 +674,9 @@ let reply = '';
 const summarize = () => {
   if (reply) return reply;
   if (!actions.length) return lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.';
+  if (actions.length > 1 || actions.some(action => action.status !== 'completed')) {
+    return actions.map(action => `[${action.status}] ${action.tool}: ${action.result}`).join('\n');
+  }
   const m = String(actions[actions.length - 1].result || '').match(/RESULTS: (\[[\s\S]*\])$/);
   if (m) {
     try {
@@ -689,14 +697,11 @@ const summarize = () => {
       for (let step = 0; step < 6; step++) {
         const data = await cerebrasChat(system, messages, openAiTools);
         const msg = data.choices?.[0]?.message;
-        const tc = msg?.tool_calls?.[0];
-        if (tc) {
-          let args = {};
-          try { args = JSON.parse(tc.function.arguments || '{}'); } catch (e) {}
-          const result = await runAgentTool(req.user.id, tc.function.name, args, { supabase });
-          actions.push({ tool: tc.function.name, result });
+        if (msg?.tool_calls?.length) {
           messages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls });
-          messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+          const results = await executeToolCalls(msg.tool_calls,
+            (name, args) => runAgentTool(req.user.id, name, args, { supabase }), actions);
+          for (const { call, result } of results) messages.push({ role: 'tool', tool_call_id: call.id, content: result });
           continue;
         }
         reply = msg?.content || '';
@@ -704,9 +709,10 @@ const summarize = () => {
       }
       if (reply || actions.length) {
         console.log('✅ Agent: Cerebras succeeded');
-        return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'cerebras' });
+        return res.json({ reply: summarize(), actions, engine: 'cerebras' });
       }
     } catch (cErr) {
+      if (actions.length) return res.json({ reply: summarize(), actions, engine: 'cerebras', partial: true });
       console.log('⚠️ Cerebras agent failed, sliding to Groq:', cErr.message);
     }
   }
@@ -719,14 +725,11 @@ const summarize = () => {
       for (let step = 0; step < 6; step++) {
         const data = await groqChat(system, messages, openAiTools);
         const msg = data.choices?.[0]?.message;
-        const tc = msg?.tool_calls?.[0];
-        if (tc) {
-          let args = {};
-          try { args = JSON.parse(tc.function.arguments || '{}'); } catch (e) {}
-          const result = await runAgentTool(req.user.id, tc.function.name, args, { supabase });
-          actions.push({ tool: tc.function.name, result });
+        if (msg?.tool_calls?.length) {
           messages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls });
-          messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+          const results = await executeToolCalls(msg.tool_calls,
+            (name, args) => runAgentTool(req.user.id, name, args, { supabase }), actions);
+          for (const { call, result } of results) messages.push({ role: 'tool', tool_call_id: call.id, content: result });
           continue;
         }
         reply = msg?.content || '';
@@ -734,9 +737,10 @@ const summarize = () => {
       }
       if (reply || actions.length) {
         console.log('✅ Agent: Groq succeeded');
-        return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'groq' });
+        return res.json({ reply: summarize(), actions, engine: 'groq' });
       }
     } catch (gErr) {
+      if (actions.length) return res.json({ reply: summarize(), actions, engine: 'groq', partial: true });
       console.log('⚠️ Groq agent failed, sliding to Gemini:', gErr.message);
     }
   }
@@ -751,23 +755,24 @@ const summarize = () => {
         contents,
         tools: [{ function_declarations: AGENT_TOOLS }],
       });
-      const part = data.candidates?.[0]?.content?.parts?.[0];
-      const fc = part?.functionCall;
-      if (fc) {
-        const result = await runAgentTool(req.user.id, fc.name, fc.args || {}, { supabase });
-        actions.push({ tool: fc.name, result });
-        contents.push({ role: 'model', parts: [{ functionCall: fc }] });
-        contents.push({ role: 'user', parts: [{ functionResponse: { name: fc.name, response: { result } } }] });
+      const parts = data.candidates?.[0]?.content?.parts || [];
+      const calls = parts.filter(part => part.functionCall).map(part => part.functionCall);
+      if (calls.length) {
+        const results = await executeToolCalls(calls,
+          (name, args) => runAgentTool(req.user.id, name, args, { supabase }), actions);
+        contents.push({ role: 'model', parts });
+        contents.push({ role: 'user', parts: results.map(({ call, result }) => ({ functionResponse: { name: call.name, response: { result } } })) });
         continue;
       }
-      reply = part?.text || '';
+      reply = parts.map(part => part.text || '').join('');
       break;
     }
     if (reply || actions.length) {
       console.log('✅ Agent: Gemini succeeded');
-      return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'gemini' });
+      return res.json({ reply: summarize(), actions, engine: 'gemini' });
     }
   } catch (gemErr) {
+    if (actions.length) return res.json({ reply: summarize(), actions, engine: 'gemini', partial: true });
     console.log('❌ Gemini agent failed:', gemErr.message);
   }
 
@@ -787,7 +792,7 @@ if (!reply && !actions.length) {
   }
 }
 if (reply || actions.length) {
-  return res.json({ reply: reply || (lang === 'en' ? 'Done, sir.' : 'تم التنفيذ يا سيدي.'), actions, engine: 'gemini-text' });
+  return res.json({ reply: summarize(), actions, engine: 'gemini-text' });
 }
   // ⚠️ بروتوكول الطوارئ لو انقطعت كل المزودات السحابية
   const emergencyReply = lang === 'en'

@@ -208,3 +208,72 @@ It intercepts API calls, creates synthetic session data, verifies timer recovery
 project growth, desk ordering, memory transmission/deletion, linked ideas,
 suggestion controls, Web Audio lifecycle/ducking, mobile layout and account
 isolation. QA screenshots are saved under ignored `backend/data/studio-qa/`.
+
+## Local device service (جهازي)
+
+The workspace now includes a **My device / جهازي** tab. This is a separate local
+bridge; the hosted backend never obtains filesystem access or the bridge key.
+It supports browsing and reading text files, AI-generated project/file plans,
+reviewing complete before/after content, approved writes and folder creation,
+and JavaScript **syntax checks**. It does not run generated programs, install
+packages, delete files, or accept arbitrary shell commands.
+
+On Windows, from `backend`, after installing its existing dependencies:
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\Desktop\AQL-Workspace"
+npm.cmd run device -- --workspace "$env:USERPROFILE\Desktop\AQL-Workspace"
+```
+
+Paste the printed key into **جهازي** and keep the terminal running. The bridge
+listens only at `http://127.0.0.1:47831`; closing it revokes that session key.
+The selected folder must already exist. Choose a separate working directory.
+The key lives only in component memory, is cleared on disconnect/unmount, and
+is never sent to the AI or stored in browser storage. Disconnecting the panel
+clears its key but does not shut down the local process; use Ctrl+C for that.
+
+Default allowed website origins are the current Vercel deployment, localhost
+port 5173 and 127.0.0.1 ports 5173/5175. For another deployment, pass
+`--origin https://your-exact-site.example`; this replaces the default allowlist.
+Browsers may request local-network permission or block loopback access under
+their security settings. The UI reports a connection failure; local-network
+permissions must be enabled by the user. No tunneling or public listening port
+is used. The local bridge is not an OS sandbox against another malicious local
+process changing the filesystem concurrently.
+
+The authenticated hosted endpoint `POST /api/device/plan` only **plans**. It
+receives the task, up to 100 currently visible filenames, and optionally the
+selected file's first 45,000 characters after an explicit checkbox. The absolute
+workspace path and device key remain local. No automatic recursive indexing or
+background filesystem access occurs. The existing AI provider fallback is reused.
+
+Every generated plan is revalidated by the local bridge. Preview IDs expire in
+10 minutes and are single-use. Execution is serial and stops at the first failed
+operation; earlier changes remain, so the result lists actual outcomes. Changed
+files are checked against the preview hash, and existing text is backed up in
+`<workspace>/.aql-backups/` before replacement. Backups are JSON with `path` and
+`content` for manual recovery. They stay on disk and may contain private text;
+the bridge never exposes that hidden folder. Activity logs are in memory for
+the current bridge session (up to 100 entries).
+
+Paths must remain relative to the workspace. Dotfiles, dependency/build folders,
+Windows device/ADS paths, symbolic links/junctions, hard-linked files and binary
+files are rejected. Text files are limited to 180 KB; plans to 12 operations and
+180 KB of generated content. `check_javascript` uses the Node executable with
+`--check`, no shell, a timeout, bounded output and stripped Node option variables.
+See [Node child-process documentation](https://nodejs.org/api/child_process.html).
+
+Verification:
+
+```powershell
+# backend
+npm.cmd run test:device
+node scripts/verify-device-ui.js
+# Optional: calls the configured Groq account with a synthetic cafe-page request
+node scripts/verify-device-live.js
+```
+
+UI QA requires frontend at 127.0.0.1:5175 and bridge port 47831 to be free. It uses
+isolated fake auth and AI responses, a **real** local bridge and real QA files.
+The live smoke test separately checks real AI generation through local execution.
+Screenshots and sample projects remain under ignored `backend/data/device-qa/`.

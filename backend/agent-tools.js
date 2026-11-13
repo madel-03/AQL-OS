@@ -210,6 +210,12 @@ export const runAgentTool = async (userId, name, args, context) => {
     console.warn(`Tool ${name} called but not found.`);
     return `unknown tool ${name}`;
   }
+  for (const key of tool.declaration.parameters.required || []) {
+    const value = args?.[key];
+    if (value === undefined || value === null || (typeof value === 'string' && !value.trim())) {
+      return `tool ${name} failed: missing required argument ${key}; no operation was performed`;
+    }
+  }
   try {
     return await tool.execute(userId, args, context);
   } catch (e) {
