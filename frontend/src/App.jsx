@@ -6,6 +6,8 @@ import ResearchPanel from './components/ResearchPanel';
 import ResearchProvider from './components/ResearchProvider';
 import WorkHub, { CompletionNotice, TaskPreview } from './components/WorkHub';
 import AssistantCompanion from './components/AssistantCompanion';
+import AppearanceProvider from './components/AppearanceProvider';
+import AppearancePanel from './components/AppearancePanel';
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -448,7 +450,8 @@ function Layout({ page, setPage, displayName, onLogout, onCompose, children }) {
           </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <AssistantCompanion compact />
-            <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', color: '#7dd3fc', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>◐ {lang === 'ar' ? 'EN' : 'AR'}</button>
+            <AppearancePanel />
+            <button data-language-switch onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', color: '#7dd3fc', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>◐ {lang === 'ar' ? 'EN' : 'AR'}</button>
             <span className="hud-chip violet">🕵️ {displayName}</span>
             <button onClick={onLogout} style={{ background: 'rgba(255,77,77,0.08)', border: '1px solid rgba(255,77,77,0.35)', color: '#ffb3b3', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>{t('فصل')} ⏻</button>
           </div>
@@ -2532,7 +2535,7 @@ function App() {
 function AppRoot() {
   return (
     <LangProvider>
-      <App />
+      <AppearanceProvider><App /></AppearanceProvider>
     </LangProvider>
   );
 }

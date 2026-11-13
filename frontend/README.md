@@ -99,6 +99,29 @@ in a separate headless browser, uses synthetic session/task data, and writes
 screenshots to ignored `backend/data/workspace-qa/`. It does not create real
 research tasks or change real user data.
 
+## Appearance customization
+
+Use **Appearance** in the page header to choose the glass surface inspired by the
+reference video or the classic opaque panels. The controls include five built-in
+backdrops, an optional personal photo, five accent colors, background dimming,
+glass opacity and blur, corner radius, card density, animation and character
+visibility. Changes apply immediately. The original generated room backdrop is
+served locally from `public/backgrounds/warm-room.webp` (about 204 KB).
+
+Preferences are saved locally under `aql-appearance-v1`. A custom JPG/PNG/WebP of
+up to 8 MB is resized and saved as a WebP blob in IndexedDB; it is not uploaded to
+the backend. These settings belong to the browser/device, not a cloud account,
+and clearing browser storage removes them. **Remove photo** deletes the stored
+photo, while **Reset the look** restores the default controls without deleting a
+photo you may want to select again. System reduced-motion preferences are always
+respected in addition to the animation switch.
+
+Run `npm run test:appearance` in the frontend for saved-settings and input checks.
+For full browser verification, use the workspace QA instructions above with
+`node scripts/verify-workspace-ui.js --appearance`; this also checks persistence,
+local photo upload/removal, controls, responsive settings and the existing task
+flows. Screenshots are written to ignored `backend/data/appearance-qa/`.
+
 Run `npm run test:research` in `backend/` to check the pipeline, citation rejection,
 source restrictions, authentication, persistence, and isolation between users.
 

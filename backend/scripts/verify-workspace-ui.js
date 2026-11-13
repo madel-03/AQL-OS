@@ -3,6 +3,7 @@ import puppeteer from 'puppeteer';
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import dotenv from 'dotenv';
+import path from 'node:path';
 
 const env = dotenv.parse(await fs.readFile('../frontend/.env', 'utf8'));
 const project = new URL(env.VITE_SUPABASE_URL).hostname.split('.')[0];
@@ -49,6 +50,60 @@ try {
   await page.goto('http://127.0.0.1:5175', { waitUntil: 'networkidle2' });
   await page.waitForSelector('.work-card');
   assert.equal(await page.$$eval('.work-card', (cards) => cards.length), 3);
+  if (process.argv.includes('--appearance')) {
+    await fs.mkdir('data/appearance-qa', { recursive: true });
+    await page.screenshot({ path: 'data/appearance-qa/glass-default.png', fullPage: true });
+    await page.click('.appearance-trigger');
+    await page.waitForSelector('#appearance-dialog[open]');
+    await page.click('.surface-options button:nth-child(2)');
+    await page.click('.wallpaper-options button:has(.wallpaper-dusk)');
+    await page.click('.accent-options button:nth-child(3)');
+    await page.$$eval('.appearance-slider input', (inputs) => {
+      [60, 30].forEach((value, index) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(inputs[index], String(value)); inputs[index].dispatchEvent(new Event('input', { bubbles: true })); });
+    });
+    await page.click('.appearance-toggle:nth-of-type(1) input');
+    await page.click('.appearance-toggle:nth-of-type(2) input');
+    await page.click('.appearance-toggle:nth-of-type(3) input');
+    let saved = await page.evaluate(() => JSON.parse(localStorage.getItem('aql-appearance-v1')));
+    assert.equal(saved.surface, 'solid'); assert.equal(saved.wallpaper, 'dusk'); assert.equal(saved.accent, 'mint'); assert.equal(saved.motion, false); assert.equal(saved.companion, false); assert.equal(saved.density, 'compact'); assert.equal(saved.darkness, 60); assert.equal(saved.radius, 30);
+    await page.click('#appearance-dialog .icon-button');
+    await page.reload({ waitUntil: 'networkidle2' });
+    await page.waitForSelector('.work-card');
+    assert.equal(await page.$eval('.appearance-root', (element) => element.dataset.surface), 'solid');
+    assert.equal(await page.$eval('.hero-companion', (element) => getComputedStyle(element).display), 'none');
+    await page.screenshot({ path: 'data/appearance-qa/customized-classic.png', fullPage: true });
+    await page.click('.appearance-trigger');
+    const fileInput = await page.$('#appearance-dialog input[type="file"]');
+    await fileInput.uploadFile(path.resolve('../frontend/public/backgrounds/warm-room.webp'));
+    await page.waitForFunction(() => document.querySelector('.appearance-root').dataset.wallpaper === 'custom');
+    await page.click('.surface-options button:first-child');
+    await page.$$eval('.appearance-slider input', (inputs) => {
+      for (const [index, value] of [[1, 65], [2, 28]]) { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(inputs[index], String(value)); inputs[index].dispatchEvent(new Event('input', { bubbles: true })); }
+    });
+    assert((await page.$eval('.work-card', (element) => getComputedStyle(element).backdropFilter)).includes('28px'));
+    await page.click('#appearance-dialog .icon-button');
+    await page.reload({ waitUntil: 'networkidle2' });
+    await page.waitForFunction(() => document.querySelector('.appearance-root')?.dataset.wallpaper === 'custom');
+    assert((await page.$eval('.appearance-root', (element) => element.style.getPropertyValue('--custom-wallpaper'))).includes('blob:'));
+    assert.equal(posts.length, 0, 'Wallpaper must not be uploaded to the server');
+    await page.click('.appearance-trigger');
+    await page.screenshot({ path: 'data/appearance-qa/settings-desktop.png' });
+    await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
+    await page.screenshot({ path: 'data/appearance-qa/settings-mobile.png' });
+    assert(await page.$eval('#appearance-dialog', (element) => element.scrollWidth <= element.clientWidth + 1));
+    await page.click('#appearance-dialog footer button:first-child');
+    saved = await page.evaluate(() => JSON.parse(localStorage.getItem('aql-appearance-v1')));
+    assert.equal(saved.surface, 'glass'); assert.equal(saved.wallpaper, 'room'); assert.equal(saved.motion, true); assert.equal(saved.companion, true);
+    await page.click('.wallpaper-upload button:nth-child(2)');
+    await page.waitForFunction(() => !document.querySelector('.wallpaper-custom'));
+    await page.click('#appearance-dialog .icon-button');
+    await page.setViewport({ width: 1440, height: 1150, deviceScaleFactor: 1 });
+    await page.evaluate(() => window.scrollTo(0, 800));
+    assert.equal(await page.$eval('.app-wallpaper', (element) => Math.round(element.getBoundingClientRect().top)), 0);
+    await page.screenshot({ path: 'data/appearance-qa/scrolled-glass.png' });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    console.log('PASS: appearance presets, accent, compact layout, motion, character, local persistence, private wallpaper upload, reload, removal, reset, responsive settings');
+  }
   await page.screenshot({ path: 'data/workspace-qa/desktop-ar.png', fullPage: true });
   await page.click('.tone-done .work-card-footer button');
   await page.waitForSelector('dialog[open] .report-reading');
@@ -81,7 +136,7 @@ try {
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('aql-voice-state', { detail: 'listening' })));
   await page.waitForSelector('.state-listening');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('aql-voice-state', { detail: 'idle' })));
-  const languageButton = await page.$('.page-heading button');
+  const languageButton = await page.$('[data-language-switch]');
   await languageButton.click();
   await page.waitForFunction(() => document.documentElement.lang === 'en');
   await page.setViewport({ width: 1440, height: 1150, deviceScaleFactor: 1 });
