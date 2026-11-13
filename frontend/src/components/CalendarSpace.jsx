@@ -5,10 +5,10 @@ import '../device.css';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const empty = { title: '', start: '', end: '', description: '' };
-export default function CalendarSpace() {
+export default function CalendarSpace({ initialTask = null }) {
   const { lang } = useLang(); const en = lang === 'en';
   const [status, setStatus] = useState(null); const [events, setEvents] = useState([]); const [pageToken, setPageToken] = useState(null);
-  const [form, setForm] = useState(empty); const [draft, setDraft] = useState(null); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
+  const [form, setForm] = useState(() => initialTask ? { ...empty, title: initialTask.title, description: initialTask.notes || '', ...(initialTask.due_date ? { start: `${initialTask.due_date}T09:00`, end: `${initialTask.due_date}T10:00` } : {}) } : empty); const [draft, setDraft] = useState(null); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const call = useCallback(async (path, method = 'GET', body) => {
     const { data } = await supabase.auth.getSession(); if (!data.session) throw new Error('سجّل الدخول مجددًا / Please sign in again.');
@@ -24,11 +24,12 @@ export default function CalendarSpace() {
     const last = new Date(Date.parse(`${event.end.date}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
     return `${format(event.start)}${last > event.start.date ? ` — ${format({ date: last })}` : ''}${en ? ' · All day' : ' · طوال اليوم'}`;
   };
-  const review = e => { e.preventDefault(); setError(''); if (!form.start || !form.end || new Date(form.end) <= new Date(form.start)) { setError(en ? 'End must follow the start.' : 'نهاية الموعد يجب أن تكون بعد بدايته.'); return; } setDraft({ ...form, start: new Date(form.start).toISOString(), end: new Date(form.end).toISOString(), requestId: crypto.randomUUID().replaceAll('-', '') }); };
+  const review = e => { e.preventDefault(); setError(''); if (!form.start || !form.end || new Date(form.end) <= new Date(form.start)) { setError(en ? 'End must follow the start.' : 'نهاية الموعد يجب أن تكون بعد بدايته.'); return; } setDraft({ ...form, start: new Date(form.start).toISOString(), end: new Date(form.end).toISOString(), requestId: initialTask ? initialTask.id.replaceAll('-', '') : crypto.randomUUID().replaceAll('-', '') }); };
   const save = () => perform(async () => { await call('events', 'POST', draft); setDraft(null); setForm(empty); setNotice(en ? 'Saved in Google Calendar.' : 'حُفظ الموعد في تقويم Google.'); await load(); });
   const field = (name, value) => { setForm(previous => ({ ...previous, [name]: value })); setDraft(null); setNotice(''); };
   return <section className="device-space calendar-space"><div className="section-heading"><div><span className="section-kicker">GOOGLE CALENDAR</span><h3>{en ? 'Your schedule, in one place.' : 'مواعيدك، قدّامك.'}</h3></div><span className="status-pill">{status?.connected ? (en ? 'Connected' : 'متصل') : (en ? 'Not connected' : 'غير متصل')}</span></div>
     <p className="studio-muted">{en ? `Your primary Google calendar · next 14 days · times in ${zone}.` : `تقويم Google الأساسي · الأسبوعان القادمان · الأوقات حسب ${zone}.`}</p>
+    {initialTask && <p className="studio-warning">{en ? 'Review the suggested time before saving. This creates an independent calendar event; completing or editing the task will not change that event.' : 'راجع الوقت المقترح قبل الحفظ. يُنشأ موعد مستقل؛ إنجاز المهمة أو تعديلها لا يغيّر هذا الموعد.'}</p>}
     {status?.diagnostics && <details className="device-code"><summary>{en ? 'Connection details (public values only)' : 'تفاصيل الاتصال (قيم عامة فقط)'}</summary><p>Backend: <code dir="ltr">{API}</code></p><p>Client ID: <code dir="ltr">{status.diagnostics.clientId || '—'}</code></p><p>Redirect URI: <code dir="ltr">{status.diagnostics.redirectUri || '—'}</code></p></details>}
     {error && <p className="studio-warning" role="alert">{error}<button className="studio-text-button" disabled={busy} onClick={() => perform(load)}>{en ? 'Retry' : 'إعادة المحاولة'}</button></p>}{notice && <p role="status">{notice}</p>}
     {status && !status.configured && <div className="device-setup"><h4>{en ? 'One-time server setup needed' : 'نحتاج إعداد الربط مرة واحدة'}</h4><p>{en ? 'The project owner needs to enable Google Calendar API, create a Web OAuth client, add the callback URL, and configure the server. Do not paste client secrets into this page.' : 'صاحب المشروع يحتاج تفعيل Google Calendar API وإنشاء عميل OAuth للويب، ثم إضافة رابط العودة والمفاتيح في الخادم. لا تضع المفاتيح في هذه الصفحة.'}</p><p className="studio-muted">{en ? 'Setup instructions are in the project README, under Google Calendar.' : 'الخطوات بالتفصيل في README المشروع تحت Google Calendar.'}</p></div>}

@@ -29,6 +29,10 @@
 .calendar-events { list-style: none; padding: 0; }
 .calendar-events li { padding: 16px; border: 1px solid #ffffff20; border-radius: 12px; margin-block: 12px; background: #07132030; }
 .calendar-events p { font-size: .82rem; line-height: 1.8; color: #cec7dc; }
+.task-filters [aria-pressed="true"] { border-bottom: 2px solid currentColor; font-weight: 800; }
+.personal-task .task-check { display: flex; align-items: center; gap: 12px; }
+.personal-task.is-complete strong { text-decoration: line-through; opacity: .65; }
+.calendar-events .task-overdue { color: #ffbdb0; }
 .device-job li { line-height: 1.8; font-size: .82rem; overflow-wrap: anywhere; }
 .device-quick { border-top: 1px solid #ffffff20; padding-block: 16px; margin-top: 20px; }
 .device-space button:focus-visible { outline: 2px solid var(--accent, #6ee7ff); outline-offset: 3px; }

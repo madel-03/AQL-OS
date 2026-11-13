@@ -4,7 +4,7 @@ const number = (value, fallback, min, max) => Number.isFinite(value) ? Math.max(
 const id = (value) => text(value, 160);
 export const studioKey = (userId) => `aql-studio-v1:${userId}`;
 export const defaultStudio = () => ({ tab: 'focus', notes: [], pins: [], projects: [], memories: [], hiddenMemories: [], sessions: [], focus: null, dismissed: {}, ambient: { kind: 'rain', volume: 20, autoLight: false } });
-export const tabs = ['focus', 'desk', 'ideas', 'projects', 'memory', 'ambience', 'device', 'calendar'];
+export const tabs = ['focus', 'desk', 'ideas', 'projects', 'memory', 'ambience', 'device', 'calendar', 'tasks'];
 
 export function normalizeStudio(input, now = Date.now()) {
   const value = input && typeof input === 'object' ? input : {};

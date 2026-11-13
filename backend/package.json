@@ -8,6 +8,7 @@
     "test:research": "node --test research.test.js",
     "test:memory": "node --test user-memory.test.js",
     "test:calendar": "node --test calendar.test.js",
+    "test:tasks": "node --test tasks.test.js",
     "test:agent": "node --test agent-execution.test.js",
     "device": "node device-bridge.js",
     "test:device": "node --test device-bridge.test.js device-processes.test.js device-diagnostics.test.js"

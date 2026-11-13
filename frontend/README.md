@@ -372,3 +372,29 @@ Backend checks: `npm.cmd run test:calendar`. UI checks (frontend on 5175):
 `node scripts/verify-calendar-ui.js`. These use mock Google responses; real account
 authorization must be tested after setup. Keep the encryption key stable across
 deployments; losing it requires reconnecting accounts.
+
+
+## Personal tasks (مهامي)
+
+Run `backend/migrations/tasks.sql` once in the Supabase SQL editor, then deploy
+backend and frontend updates. No additional Google scopes or OAuth client setup
+are needed. `/api/tasks` is authenticated and every query filters by the session
+user. Browser access to the table is revoked; writes use the backend service role.
+Tasks are separate from Google Tasks, home chores, goals, and local project steps.
+
+The Tasks tab adds/edits titles, notes and optional calendar-date deadlines, marks
+tasks complete or reopens them, and filters pending/completed/overdue/all. Dates
+are local calendar dates (no UTC midnight conversion). The latest 500 tasks are
+loaded. Stable creation IDs prevent duplicate records when the same POST is retried.
+
+“Make time in Google Calendar” opens the existing calendar review flow with the
+task title/notes and a suggested one-hour slot on its due date, when present.
+Review the time before saving. A stable event ID based on the task ID prevents
+duplicate scheduling of the same task. The event is independent: changing or
+completing the task does not edit/delete the Google event. Schedule changes to an
+already-created task event must be made in Google Calendar. There are no automatic
+reminders, background notifications or Google Tasks synchronization in this version.
+
+Checks: backend `npm.cmd run test:tasks`, `npm.cmd run test:calendar`; with frontend
+on 127.0.0.1:5175, run `node scripts/verify-tasks-ui.js` from backend. Browser QA
+uses isolated mock accounts/APIs, never the user's Google account.
