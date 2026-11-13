@@ -188,6 +188,26 @@ export function createResearchRouter({ requireAuth, generate, run = runResearch,
     }
   };
   router.use(requireAuth);
+  // Return only this user's metadata; full report text is fetched on preview.
+  router.get('/', async (req, res) => {
+    try {
+      filename(req.user.id, '00000000-0000-0000-0000-000000000000');
+      let entries;
+      try { entries = await fs.readdir(directory); }
+      catch (error) { if (error.code === 'ENOENT') return res.json({ tasks: [] }); throw error; }
+      const prefix = `${req.user.id}_`;
+      const files = entries.filter((entry) => entry.startsWith(prefix) && /^[a-f0-9-]{36}\.json$/.test(entry.slice(prefix.length)));
+      const results = await Promise.allSettled(files.map(async (entry) => {
+        const job = JSON.parse(await fs.readFile(path.join(directory, entry), 'utf8'));
+        if (job.userId !== req.user.id) throw new Error('Task owner mismatch');
+        if (!['completed', 'failed'].includes(job.status) && !activeJobs.has(job.id)) Object.assign(job, researchFailure(new Error('Server restarted'), job.status), { status: 'failed' });
+        const { report, userId: _userId, ...metadata } = job;
+        return { ...metadata, report_available: job.status === 'completed' && typeof report === 'string' };
+      }));
+      const tasks = results.filter((result) => result.status === 'fulfilled').map((result) => result.value).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 200);
+      res.set('Cache-Control', 'no-store').json({ tasks });
+    } catch (error) { console.error('Task library failed:', error.message); res.status(500).json({ error: 'Could not load the task library.' }); }
+  });
   router.get('/:id/export', async (req, res) => {
     const format = req.query.format;
     if (!['pdf', 'docx'].includes(format)) return res.status(400).json({ error: 'Unsupported export format.' });

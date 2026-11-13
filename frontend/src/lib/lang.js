@@ -4,6 +4,7 @@ export const LangContext = createContext(null);
 export function useLang() { return useContext(LangContext); }
 
 export const enDict = {
+  'مساحة الإنجاز': 'Workspace',
   // القوائم والهيدر
   'مركز القيادة': 'Command Center', 'غرفة التحليل': 'Analysis Room', 'وحدات الوقت': 'Time Modules',
   'سجل التحليلات': 'Analysis Log', 'الأهداف الاستراتيجية': 'Strategic Goals', 'التقارير الحيوية': 'Vital Reports',

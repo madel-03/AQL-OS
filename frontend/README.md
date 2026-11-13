@@ -46,7 +46,7 @@ On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`.
 
 ## Research tasks
 
-Open the chat page and use **Research & downloadable report**. Enter a topic;
+Open the **Workspace** home page (or the research area above chat). Enter a topic;
 AQL plans search queries, searches the web, reads up to five different sites,
 compares excerpts, checks citation IDs, and produces a UTF-8 Markdown download.
 Completed reports can also be downloaded as a formatted PDF or editable Word
@@ -71,6 +71,33 @@ Source pages are treated as untrusted evidence. Only public HTTPS HTML/text page
 are read; PDF parsing and pages requiring JavaScript or sign-in are not supported.
 Automated citation checks validate reference IDs, not the factual truth of every
 model-generated sentence. This is excerpt-based research, not an exhaustive review.
+
+## Workspace and task library
+
+The home screen now focuses on launching work, following current tasks, and
+reopening saved reports. **Research** and **Create a report** launch the existing
+research pipeline; **Plan a goal** transfers the goal into chat for discussion.
+Planning does not pretend to execute a background task. Life balance metrics
+remain available in an expandable section below the library.
+
+`GET /api/research` returns up to 200 of the authenticated user's tasks, newest
+first, without full report text. The shared research provider refreshes progress
+across navigation. Opening a task fetches its details; completed tasks can be
+previewed, downloaded as PDF/Word/Markdown, or carried into chat as a draft.
+The library is backed by the existing task files and has the same persistent
+volume requirement described above.
+
+The AQL companion reflects real task and voice events: ready, thinking,
+listening, speaking, completed, or needing attention. Completion notices appear
+only for tasks seen progressing during the session, not for old reports loaded
+from the library. Reduced-motion settings disable the decorative animations.
+
+For isolated browser QA, start the frontend with
+`npm run dev -- --host 127.0.0.1 --port 5175 --strictPort`, then run
+`node scripts/verify-workspace-ui.js` from the backend. It intercepts API requests
+in a separate headless browser, uses synthetic session/task data, and writes
+screenshots to ignored `backend/data/workspace-qa/`. It does not create real
+research tasks or change real user data.
 
 Run `npm run test:research` in `backend/` to check the pipeline, citation rejection,
 source restrictions, authentication, persistence, and isolation between users.

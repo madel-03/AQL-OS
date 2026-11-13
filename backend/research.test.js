@@ -110,6 +110,15 @@ test('tasks require authentication, persist results and isolate users', async ()
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     assert.equal(job.status, 'completed'); assert.equal(job.report, 'Saved research');
+    assert.equal((await fetch(base)).status, 401);
+    const library = await (await fetch(base, { headers: { 'x-test-user': 'alice' } })).json();
+    assert.equal(library.tasks.length, 1);
+    assert.equal(library.tasks[0].id, id);
+    assert.equal(library.tasks[0].report_available, true);
+    assert.equal(library.tasks[0].report, undefined);
+    assert.equal(library.tasks[0].userId, undefined);
+    const otherLibrary = await (await fetch(base, { headers: { 'x-test-user': 'bob' } })).json();
+    assert.deepEqual(otherLibrary.tasks, []);
     assert.equal((await fetch(`${base}/${id}`, { headers: { 'x-test-user': 'bob' } })).status, 404);
     assert.equal((await fetch(`${base}/${id}/export?format=pdf`, { headers: { 'x-test-user': 'bob' } })).status, 404);
     assert.equal((await fetch(`${base}/${id}/export?format=exe`, { headers: { 'x-test-user': 'alice' } })).status, 400);

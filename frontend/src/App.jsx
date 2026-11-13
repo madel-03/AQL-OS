@@ -3,6 +3,9 @@ import { supabase } from './lib/supabase';
 import { LangProvider } from './lib/i18n';
 import { useLang } from './lib/lang';
 import ResearchPanel from './components/ResearchPanel';
+import ResearchProvider from './components/ResearchProvider';
+import WorkHub, { CompletionNotice, TaskPreview } from './components/WorkHub';
+import AssistantCompanion from './components/AssistantCompanion';
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -15,7 +18,7 @@ const labelStyle = { display: 'block', color: '#94a3b8', fontSize: '0.85rem', ma
 const fieldStyle = { width: '100%', padding: '10px 14px', borderRadius: '8px', background: '#0f172a', border: '1px solid #334155', color: '#fff', boxSizing: 'border-box' };
 
 const NAV_ITEMS = [
-  { id: 'dashboard', icon: '🧠', label: 'غرفة الوعي' },
+  { id: 'dashboard', icon: '🧠', label: 'مساحة الإنجاز' },
   { id: 'investigate', icon: '⌖', label: 'غرفة التحليل' },
   { id: 'commitments', icon: '≣', label: 'وحدات الوقت' },
   { id: 'history', icon: '▤', label: 'سجل التحليلات' },
@@ -53,6 +56,7 @@ let jarvisSession = 0;
 let jarvisController = null;
 let cancelPlayback = null;
 let lastGreetAt = 0;
+const voiceState = (state) => window.dispatchEvent(new CustomEvent('aql-voice-state', { detail: state }));
 
 function b64ToBlob(base64, type) {
   const bin = atob(base64);
@@ -77,6 +81,7 @@ function pcmToWav(base64, sampleRate) {
 }
 
 function jarvisStop() {
+  voiceState('idle');
   jarvisSession++;
   jarvisController?.abort();
   jarvisController = null;
@@ -137,6 +142,7 @@ function playChunkLocal(chunk, lang, signal, selectedVoice) {
       u.lang = locale;
       if (preferred) u.voice = preferred;
       u.onend = u.onerror = finish;
+      u.onstart = () => voiceState('speaking');
       window.speechSynthesis.speak(u);
     });
   });
@@ -194,6 +200,7 @@ function playPreparedAudio(blob, signal) {
     cancelPlayback = cancel;
     signal.addEventListener('abort', cancel, { once: true });
     audio.onended = () => finish(true);
+    audio.onplay = () => voiceState('speaking');
     audio.onerror = () => finish(false);
     audio.play().catch(cancel);
   });
@@ -201,6 +208,7 @@ function playPreparedAudio(blob, signal) {
 
 function jarvisSpeak(text, lang, onEnd, voice, onFallback) {
   jarvisStop();
+  voiceState('thinking');
   const my = jarvisSession;
   const controller = new AbortController();
   jarvisController = controller;
@@ -222,7 +230,7 @@ function jarvisSpeak(text, lang, onEnd, voice, onFallback) {
       }
       if (my !== jarvisSession) return;
     }
-    if (my === jarvisSession) onEnd && onEnd();
+    if (my === jarvisSession) { voiceState('idle'); onEnd && onEnd(); }
   })();
 }
 
@@ -410,7 +418,7 @@ function NavIcon({ id }) {
 
 /* ========== الهيكل ========== */
 /* ========== الهيكل ========== */
-function Layout({ page, setPage, displayName, onLogout, children }) {
+function Layout({ page, setPage, displayName, onLogout, onCompose, children }) {
   const { lang, setLang, t } = useLang();
   const [railOpen, setRailOpen] = useState(false);
   const current = NAV_ITEMS.find((n) => n.id === page);
@@ -439,30 +447,15 @@ function Layout({ page, setPage, displayName, onLogout, children }) {
             <span className="title-icon"><NavIcon id={page} /></span> {t(current?.label)}
           </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AssistantCompanion compact />
             <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', color: '#7dd3fc', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>◐ {lang === 'ar' ? 'EN' : 'AR'}</button>
             <span className="hud-chip violet">🕵️ {displayName}</span>
             <button onClick={onLogout} style={{ background: 'rgba(255,77,77,0.08)', border: '1px solid rgba(255,77,77,0.35)', color: '#ffb3b3', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>{t('فصل')} ⏻</button>
           </div>
         </div>
-        {page === 'dashboard' && (
-          <section className="welcome-card" data-skip-i18n="1">
-            <div className="welcome-copy">
-              <span className="welcome-eyebrow">✦ {lang === 'ar' ? 'مساحتك. إيقاعك. عَقْلك.' : 'YOUR SPACE. YOUR PACE. YOUR AQL.'}</span>
-              <h1>{lang === 'ar' ? 'يومك، على موجتك.' : 'Life, on your wavelength.'}</h1>
-              <p>{lang === 'ar' ? `أهلًا ${displayName?.split('@')[0]}، نرتّب الزحمة ونترك مساحة لشيء تحبّه؟` : `Hey ${displayName?.split('@')[0]}, let’s untangle the busy and make room for what you love.`}</p>
-              <div className="welcome-actions">
-                <button className="primary-action" onClick={() => setPage('chat')}>{lang === 'ar' ? 'خلّنا نسولف' : 'Let’s talk'} <span aria-hidden="true">↗</span></button>
-                <button className="secondary-action" onClick={() => setPage('investigate')}>{lang === 'ar' ? 'عندي فكرة جديدة' : 'I have an idea'} <span aria-hidden="true">✧</span></button>
-              </div>
-            </div>
-            <div className="aql-companion" aria-hidden="true">
-              <span className="companion-orbit" /><span className="companion-spark spark-one">✦</span><span className="companion-spark spark-two">✧</span>
-              <div className="companion-body"><div className="companion-eyes"><i /><i /></div><span className="companion-smile" /></div>
-              <span className="companion-note">{lang === 'ar' ? 'أفكار كثيرة؟ أنا معك.' : 'Big thoughts? I’m here.'}</span>
-            </div>
-          </section>
-        )}
         <div className="page-content" key={page}>{children}</div>
+        <TaskPreview onContinue={onCompose} />
+        <CompletionNotice />
       </div>
     </div>
   );
@@ -713,7 +706,8 @@ function VoiceAgentBar({ onRefresh }) {
     rec.interimResults = false;
     rec.maxAlternatives = 1;
     rec.onresult = (e) => { const t = e.results[0][0].transcript; setText(t); run(t); };
-    rec.onend = () => setListening(false);
+    rec.onstart = () => voiceState('listening');
+    rec.onend = () => { voiceState('idle'); setListening(false); };
     rec.onerror = () => setListening(false);
     setListening(true);
     try { rec.start(); } catch (err) { setListening(false); }
@@ -1135,7 +1129,8 @@ useEffect(() => {
     rec.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
     rec.interimResults = false;
     rec.onresult = (e) => { const t2 = e.results[0][0].transcript; setCommand(t2); sendCommand(t2); };
-    rec.onend = () => setListening(false);
+    rec.onstart = () => voiceState('listening');
+    rec.onend = () => { voiceState('idle'); setListening(false); };
     rec.onerror = () => setListening(false);
     setListening(true);
     try { rec.start(); } catch (e) { setListening(false); }
@@ -1710,10 +1705,10 @@ function ProfilePage({ displayName, email, onLogout }) {
 }
 
 /* ========== اتصال مباشر ========== */
-function ChatPage() {
+function ChatPage({ initialDraft = '' }) {
   const { lang } = useLang();
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(initialDraft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [listening, setListening] = useState(false);
@@ -1756,7 +1751,8 @@ function ChatPage() {
     rec.maxAlternatives = 1;
     rec.onresult = (e) => { const text = e.results[0][0].transcript; setInput(text); sendText(text); };
     rec.onerror = () => { setError('تعذر سماع صوتك، حاول مجددًا.'); setListening(false); };
-    rec.onend = () => setListening(false);
+    rec.onstart = () => voiceState('listening');
+    rec.onend = () => { voiceState('idle'); setListening(false); };
     setListening(true);
     try { rec.start(); } catch (err) { setListening(false); }
   };
@@ -1781,7 +1777,7 @@ function ChatPage() {
 
   return (
     <>
-    <ResearchPanel />
+    <ResearchPanel onCompose={(text) => { setInput(text); requestAnimationFrame(() => document.getElementById('chat-compose')?.focus()); }} />
     <div className="glass-panel hud-panel chat-shell" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', height: '70vh' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1rem', flexWrap: 'wrap' }}>
         <div className="baseer-avatar" style={{ width: '44px', height: '44px' }}><span style={{ fontSize: '1.2rem' }}>🧠</span></div>
@@ -1840,7 +1836,7 @@ function ChatPage() {
       {error && <div style={{ color: '#fecaca', fontSize: '0.85rem', margin: '0.5rem 0' }}>⚠️ {error}</div>}
 
       <form onSubmit={send} style={{ display: 'flex', gap: '0.8rem', marginTop: '0.8rem' }}>
-        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="اكتب رسالتك... أو اضغط المايك وتكلم" style={{ ...fieldStyle, flex: 1, fontSize: '1.1rem' }} />
+        <input id="chat-compose" value={input} onChange={(e) => setInput(e.target.value)} placeholder="اكتب رسالتك... أو اضغط المايك وتكلم" style={{ ...fieldStyle, flex: 1, fontSize: '1.1rem' }} />
         <button type="button" onClick={startListening} disabled={busy || listening} title="تكلّم مع عَقْل"
           style={{ padding: '12px 16px', background: listening ? 'rgba(239,68,68,0.2)' : 'rgba(56,189,248,0.1)', border: `1px solid ${listening ? 'rgba(239,68,68,0.5)' : 'rgba(56,189,248,0.35)'}`, color: listening ? '#fca5a5' : '#7dd3fc', borderRadius: '10px', cursor: 'pointer', fontSize: '1.1rem', boxShadow: listening ? '0 0 18px rgba(239,68,68,0.4)' : 'none' }}>
           {listening ? '🎙️ أسمعك...' : '🎤'}
@@ -2476,6 +2472,9 @@ function LifeOSPage() {
 
 /* ========== التطبيق ========== */
 function App() {
+  const { lang } = useLang();
+  const [chatDraft, setChatDraft] = useState('');
+  const [showBalance, setShowBalance] = useState(false);
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [page, setPage] = useState('dashboard');
@@ -2510,20 +2509,23 @@ function App() {
   if (!session) return (<><FloatingLangButton /><AuthScreen /></>);
 
   const displayName = session.user.user_metadata?.full_name?.trim() || session.user.email;
+  const compose = (draft) => { setChatDraft(draft); setPage('chat'); };
 
   return (
-    <Layout page={page} setPage={setPage} displayName={displayName} onLogout={handleLogout}>
-      {page === 'dashboard' && <MindChamber commitments={commitments} />}      
+    <ResearchProvider key={session.user.id} userId={session.user.id}>
+    <Layout page={page} setPage={setPage} displayName={displayName} onLogout={handleLogout} onCompose={compose}>
+      {page === 'dashboard' && <><WorkHub displayName={displayName} onCompose={compose} /><details className="balance-disclosure" onToggle={(event) => setShowBalance(event.currentTarget.open)}><summary>{lang === 'ar' ? 'توازن حياتك ومؤشراتك' : 'Your life balance & metrics'}</summary>{showBalance && <MindChamber commitments={commitments} />}</details></>}
       {page === 'investigate' && <InvestigatePage commitments={commitments} onSaved={fetchCommitments} />}
       {page === 'commitments' && <CommitmentsPage commitments={commitments} refresh={fetchCommitments} />}
       {page === 'history' && <HistoryPage />}
-      {page === 'chat' && <ChatPage />}
+      {page === 'chat' && <ChatPage key={chatDraft} initialDraft={chatDraft} />}
       {page === 'goals' && <GoalsPage />}
       {page === 'reports' && <ReportsPage />}
       {page === 'achievements' && <AchievementsPage />}
       {page === 'profile' && <ProfilePage displayName={displayName} email={session.user.email} onLogout={handleLogout} />}
       {page === 'lifeos' && <LifeOSPage />}
     </Layout>
+    </ResearchProvider>
   );
 }
 
