@@ -1,3 +1,4 @@
+import WakeAssistant from './components/WakeAssistant';
 import ProductivityProvider from './components/ProductivityProvider';
 import { QuickSearch, ActivityStatus } from './components/ProductivityTools';
 import Navigation from './components/Navigation';
@@ -418,6 +419,7 @@ function LayoutBody({ page, setPage, displayName, onLogout, onCompose, children 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <QuickSearch onNavigate={(id, taskId) => window.dispatchEvent(new CustomEvent('aql-navigate', { detail: { id, taskId } }))} />
             <ActivityStatus />
+            <WakeAssistant speak={(text, done) => { const saved = localStorage.getItem('aql-voice') || ''; const voice = lang === 'ar' ? (saved.startsWith('ar-') ? saved : 'ar-SA-HamedNeural') : (saved.startsWith('en-') ? saved : 'en-GB-RyanNeural'); jarvisSpeak(text, lang, done, voice); }} stopSpeech={jarvisStop} />
             <AssistantCompanion compact />
             <AppearancePanel />
             <button data-language-switch onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', color: '#7dd3fc', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>◐ {lang === 'ar' ? 'EN' : 'AR'}</button>
@@ -674,6 +676,7 @@ function VoiceAgentBar({ onRefresh }) {
   const listen = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
+    window.dispatchEvent(new Event('aql-mic-claim'));
     const rec = new SR();
     rec.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
     rec.interimResults = false;
@@ -1098,6 +1101,7 @@ useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
     jarvisStop();
+    window.dispatchEvent(new Event('aql-mic-claim'));
     const rec = new SR();
     rec.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
     rec.interimResults = false;
@@ -1719,6 +1723,7 @@ function ChatPage({ initialDraft = '' }) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { setError('متصفحك لا يدعم الأوامر الصوتية — جرّب Chrome.'); return; }
     stopSpeaking();
+    window.dispatchEvent(new Event('aql-mic-claim'));
     const rec = new SR();
     rec.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
     rec.interimResults = false;

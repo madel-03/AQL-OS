@@ -1,4 +1,5 @@
 const paths = {
+  mic: 'M9 4a3 3 0 0 1 6 0v8a3 3 0 0 1-6 0V4Zm-4 7v1a7 7 0 0 0 14 0v-1m-7 8v4m-4 0h8',
   home: 'M3 10 12 3l9 7M5 9v12h5v-7h4v7h5V9',
   chat: 'M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 4V6a2 2 0 0 1 2-2ZM7 9h10M7 13h6',
   tasks: 'm3 6 2 2 4-4M12 6h9m-18 8 2 2 4-4m3 2h9M3 22l2-2m7 1h9',

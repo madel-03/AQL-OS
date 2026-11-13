@@ -455,3 +455,52 @@ checks local-midnight queries, earlier meetings, due/completed/future filtering,
 refresh after completion, keyboard search and focused handoff, research stages,
 activity labels and mobile Arabic/English. Existing real-bridge QA covers the
 source execution flow. Screenshots are under ignored `backend/data/productivity-qa/`.
+
+
+## Voice wake mode (يا جارفس)
+
+The header microphone control opens a session-only voice panel. Enable it with
+a click and allow the microphone, then say **يا جارفس، وش عندي اليوم؟**. Jarvis
+Arabic spellings and English Jarvis are accepted. The name is editable and saved
+per account in browser storage; the microphone enable state is never persisted.
+You may also say just the name, wait for the spoken acknowledgement, then ask
+one question within ten seconds. After that request, the wake name is required
+again. Ambient/interim results do not become chat requests.
+
+Today's summary refreshes account tasks and the primary calendar directly,
+including overdue pending tasks, and reports unavailable/disconnected sources
+explicitly. Calendar/task data is not sent to AI chat for this summary. Other
+questions use the existing authenticated chat with read-only voice instructions
+and existing account memory; those questions/replies are saved by the existing
+chat route. Change/run/send requests are not executed by voice. Navigation such
+as “افتح المهام” and “افتح التقويم” opens the relevant existing tool.
+
+Speech recognition is the browser Web Speech API, **not an offline/local wake-word
+model**. The browser recognition service may transmit microphone audio even
+before the wake name. AQL itself sends only the post-wake question to its chat
+endpoint. Response text uses the existing backend TTS service, including day
+summary text; browser speech synthesis is its existing fallback. These limits
+are disclosed before activation. See [MDN SpeechRecognition](https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition).
+
+Recognition is detached/aborted during processing and spoken replies to avoid
+self-triggering. Existing app microphones claim priority. Recognition resumes
+after their idle event, and enabling during existing speech waits for that
+speech to finish. Network/service/permission errors stop recognition and require
+a manual retry; no uncontrolled error retry loop is used. Normal service end
+events reconnect with a delay while enabled.
+
+Hiding/closing the page stops the wake session and pending voice request; returning
+to the page requires re-enabling. Stop is available both in the panel and next to
+the active microphone control. Closing the settings dialog alone keeps the
+visible-page session enabled. No closed-page, lock-screen or background listening
+is implemented, and no desktop app has been added. Support/availability and real
+Arabic recognition accuracy depend on browser, microphone and recognition service.
+
+Checks: frontend `npm.cmd run test:wake` and backend
+`node scripts/verify-wake-ui.js` with frontend on port 5175. The browser test
+simulates recognition and playback, verifies today versus chat privacy, command
+follow-up, custom names, no auto-start/self-echo, permission/visibility cleanup,
+other microphone arbitration and mobile layout. It **does not validate real
+microphone recognition or acoustic accuracy**. Existing real TTS tests cover voice
+synthesis separately. QA screenshots are under ignored `backend/data/wake-qa/`.
+Deploy frontend and backend updates; no migration or new API key is needed.

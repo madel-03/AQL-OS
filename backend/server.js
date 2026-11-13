@@ -511,7 +511,8 @@ app.post('/api/chat', requireAuth, async (req, res) => {
      const systemPrompt = CHAT_PERSONA + (lang === 'en' ? '\nRespond in English, address the user as "sir".' : '\nخاطب المستخدم بلقب "سيدي".')
      + `\nCurrent Case Data:\n- Commitments: ${JSON.stringify(list)}\n- Total Weekly Hours: ${totalHours}h\n- Life & Finance Summary: ${JSON.stringify(life)}`
       + (live ? `\nLIVE WEB RESULTS (اعتمد عليها إذا كانت ذات صلة واذكر المصادر بالروابط):\n${live}` : '')
-      + memoryContext(body.memory);
+      + memoryContext(body.memory)
+      + (body.voice_mode === true ? '\nThis is a read-only voice conversation. No tools or external actions have been executed. Do not claim to create, modify, delete, send or run anything. For action requests, explain that the user must review them in the relevant tool. Keep the answer clear for speech.' : '');
     const messagesPayload = [
       ...history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
       { role: 'user', content: message }
