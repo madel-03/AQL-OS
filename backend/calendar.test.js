@@ -26,7 +26,8 @@ async function setup(t, configured = true) {
     return new Response(JSON.stringify({ items: [...savedEvents.values()] }));
   };
   const app = express(); app.use(express.json());
-  app.use('/api/calendar', createCalendarRouter({ config: configured ? config : {}, store, fetcher, requireAuth: (req, res, next) => { if (!req.headers.authorization) return res.sendStatus(401); req.user = { id: req.headers.authorization }; next(); } }));
+  const padded = Object.fromEntries(Object.entries(config).map(([name, value]) => [name, ` \n${value}\r\n `]));
+  app.use('/api/calendar', createCalendarRouter({ config: configured ? padded : {}, store, fetcher, requireAuth: (req, res, next) => { if (!req.headers.authorization) return res.sendStatus(401); req.user = { id: req.headers.authorization }; next(); } }));
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
   const base = `http://127.0.0.1:${server.address().port}/api/calendar`;
@@ -35,6 +36,9 @@ async function setup(t, configured = true) {
     const data = await (await request('/connect', { method: 'POST' })).json();
     const ticket = new URL(data.url).searchParams.get('ticket');
     const start = await request(`/start?ticket=${ticket}`);
+    const googleUrl = new URL(start.headers.get('location'));
+    assert.equal(googleUrl.searchParams.get('client_id'), config.GOOGLE_CLIENT_ID);
+    assert.equal(googleUrl.searchParams.get('redirect_uri'), config.GOOGLE_REDIRECT_URI);
     return { state: new URL(start.headers.get('location')).searchParams.get('state'), cookie: start.headers.get('set-cookie').split(';')[0], ticket };
   }
   async function connect() { const auth = await begin(); const response = await request(`/callback?state=${auth.state}&code=test-code`, { headers: { cookie: auth.cookie } }); assert.equal(response.headers.get('location'), 'https://app.example/?calendar=connected'); return auth; }
@@ -42,7 +46,7 @@ async function setup(t, configured = true) {
 }
 test('setup status is actionable without credentials', async t => {
   const { request } = await setup(t, false);
-  assert.deepEqual(await (await request('/status')).json(), { configured: false, connected: false });
+  assert.deepEqual(await (await request('/status')).json(), { configured: false, connected: false, diagnostics: { clientId: '', redirectUri: '' } });
   assert.equal((await request('/connect', { method: 'POST' })).status, 503);
 });
 test('OAuth is bound to browser, one-use, and stores only encrypted tokens', async t => {
@@ -51,6 +55,9 @@ test('OAuth is bound to browser, one-use, and stores only encrypted tokens', asy
   const rejected = await request(`/callback?state=${invalid.state}&code=attacker`);
   assert.match(rejected.headers.get('location'), /failed/); assert.equal(connections.size, 0);
   const auth = await connect();
+  const status = await (await request('/status')).json();
+  assert.deepEqual(status.diagnostics, { clientId: config.GOOGLE_CLIENT_ID, redirectUri: config.GOOGLE_REDIRECT_URI });
+  assert(!JSON.stringify(status).includes('refresh-private')); assert(!JSON.stringify(status).includes(config.CALENDAR_TOKEN_KEY));
   assert(!connections.get('user-one').includes('refresh-private'));
   assert.match((await request(`/callback?state=${auth.state}&code=replay`, { headers: { cookie: auth.cookie } })).headers.get('location'), /failed/);
   assert.equal((await (await request('/status', { headers: { Authorization: 'user-two' } })).json()).connected, false);

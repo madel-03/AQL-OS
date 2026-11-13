@@ -20,6 +20,7 @@ export function calendarEvent(value) {
 }
 
 export function createCalendarRouter({ requireAuth, store, config = process.env, fetcher = fetch }) {
+  config = Object.fromEntries(['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'APP_URL', 'CALENDAR_TOKEN_KEY'].map(name => [name, typeof config[name] === 'string' ? config[name].trim() : '']));
   const router = Router();
   const configured = () => !!(config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET && config.GOOGLE_REDIRECT_URI && config.APP_URL && config.CALENDAR_TOKEN_KEY && Buffer.from(config.CALENDAR_TOKEN_KEY, 'base64').length === 32);
   const vault = () => calendarCrypto(config.CALENDAR_TOKEN_KEY);
@@ -43,7 +44,7 @@ export function createCalendarRouter({ requireAuth, store, config = process.env,
   const asyncRoute = action => async (req, res, next) => { try { await action(req, res); } catch (error) { next(error); } };
   const requireConfig = (req, res, next) => configured() ? next() : res.status(503).json({ error: 'ربط Google Calendar يحتاج إعداد الخادم أولًا.', code: 'CALENDAR_SETUP_REQUIRED' });
   const done = (res, ok) => res.redirect(`${config.APP_URL.replace(/\/$/, '')}/?calendar=${ok ? 'connected' : 'failed'}`);
-  router.get('/status', requireAuth, asyncRoute(async (req, res) => res.json({ configured: configured(), connected: configured() && !!await store.get(req.user.id) })));
+  router.get('/status', requireAuth, asyncRoute(async (req, res) => res.json({ configured: configured(), connected: configured() && !!await store.get(req.user.id), diagnostics: { clientId: config.GOOGLE_CLIENT_ID, redirectUri: config.GOOGLE_REDIRECT_URI } })));
   router.post('/connect', requireAuth, requireConfig, asyncRoute(async (req, res) => {
     const ticket = randomBytes(32).toString('hex');
     await store.state(digest(ticket), req.user.id, null, new Date(Date.now() + 600000).toISOString());
