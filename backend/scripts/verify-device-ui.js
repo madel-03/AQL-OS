@@ -14,6 +14,7 @@ const session = { access_token: `${encode({ alg: 'HS256' })}.${encode({ sub: id,
 await fs.mkdir('data/device-qa', { recursive: true });
 const root = await fs.mkdtemp(path.resolve('data/device-qa/workspace-'));
 await fs.writeFile(path.join(root, 'note.md'), 'Original local note');
+await fs.writeFile(path.join(root, 'broken.cjs'), "throw new Error('repair-fixture-failure');");
 await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'aql-device-ui-qa', private: true, version: '1.0.0', scripts: { dev: 'node server.js' } }));
 await fs.writeFile(path.join(root, 'server.js'), "const http = require('node:http'); const server = http.createServer((req, res) => res.end('actual local server')); server.listen(0, '127.0.0.1', () => console.log('http://127.0.0.1:' + server.address().port));");
 const bridge = await createDeviceBridge({ workspace: root, allowRun: true, token: 'isolated-qa-device-key', origins: ['http://127.0.0.1:5175'] });
@@ -32,6 +33,7 @@ try {
       if (request.method() === 'OPTIONS') return reply({});
       if (url.pathname === '/api/device/plan') {
         const body = JSON.parse(request.postData()); plans.push(body);
+        if (body.diagnostic) return reply({ summary: 'Fix the selected failing program and verify it', operations: [{ type: 'write_file', path: 'broken.cjs', content: "console.log('repair-verified');" }, { type: 'check_javascript', path: 'broken.cjs' }, { type: 'run_node', path: 'broken.cjs' }] });
         if (body.attachment) return reply({ summary: 'Update the selected note', operations: [{ type: 'write_file', path: body.attachment.path, content: 'Updated after review' }] });
         return reply({ summary: 'Build a new local project', operations: [{ type: 'write_file', path: 'demo/index.html', content: '<!doctype html><html lang="ar"><h1>مشروعي الأول</h1></html>' }, { type: 'write_file', path: 'demo/app.js', content: 'const hello = "AQL";\nconsole.log(hello);' }, { type: 'check_javascript', path: 'demo/app.js' }] });
       }
@@ -93,6 +95,24 @@ try {
   await page.click('.device-run-consent input'); await page.click('.device-preview .studio-primary');
   await page.waitForFunction(() => document.querySelector('.device-job .status-pill')?.textContent.includes('اكتمل'));
   await fs.access(path.join(root, 'package-lock.json'));
+  await page.$$eval('.device-files button', buttons => buttons.find(button => button.textContent.includes('broken.cjs')).click());
+  await page.waitForSelector('.device-quick > button'); await page.click('.device-quick > button');
+  await page.waitForSelector('.device-run-consent'); await page.click('.device-run-consent input'); await page.click('.device-preview .studio-primary');
+  await page.waitForSelector('.device-job:first-of-type .device-repair');
+  await page.click('.device-job:first-of-type .device-repair'); await page.waitForSelector('.device-diagnostic');
+  assert.equal(plans.length, 2, 'Preparing failure context must not send logs to AI yet');
+  assert.equal(await page.$eval('.device-consent input', element => element.checked), false);
+  assert.match(await page.$eval('.device-diagnostic textarea', element => element.value), /repair-fixture-failure/);
+  await page.click('.device-consent input'); await page.click('.device-grid form button');
+  await page.waitForSelector('.device-preview .device-run-consent');
+  assert.match(plans[2].diagnostic.output, /repair-fixture-failure/);
+  assert.equal(plans[2].attachment.path, 'broken.cjs');
+  assert.equal(JSON.stringify(plans[2]).includes(root), false);
+  assert.equal(await fs.readFile(path.join(root, 'broken.cjs'), 'utf8'), "throw new Error('repair-fixture-failure');");
+  await page.click('.device-run-consent input'); await page.click('.device-preview .studio-primary');
+  await page.waitForFunction(() => document.querySelector('.device-job:first-of-type .status-pill')?.textContent.includes('اكتمل') && document.querySelector('.device-job:first-of-type pre')?.textContent.includes('repair-verified'));
+  assert.equal(await fs.readFile(path.join(root, 'broken.cjs'), 'utf8'), "console.log('repair-verified');");
+  assert.equal(await page.$('.device-diagnostic'), null);
   await page.setViewport({ width: 390, height: 844 });
   await page.$eval('.device-space', element => element.scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: 'data/device-qa/mobile-ar.png' });

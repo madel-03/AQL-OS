@@ -266,6 +266,24 @@ files are rejected. Text files are limited to 180 KB; plans to 12 operations and
 `--check`, no shell, a timeout, bounded output and stripped Node option variables.
 See [Node child-process documentation](https://nodejs.org/api/child_process.html).
 
+### Diagnosing a failed task
+
+Failed syntax/file operations and failed/timed-out local jobs show **Diagnose and
+prepare a repair / حلّل الخطأ وجهّز إصلاحًا**. Clicking prepares local context only:
+the last 12,000 log characters and the most relevant readable source (Node entry
+file or npm package manifest). The user can edit the log, choose a different
+source and explicitly tick file sharing before requesting an AI plan. Known
+workspace paths/device keys and common credential patterns are redacted, but
+this is not a guarantee that every secret is detected: review before sharing.
+
+The backend bounds diagnostic fields, strips unrelated metadata and common
+credential patterns, and treats logs as untrusted data. The model is instructed
+to propose a minimal repair with verification, ask for unread source instead of
+inventing its contents, and distinguish a server's time limit from a code defect.
+Repairs use the same local preview, changed-file checks, backup and code-execution
+approval as other plans. No automatic retries or background log uploads occur.
+Success is reported by the actual verification job, not by the model's claim.
+
 ### Running projects
 
 Restart an older bridge with `--allow-run`, then reconnect using the new key.
