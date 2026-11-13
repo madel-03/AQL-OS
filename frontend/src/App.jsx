@@ -1,3 +1,6 @@
+import Navigation from './components/Navigation';
+import AppIcon from './components/AppIcon';
+import { pageNames } from './lib/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from './lib/supabase';
 import { LangProvider } from './lib/i18n';
@@ -22,18 +25,7 @@ const slotLabels = { morning: 'صباحي', afternoon: 'ظهراً', evening: '�
 const labelStyle = { display: 'block', color: '#94a3b8', fontSize: '0.85rem', marginBottom: '6px' };
 const fieldStyle = { width: '100%', padding: '10px 14px', borderRadius: '8px', background: '#0f172a', border: '1px solid #334155', color: '#fff', boxSizing: 'border-box' };
 
-const NAV_ITEMS = [
-  { id: 'dashboard', icon: '🧠', label: 'مساحة الإنجاز' },
-  { id: 'investigate', icon: '⌖', label: 'غرفة التحليل' },
-  { id: 'commitments', icon: '≣', label: 'وحدات الوقت' },
-  { id: 'history', icon: '▤', label: 'سجل التحليلات' },
-  { id: 'goals', icon: '◉', label: 'الأهداف الاستراتيجية' },
-  { id: 'reports', icon: '▥', label: 'التقارير الحيوية' },
-  { id: 'chat', icon: '✦', label: 'اتصال مباشر' },
-  { id: 'achievements', icon: '▲', label: 'شارات الأداء' },
-  { id: 'profile', icon: '⬡', label: 'الهوية' },
-  { id: 'lifeos', icon: '🧬', label: 'Life OS' },
-];
+
 
 async function getAuthHeaders() {
   const { data } = await supabase.auth.getSession();
@@ -404,58 +396,27 @@ function AuthScreen() {
 }
 
 /* ========== أيقونات الخط الرفيع (1px) — نفس روح الرادار ========== */
-function NavIcon({ id }) {
-  const p = { fill: 'none', stroke: 'currentColor', strokeWidth: 1, strokeLinecap: 'round', strokeLinejoin: 'round' };
-  switch (id) {
-    case 'dashboard': return <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="3.5" /><path d="M12 3.5V6M12 18v2.5M3.5 12H6M18 12h2.5" /></svg>;
-    case 'investigate': return <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="7" /><path d="M12 2.5V7M12 17v4.5M2.5 12H7M17 12h4.5" /><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" /></svg>;
-    case 'commitments': return <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="8.5" /><path d="M12 7v5l3.5 2" /></svg>;
-    case 'history': return <svg viewBox="0 0 24 24" {...p}><rect x="5" y="3.5" width="14" height="17" rx="1" /><path d="M8.5 8h7M8.5 12h7M8.5 16h4.5" /></svg>;
-    case 'goals': return <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" /></svg>;
-    case 'reports': return <svg viewBox="0 0 24 24" {...p}><path d="M5.5 19.5v-7M10 19.5v-13M14.5 19.5v-9M19 19.5v-11" /></svg>;
-    case 'chat': return <svg viewBox="0 0 24 24" {...p}><path d="M12 3l2.1 6.9L21 12l-6.9 2.1L12 21l-2.1-6.9L3 12l6.9-2.1z" /></svg>;
-    case 'achievements': return <svg viewBox="0 0 24 24" {...p}><path d="M12 4l8 16H4z" /><path d="M12 10.5l3.2 6.5H8.8z" /></svg>;
-    case 'profile': return <svg viewBox="0 0 24 24" {...p}><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z" /><circle cx="12" cy="12" r="3" /></svg>;
-    case 'lifeos': return <svg viewBox="0 0 24 24" {...p}><path d="M8 3c0 6 8 6 8 12 0 3-1.5 4.5-4 6" /><path d="M16 3c0 6-8 6-8 12 0 3 1.5 4.5 4 6" /><path d="M9.5 7.5h5M9.5 12h5M9.5 16.5h5" /></svg>;
-    default: return null;
-  }
-}
+function NavIcon({ id }) { return <AppIcon name={id} />; }
 
 /* ========== الهيكل ========== */
 /* ========== الهيكل ========== */
 function Layout({ page, setPage, displayName, onLogout, onCompose, children }) {
   const { lang, setLang, t } = useLang();
-  const [railOpen, setRailOpen] = useState(false);
-  const current = NAV_ITEMS.find((n) => n.id === page);
+  const heading = pageNames[page]?.[lang === 'en' ? 1 : 0] || ''; 
   return (
     // 👈 أضفنا كلاسات background-grid و scan-line هنا
     <div className="app-shell app-layout background-grid scan-line" style={{ minHeight: '100vh', direction: lang === 'ar' ? 'rtl' : 'ltr', display: 'flex' }}>
-      <aside className={`app-sidebar rail ${railOpen ? 'rail-open' : ''}`}>
-        <div className="rail-scan" aria-hidden="true" />
-        <div className="rail-logo" onClick={() => setRailOpen(!railOpen)}>
-          <div className="baseer-avatar" style={{ width: '40px', height: '40px' }}><span style={{ fontSize: '1.05rem' }}>🧠</span></div>
-          <div className="rail-logo-text">
-            <div style={{ color: 'var(--cyan)', fontWeight: 800, fontFamily: 'Orbitron, Tajawal', letterSpacing: '0.15em' }}>{lang === 'ar' ? 'عَقْل' : 'AQL'}</div>
-            <div className="mono" style={{ color: 'var(--muted)', fontSize: '0.58rem', letterSpacing: '3px' }}>AQL-OS v3</div>
-          </div>
-        </div>
-        {NAV_ITEMS.map((item) => (
-          <button key={item.id} className={`nav-btn ${page === item.id ? 'active' : ''}`} onClick={() => setPage(item.id)} title={t(item.label)}>
-            <span className="nav-icon"><NavIcon id={item.id} /></span>
-            <span className="nav-label">{t(item.label)}</span>
-          </button>
-        ))}
-      </aside>
+      <Navigation page={page} setPage={setPage} displayName={displayName} />
       <div className="app-content" style={{ flex: 1, minWidth: 0, padding: '1.8rem 1.5rem' }}>
         <div className="page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.4rem' }}>
           <h2 style={{ margin: 0, color: '#f8fafc', fontSize: '1.6rem', fontWeight: 800 }}>
-            <span className="title-icon"><NavIcon id={page} /></span> {t(current?.label)}
+            <span className="title-icon"><NavIcon id={page} /></span> {heading}
           </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <AssistantCompanion compact />
             <AppearancePanel />
             <button data-language-switch onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', color: '#7dd3fc', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>◐ {lang === 'ar' ? 'EN' : 'AR'}</button>
-            <span className="hud-chip violet">🕵️ {displayName}</span>
+            <span className="hud-chip violet" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><AppIcon name="profile" />{displayName}</span>
             <button onClick={onLogout} style={{ background: 'rgba(255,77,77,0.08)', border: '1px solid rgba(255,77,77,0.35)', color: '#ffb3b3', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>{t('فصل')} ⏻</button>
           </div>
         </div>

@@ -45,7 +45,7 @@ try {
     return request.continue();
   });
   await page.goto('http://127.0.0.1:5175', { waitUntil: 'networkidle2' });
-  await page.click('#studio-tab-device'); await page.waitForSelector('.device-setup');
+  await page.click('[data-destination="device"]'); await page.waitForSelector('.device-setup');
   await page.type('.device-setup input', 'isolated-qa-device-key'); await page.click('.device-setup button');
   await page.waitForSelector('.device-connected');
   await page.type('.device-grid textarea', 'Build a local landing page'); await page.click('.device-grid form button');

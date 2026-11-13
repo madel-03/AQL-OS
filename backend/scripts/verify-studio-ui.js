@@ -35,6 +35,8 @@ try {
     const reply = (body, status = 200) => request.respond({ status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' }, body: JSON.stringify(body) });
     if (url.pathname.startsWith('/api/')) {
       if (request.method() === 'OPTIONS') return reply({});
+      if (url.pathname === '/api/tasks') return reply({ tasks: [] });
+      if (url.pathname === '/api/calendar/status') return reply({ configured: false, connected: false });
       const auth = request.headers().authorization || '';
       let owner; try { owner = JSON.parse(Buffer.from(auth.split('.')[1], 'base64url').toString()).sub; } catch { return reply({}, 401); }
       if (url.pathname === '/api/research') return reply({ tasks: owner === userId ? tasks.map(({ report: _report, ...entry }) => entry) : [] });
@@ -48,7 +50,7 @@ try {
     return request.continue();
   });
   const data = () => page.evaluate((storageKey) => JSON.parse(localStorage.getItem(storageKey)), key);
-  const tab = async (name) => { await page.click(`#studio-tab-${name}`); await page.waitForSelector(`#studio-panel-${name}`); };
+  const tab = async (name) => { const group = ['tasks','calendar','focus'].includes(name) ? 1 : ['desk','projects','ideas'].includes(name) ? 2 : 3; await page.click(`.tool-groups button:nth-child(${group})`); await page.locator(`#studio-tab-${name}`).click(); await page.waitForSelector(`#studio-panel-${name}`); };
   const shot = async (name, selector = '.living-space') => { await page.$eval(selector, (element) => element.scrollIntoView({ block: 'start' })); await page.screenshot({ path: `data/studio-qa/${name}.png` }); };
   await page.goto('http://127.0.0.1:5175', { waitUntil: 'networkidle2' });
   await page.waitForSelector('.living-space');
@@ -97,7 +99,7 @@ try {
   await page.$$eval('.memory-card', (items) => items.find((item) => item.textContent.includes('تقارير بحث مكتملة')).querySelector('.studio-actions button:last-child').click());
   assert((await data()).hiddenMemories.includes('derived:reports'));
   await shot('memory');
-  await page.$$eval('.nav-btn', (items) => items.find((item) => item.title.includes('اتصال')).click());
+  await page.click('[data-destination="chat"]');
   await page.waitForSelector('#chat-compose');
   await page.$$eval('.chat-shell button', (buttons) => buttons.find((button) => button.textContent.includes('الصوت:'))?.click());
   await page.type('#chat-compose', 'Help me choose my next step.'); await page.click('.chat-shell form button[type="submit"]');

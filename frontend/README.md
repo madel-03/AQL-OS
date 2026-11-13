@@ -398,3 +398,23 @@ reminders, background notifications or Google Tasks synchronization in this vers
 Checks: backend `npm.cmd run test:tasks`, `npm.cmd run test:calendar`; with frontend
 on 127.0.0.1:5175, run `node scripts/verify-tasks-ui.js` from backend. Browser QA
 uses isolated mock accounts/APIs, never the user's Google account.
+
+
+## Navigation refresh
+
+The desktop sidebar is fixed-width and grouped into Home/Assistant, Your day
+(tasks/calendar/focus), Your space (projects/desk/device), and a collapsible
+Life & insights section for the existing legacy pages. All routes remain
+available. It no longer expands on hover. On mobile a labelled menu button
+opens the drawer with a backdrop, keyboard focus handling, Escape dismissal
+and scroll lock. Sidebar tool shortcuts select the workspace panel and scroll
+to it. Tool panels are organized into three collections (My day/My space/My
+tools) with three keyboard-accessible tabs each. Their original IDs and saved
+selection remain intact. Account/calendar/task versus browser-local storage
+is identified in the workspace caption. Navigation icons share the code-native
+SVG AppIcon component; no remote assets or icon packages were added.
+
+Check: with frontend on port 5175, backend command
+`node scripts/verify-navigation-ui.js` tests destinations, legacy navigation,
+keyboard tabs, Arabic/English, tablet and mobile drawer behavior. Screenshots
+are written to ignored `backend/data/navigation-qa/`.
