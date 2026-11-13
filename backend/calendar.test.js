@@ -69,6 +69,11 @@ test('events require auth, retry without duplicates, refresh tokens and revoke o
   const event = { requestId: 'b'.repeat(32), title: 'My event', start: '2026-12-01T10:00:00Z', end: '2026-12-01T11:00:00Z', attendees: [{ email: 'never-send@example.com' }] };
   for (let i = 0; i < 2; i++) assert.equal((await request('/events', { method: 'POST', body: JSON.stringify(event) })).status, 200);
   assert.equal((await (await request('/events')).json()).events.length, 1);
+  assert.equal((await request('/events?from=2026-11-12T21:00:00.000Z&until=2026-11-13T21:00:00.000Z')).status, 200);
+  const windowCall = calls.filter(call => call.url.includes('timeMin=')).at(-1);
+  assert.equal(new URL(windowCall.url).searchParams.get('timeMin'), '2026-11-12T21:00:00.000Z');
+  assert.equal((await request('/events?from=invalid')).status, 400);
+  assert.equal((await request('/events?from=2026-01-01T00:00:00Z&until=2026-12-01T00:00:00Z')).status, 400);
   assert(calls.some(call => call.url.endsWith('/token') && String(call.options.body).includes('refresh_token')));
   assert(!calls.some(call => call.options.body?.includes?.('never-send')));
   assert.equal((await request('/events', { method: 'POST', body: JSON.stringify({ ...event, title: 'Changed retry' }) })).status, 409);

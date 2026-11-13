@@ -1,3 +1,4 @@
+import { useProductivity } from '../lib/productivity-context';
 import { pageNames } from '../lib/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../lib/lang';
@@ -7,6 +8,7 @@ import '../navigation.css';
 
 export default function Navigation({ page, setPage, displayName }) {
   const { lang } = useLang(); const en = lang === 'en'; const studio = useStudio(); const [open, setOpen] = useState(false);
+  const productivity = useProductivity();
   const menu = useRef(null); const drawer = useRef(null);
   const close = () => { setOpen(false); menu.current?.focus(); };
   useEffect(() => { if (!open) return; const previous = document.body.style.overflow; document.body.style.overflow = 'hidden'; drawer.current?.querySelector('button')?.focus(); return () => { document.body.style.overflow = previous; }; }, [open]);
@@ -16,6 +18,16 @@ export default function Navigation({ page, setPage, displayName }) {
     if (tool) requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector('.living-space')?.scrollIntoView({ block: 'start', behavior: 'smooth' })));
     else window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+  useEffect(() => {
+    const navigate = event => {
+      const { id, taskId } = event.detail || {};
+      if (taskId) productivity?.setTaskTarget(taskId);
+      if (pageNames[id]) { setPage(id); window.scrollTo({ top: 0 }); }
+      else if (['tasks','calendar','projects','desk','device','focus','ideas','memory','ambience'].includes(id)) {
+        studio.setTab(id); setPage('dashboard'); requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector('.living-space')?.scrollIntoView({ block: 'start' })));
+      }
+    }; window.addEventListener('aql-navigate', navigate); return () => window.removeEventListener('aql-navigate', navigate);
+  }, [setPage, studio, productivity]);
   const item = (id, ar, english, tool = false) => {
     const active = tool ? page === 'dashboard' && studio.state.tab === id : page === id;
     return <button key={id} className={`navigation-link nav-btn ${active ? 'active' : ''}`} title={en ? english : ar} aria-current={active ? (tool ? 'location' : 'page') : undefined} data-destination={id} onClick={() => choose(id, tool)}><AppIcon name={id} /><span>{en ? english : ar}</span>{active && <i />}</button>;

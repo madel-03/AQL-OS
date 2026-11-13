@@ -50,6 +50,7 @@ try {
   await page.waitForSelector('.device-connected');
   await page.type('.device-grid textarea', 'Build a local landing page'); await page.click('.device-grid form button');
   await page.waitForSelector('.device-preview');
+  await page.waitForFunction(() => document.querySelector('.activity-status > button')?.textContent.includes('ينتظر موافقتك'));
   await assert.rejects(fs.access(path.join(root, 'demo/index.html')), 'Preparing a plan must never execute it');
   assert.equal(JSON.stringify(plans[0]).includes('isolated-qa-device-key'), false);
   assert.equal(JSON.stringify(plans[0]).includes(root), false);
@@ -79,6 +80,7 @@ try {
   assert.equal(JSON.stringify(plans).includes('isolated-qa-device-key'), false);
   await page.click('.device-run-consent input'); await page.click('.device-preview .studio-primary');
   await page.waitForFunction(() => document.querySelector('.device-job pre')?.textContent.includes('http://127.0.0.1:'));
+  await page.waitForFunction(() => document.querySelector('.activity-status > button')?.textContent.includes('ينفّذ على جهازك'));
   const runningOutput = await page.$eval('.device-job pre', element => element.textContent);
   const localUrl = runningOutput.match(/http:\/\/127\.0\.0\.1:[0-9]+/)[0];
   assert.equal(await (await fetch(localUrl)).text(), 'actual local server');
@@ -87,6 +89,7 @@ try {
   await page.screenshot({ path: 'data/device-qa/running-npm-ar.png' });
   await page.click('.device-job .studio-primary');
   await page.waitForFunction(() => document.querySelector('.device-job .status-pill')?.textContent.includes('تم إيقافه'));
+  await page.waitForFunction(() => document.querySelector('.activity-status > button')?.textContent.includes('تم الإيقاف'));
   await assert.rejects(fetch(localUrl, { signal: AbortSignal.timeout(2000) }), 'Stopping npm must also stop its server child');
   assert.equal(plans.length, 2, 'Quick program review must remain local and not call AI');
   await page.$$eval('.device-files button', buttons => buttons.find(button => button.textContent.includes('package.json')).click());

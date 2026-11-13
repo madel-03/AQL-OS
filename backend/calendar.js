@@ -80,7 +80,8 @@ export function createCalendarRouter({ requireAuth, store, config = process.env,
     } catch { done(res, false); }
   }));
   router.get('/events', requireAuth, requireConfig, asyncRoute(async (req, res) => {
-    const from = new Date(); const until = new Date(from.getTime() + 14 * 86400000);
+    const from = req.query.from ? new Date(String(req.query.from)) : new Date(); const until = req.query.until ? new Date(String(req.query.until)) : new Date(from.getTime() + 14 * 86400000);
+    if (!Number.isFinite(from.getTime()) || !Number.isFinite(until.getTime()) || until <= from || until - from > 31 * 86400000) return res.status(400).json({ error: 'Invalid calendar date window' });
     const query = new URLSearchParams({ timeMin: from.toISOString(), timeMax: until.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '250' });
     if (typeof req.query.pageToken === 'string') query.set('pageToken', req.query.pageToken.slice(0, 2000));
     const data = await calendarCall(req.user.id, `?${query}`);

@@ -1,3 +1,4 @@
+import { TodayCard } from './ProductivityTools';
 import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../lib/lang';
 import { arabicResearchErrors, stageLabels, taskFinished, taskStages, useResearch } from '../lib/research-context';
@@ -101,6 +102,7 @@ export default function WorkHub({ displayName, onCompose, onNavigate, compact = 
       </div>
       <div className="hero-companion"><span className="companion-sticker">{en ? 'BIG IDEAS WELCOME' : 'الأفكار الكبيرة مرحّب بها'}</span><AssistantCompanion /><span className="handwritten-note">{en ? 'Your brain’s +1' : 'عقل إضافي لليوم'}</span></div>
     </section>
+    {!compact && <TodayCard onNavigate={(id, taskId) => window.dispatchEvent(new CustomEvent('aql-navigate', { detail: { id, taskId } }))} />}
     {!compact && <LivingSpace onCompose={onCompose} onNavigate={onNavigate} />}
     {error && <div className="workspace-error" role="alert"><span>{error}</span><button onClick={refresh}>{en ? 'Retry' : 'حاول مجددًا'} ↻</button></div>}
     <section className="workspace-section" aria-labelledby={compact ? 'chat-progress-title' : 'progress-title'}><div className="section-heading"><div><span className="section-kicker">{en ? 'IN MOTION' : 'في الطريق'}</span><h2 id={compact ? 'chat-progress-title' : 'progress-title'}>{en ? 'AQL is on it' : 'عقل ماسكها'} <span className="count-badge">{active.length}</span></h2></div><span className="quiet-text">{en ? 'Real progress, as it happens' : 'خطوة بخطوة، قدّامك'}</span></div>

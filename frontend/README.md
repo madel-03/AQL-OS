@@ -418,3 +418,40 @@ Check: with frontend on port 5175, backend command
 `node scripts/verify-navigation-ui.js` tests destinations, legacy navigation,
 keyboard tabs, Arabic/English, tablet and mobile drawer behavior. Screenshots
 are written to ignored `backend/data/navigation-qa/`.
+
+
+## Quick search, Today and activity
+
+The header search button (Ctrl+K / Cmd+K) searches bilingual section names and
+titles from the latest 500 account tasks. Arrow keys and Enter navigate results;
+Escape closes the native modal. Task results open Tasks with all statuses visible
+and focus the selected task, including completed tasks. Local device files,
+conversation text and task-note contents are not indexed. Task-load failures are
+shown rather than presented as an empty search index.
+
+The home Today card lists up to five local-day Google appointments and five
+pending tasks due today or overdue, with links to the full tools. Completed and
+future tasks are excluded. Calendar queries use the browser-local midnight and
+next midnight so earlier appointments are retained. The existing events endpoint
+accepts validated `from`/`until` ISO windows of up to 31 days. All-day events retain
+their Google date semantics. Calendar pagination is followed up to five pages;
+an incomplete window is surfaced as an error instead of a false full count.
+
+A shared authenticated data provider refreshes on entry, every minute while
+visible, on returning to the tab, and after task/event changes. Errors are shown
+separately for tasks and calendar. It sends no calendar/task data to the AI. No
+new database migration or Google permission is needed for these three additions.
+
+The header activity control reports real research stages, speech/listening, and
+local-panel plan approval/execution/results. Device activity is available only
+while that panel is mounted; no bridge key is retained globally and no background
+bridge monitoring is implied. Completed/failed labels reflect actual results,
+not a timed animation. Expand the control for details. Device approval and logs
+remain in the existing review flow.
+
+QA: `node scripts/verify-productivity-ui.js` from backend with frontend on 5175.
+The test uses isolated mock account/calendar/task data and activity events. It
+checks local-midnight queries, earlier meetings, due/completed/future filtering,
+refresh after completion, keyboard search and focused handoff, research stages,
+activity labels and mobile Arabic/English. Existing real-bridge QA covers the
+source execution flow. Screenshots are under ignored `backend/data/productivity-qa/`.

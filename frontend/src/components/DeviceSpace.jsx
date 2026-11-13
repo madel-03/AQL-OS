@@ -35,6 +35,12 @@ export default function DeviceSpace() {
     void poll(); const interval = setInterval(poll, 1200);
     return () => { cancelled = true; clearInterval(interval); };
   }, [device, local]);
+  useEffect(() => {
+    const job = jobs.find(item => ['running', 'stopping'].includes(item.status)) || (result?.jobId ? jobs.find(item => item.id === result.jobId) : jobs[0]);
+    const status = preview ? 'waiting' : busy === 'plan' ? 'planning' : busy === 'execute' ? 'running' : job ? (['running','stopping'].includes(job.status) ? 'running' : job.status === 'completed' ? 'completed' : job.status === 'stopped' ? 'stopped' : job.status === 'timed_out' ? 'timed_out' : 'failed') : result ? (result.completed ? 'completed' : result.accepted ? 'running' : 'failed') : null;
+    window.dispatchEvent(new CustomEvent('aql-device-activity', { detail: status ? { status, label: preview?.summary || job?.summary || result?.summary || '' } : null }));
+  }, [jobs, preview, busy, result]);
+  useEffect(() => () => window.dispatchEvent(new CustomEvent('aql-device-activity', { detail: null })), []);
   const perform = async (label, action) => { setBusy(label); setError(''); try { await action(); } catch (e) { setError(e.message); } finally { setBusy(''); } };
   const browse = async path => { const data = await local('list', { path }); setFolder(data.path); setEntries(data.entries); };
   const disconnect = () => { setKey(''); setDevice(null); setEntries([]); setFile(null); setPreview(null); setResult(null); setAttach(false); setError(''); setJobs([]); setCodeApproved(false); setDiagnostic(null); };

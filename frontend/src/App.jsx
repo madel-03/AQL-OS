@@ -1,3 +1,5 @@
+import ProductivityProvider from './components/ProductivityProvider';
+import { QuickSearch, ActivityStatus } from './components/ProductivityTools';
 import Navigation from './components/Navigation';
 import AppIcon from './components/AppIcon';
 import { pageNames } from './lib/navigation';
@@ -400,7 +402,8 @@ function NavIcon({ id }) { return <AppIcon name={id} />; }
 
 /* ========== الهيكل ========== */
 /* ========== الهيكل ========== */
-function Layout({ page, setPage, displayName, onLogout, onCompose, children }) {
+function Layout(props) { return <ProductivityProvider><LayoutBody {...props} /></ProductivityProvider>; }
+function LayoutBody({ page, setPage, displayName, onLogout, onCompose, children }) {
   const { lang, setLang, t } = useLang();
   const heading = pageNames[page]?.[lang === 'en' ? 1 : 0] || ''; 
   return (
@@ -413,6 +416,8 @@ function Layout({ page, setPage, displayName, onLogout, onCompose, children }) {
             <span className="title-icon"><NavIcon id={page} /></span> {heading}
           </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <QuickSearch onNavigate={(id, taskId) => window.dispatchEvent(new CustomEvent('aql-navigate', { detail: { id, taskId } }))} />
+            <ActivityStatus />
             <AssistantCompanion compact />
             <AppearancePanel />
             <button data-language-switch onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', color: '#7dd3fc', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>◐ {lang === 'ar' ? 'EN' : 'AR'}</button>
