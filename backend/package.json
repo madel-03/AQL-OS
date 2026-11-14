@@ -11,7 +11,8 @@
     "test:tasks": "node --test tasks.test.js",
     "test:agent": "node --test agent-execution.test.js",
     "device": "node device-bridge.js",
-    "test:device": "node --test device-bridge.test.js device-processes.test.js device-diagnostics.test.js"
+    "test:device": "node --test device-bridge.test.js device-processes.test.js device-diagnostics.test.js",
+    "test:telegram": "node --test telegram.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

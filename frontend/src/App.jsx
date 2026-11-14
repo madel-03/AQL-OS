@@ -1,5 +1,6 @@
 import WakeAssistant from './components/WakeAssistant';
 import ReminderCenter from './components/ReminderCenter';
+import ConnectedServices from './components/ConnectedServices';
 import useCalendarActions from './lib/use-calendar-actions';
 import VoiceCalendarCard from './components/VoiceCalendarCard';
 import { calendarConversation } from './lib/calendar-conversation';
@@ -424,6 +425,7 @@ function LayoutBody({ page, setPage, displayName, onLogout, onCompose, children 
             <QuickSearch onNavigate={(id, taskId) => window.dispatchEvent(new CustomEvent('aql-navigate', { detail: { id, taskId } }))} />
             <ActivityStatus />
             <ReminderCenter />
+            <ConnectedServices />
             <WakeAssistant speak={(text, done) => { const saved = localStorage.getItem('aql-voice') || ''; const voice = lang === 'ar' ? (saved.startsWith('ar-') ? saved : 'ar-SA-HamedNeural') : (saved.startsWith('en-') ? saved : 'en-GB-RyanNeural'); jarvisSpeak(text, lang, done, voice); }} stopSpeech={jarvisStop} />
             <AssistantCompanion compact />
             <AppearancePanel />

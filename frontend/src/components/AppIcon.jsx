@@ -1,4 +1,5 @@
 const paths = {
+  services: 'M9 8H6a4 4 0 0 0 0 8h3m6-8h3a4 4 0 0 1 0 8h-3M8 12h8',
   bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4',
   mic: 'M9 4a3 3 0 0 1 6 0v8a3 3 0 0 1-6 0V4Zm-4 7v1a7 7 0 0 0 14 0v-1m-7 8v4m-4 0h8',
   home: 'M3 10 12 3l9 7M5 9v12h5v-7h4v7h5V9',
