@@ -7,3 +7,5 @@
 .wake-privacy-details { margin-block: 14px; border-block: 1px solid #ffffff18; padding-block: 12px; }.wake-privacy-details summary { cursor: pointer; color: #bfb0cd; font-size: .75rem; }
 
 .wake-dialog select{width:100%;box-sizing:border-box;padding:12px;border:1px solid #ffffff30;border-radius:12px;background:#101625;color:inherit;font:inherit;color-scheme:dark}.wake-detected{font-size:.78rem;color:#c5bad2;line-height:1.8;overflow-wrap:anywhere;max-width:100%;padding:8px 12px;border:1px solid #ffffff20;border-radius:12px}.wake-detected span{display:inline-block}
+
+.captured-speech{width:100%;box-sizing:border-box;padding:14px;border:1px solid #cbb5ff55;border-radius:16px;background:#15162688;text-align:start}.captured-speech label{display:grid;gap:8px;font-size:.85rem}.captured-speech textarea{width:100%;box-sizing:border-box;resize:vertical;background:#080d1a88;color:inherit;font:inherit;line-height:1.8;border:1px solid #ffffff25;border-radius:10px;padding:10px}.captured-speech p{font-size:.75rem;color:#c5bad2;line-height:1.8}.captured-speech button{font-size:.85rem;width:100%;justify-content:center}

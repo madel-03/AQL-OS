@@ -1737,8 +1737,8 @@ function ChatPage({ initialDraft = '' }) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { setError('متصفحك لا يدعم الأوامر الصوتية — جرّب Chrome.'); return; }
     stopSpeaking(); setError(''); window.dispatchEvent(new Event('aql-mic-claim'));
-    chatMic.current = createWakeListener({ name: 'جارفس', lang: micLanguage, requireWake: false, createRecognition: () => new SR(),
-      onHeard: text => setInput(text),
+    chatMic.current = createWakeListener({ name: 'جارفس', lang: micLanguage, requireWake: false, continuous: !window.matchMedia('(pointer: coarse)').matches, createRecognition: () => new SR(),
+      onHeard: text => setInput(text), onCapture: text => { if (text) setInput(text); },
       onStatus: phase => { setListening(['starting', 'waiting', 'command'].includes(phase)); if (['starting', 'waiting', 'command'].includes(phase)) voiceState('listening'); },
       onError: () => { setError('تعذّر سماع الجملة كاملة. جرّب مجددًا أو اكتبها.'); setListening(false); voiceState('idle'); },
       onCommand: async (text, { signal }) => { voiceState('thinking'); await sendText(text, signal); },

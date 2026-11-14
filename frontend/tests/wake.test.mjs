@@ -4,6 +4,19 @@ import { createWakeListener, wakeMatch, validWakeName } from '../src/lib/wake-li
 import { spokenToday, voiceIntent } from '../src/lib/voice-commands.js';
 import { calendarConversation } from '../src/lib/calendar-conversation.js';
 const tick = (ms = 12) => new Promise(resolve => setTimeout(resolve, ms));
+test('mobile final result settles even when speechend is never emitted', async () => {
+  const calls = []; const { engine, instances } = fixture(async text => calls.push(text), { silenceDelay: 15, continuous: false });
+  engine.start(); const rec = instances[0]; assert.equal(rec.continuous, false); rec.onspeechstart(); rec.result('يا جارفس اضف موعد بعد ربع ساعة');
+  await tick(55); assert.deepEqual(calls, ['اضف موعد بعد ربع ساعة']); engine.stop();
+});
+test('unfinished mobile speech survives timeout for explicit submission; ambient text cannot be submitted', async () => {
+  const calls = [], captures = []; const { engine, instances, errors } = fixture(async text => calls.push(text), { silenceDelay: 10, utteranceLimit: 30, onCapture: text => captures.push(text) });
+  engine.start(); const rec = instances[0]; rec.result('محادثة جانبية', false); assert.equal(engine.submitCaptured('احفظ الموعد'), false);
+  rec.result('يا جارفس'); rec.result('اضف موعد بعد 15 دقيقة لمدة نصف ساعة', false);
+  await tick(50); assert.equal(calls.length, 0); assert.equal(errors.at(-1), 'speech-incomplete');
+  assert.equal(captures.at(-1), 'اضف موعد بعد 15 دقيقة لمدة نصف ساعة'); assert.equal(engine.submitCaptured(), true);
+  await tick(); assert.deepEqual(calls, ['اضف موعد بعد 15 دقيقة لمدة نصف ساعة']); assert.equal(engine.submitCaptured(), false); engine.stop();
+});
 test('confirmation variants save the displayed draft and acknowledgements never re-plan or save', async () => {
   let saves = 0, preparations = 0;
   const actions = { pending: true, plan: { event: { title: 'Gym' } }, confirm: async () => { saves++; return 'Saved'; }, prepare: async () => { preparations++; return { kind: 'clarify', question: '?' }; } };

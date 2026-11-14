@@ -2,7 +2,7 @@ import { useLang } from '../lib/lang';
 import AppIcon from './AppIcon';
 import '../voice-presence.css';
 
-export default function VoicePresence({ phase, name, enabled, ready, supported, label, error, heard, reply, onToggle, onSettings, calendarAction, hint, detected }) {
+export default function VoicePresence({ phase, name, enabled, ready, supported, label, error, heard, reply, onToggle, onSettings, calendarAction, captureAction, hint, detected }) {
   const { lang } = useLang(); const en = lang === 'en';
   return <section className={`voice-presence voice-${phase}`} data-phase={phase} data-skip-i18n="1" aria-label={en ? 'Your voice companion' : 'مساعدك الصوتي'}>
     <div className="voice-presence-heading"><span className="voice-presence-tag"><i />{en ? 'YOUR VOICE COMPANION' : 'صوتك يوصلني'}</span><button className="voice-settings" onClick={onSettings} aria-label={en ? 'Voice settings' : 'إعدادات الصوت'}><AppIcon name="more" /></button></div>
@@ -13,6 +13,7 @@ export default function VoicePresence({ phase, name, enabled, ready, supported, 
     <div className="voice-presence-actions"><button className={`voice-main-toggle ${enabled ? 'is-enabled' : ''}`} disabled={!ready || (!supported && !enabled)} onClick={onToggle}><AppIcon name={enabled ? 'close' : 'mic'} />{enabled ? (en ? 'Stop listening' : 'أوقف الاستماع') : (en ? 'Talk to me' : 'كلّمني')}</button><button className="voice-settings-link" onClick={onSettings}>{en ? 'Settings' : 'الإعدادات'}</button></div>
     {error && <p className="voice-inline-error" role="alert">{error}</p>}{!supported && <p className="voice-inline-error">{en ? 'Speech recognition is unavailable in this browser.' : 'التعرف على الصوت غير متاح في هذا المتصفح.'}</p>}
     {calendarAction}
+    {captureAction}
     {enabled && ['waiting', 'command'].includes(phase) && detected && <p className="wake-detected">{en ? 'Microphone heard: ' : 'المايك التقط: '}<span dir="auto">{detected}</span></p>}
     {heard && <p className="voice-last-request" dir="auto">“{heard}”</p>}
     {reply && <details className="voice-inline-reply"><summary>{en ? 'Read the last reply' : 'اقرأ آخر رد'}</summary><p dir="auto">{reply}</p></details>}
