@@ -2,6 +2,23 @@ import { Router } from 'express';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { localCalendarTime } from './calendar-planning.js';
 import { telegramClient, telegramConfig, telegramConfigured, telegramDay } from './telegram.js';
+export function reminderErrorResponse(error) {
+  const messages = {
+    REMINDER_SCHEMA: 'جداول أو أعمدة التذكيرات ناقصة. شغّل telegram-reminders.sql كاملًا في مشروع Supabase نفسه المستخدم في Render.',
+    REMINDER_RPC_CACHE: "دالة الجدولة لم تظهر في واجهة Supabase. شغّل telegram-reminders.sql كاملًا، ثم نفّذ: NOTIFY pgrst, 'reload schema'; وانتظر قليلًا.",
+    REMINDER_PERMISSIONS: 'صلاحيات قاعدة البيانات تمنع العملية. أعد تشغيل telegram-reminders.sql كاملًا بحساب مالك المشروع، وتأكد أن الخادم يستخدم service_role.',
+    REMINDER_VAULT: 'تعذّر الوصول إلى دوال Vault. فعّل Vault في Supabase ثم أعد تشغيل telegram-reminders.sql.',
+    REMINDER_CRON: 'دوال Cron غير متاحة. فعّل Supabase Cron ثم أعد تشغيل telegram-reminders.sql.',
+    REMINDER_NETWORK_EXTENSION: 'امتداد pg_net غير جاهز. فعّله في Supabase ثم أعد تشغيل telegram-reminders.sql.',
+    REMINDER_FUNCTION: 'دالة مطلوبة للجدولة غير موجودة. شغّل telegram-reminders.sql كاملًا ثم حدّث الحالة.',
+  };
+  if (error?.reminderCode) {
+    const stage = error.operation === 'install_cron' ? 'تعذّر تثبيت الجدولة. ' : error.operation === 'save_preferences' ? 'تعذّر حفظ الإعدادات. ' : '';
+    return { error: `${stage}${messages[error.reminderCode] || 'تعذّرت عملية قاعدة البيانات الخاصة بالتذكيرات.'} [${error.reminderCode}/${error.dbCode || 'UNKNOWN'}]`, code: error.reminderCode, databaseCode: error.dbCode, stage: error.operation };
+  }
+  if (error?.telegramCode) return { error: error.telegramCode === 403 ? 'Telegram رفض الإرسال. افتح البوت وارفع الحظر إن وجد، ثم جرّب مجددًا.' : error.telegramCode === 401 ? 'مفتاح بوت Telegram غير مقبول. راجع TELEGRAM_BOT_TOKEN في Render.' : 'Telegram رفض طلب الإرسال؛ جرّب لاحقًا.', code: 'REMINDER_TELEGRAM', telegramCode: error.telegramCode };
+  return { error: 'تعذّرت خدمة التذكيرات. حدّث الحالة، وتحقق من اتصال الخادم بقاعدة البيانات. [REMINDER_UNAVAILABLE]', code: 'REMINDER_UNAVAILABLE' };
+}
 export function reminderPreferences(body) {
   if (!body || typeof body.enabled !== 'boolean' || typeof body.tasks !== 'boolean' || typeof body.calendar !== 'boolean' || ![0, 5, 10, 15, 30, 60].includes(body.lead) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(body.taskTime || '')) throw new Error('حدّد إعدادات تذكير صحيحة.');
   return { enabled: body.enabled, tasks: body.tasks, calendar: body.calendar, lead: body.lead, taskTime: body.taskTime };
@@ -68,7 +85,7 @@ export function createTelegramReminderRouter({ requireAuth, store, readCalendar,
   const router = Router(); const c = telegramConfig(config); const secret = String(config.TELEGRAM_REMINDER_SECRET || '').trim();
   const configured = telegramConfigured(c) && /^[A-Za-z0-9_-]{32,256}$/.test(secret);
   const call = telegramClient(c, fetcher);
-  const wrap = action => async (req, res) => { try { await action(req, res); } catch { res.status(503).json({ error: 'تعذّرت خدمة التذكيرات. تأكد من تشغيل telegram-reminders.sql وإعداد سر التذكيرات في Render.' }); } };
+  const wrap = action => async (req, res) => { try { await action(req, res); } catch (error) { res.status(503).json(reminderErrorResponse(error)); } };
   router.post('/run', wrap(async (req, res) => {
     const given = Buffer.from(String(req.get('Authorization') || '')); const expected = Buffer.from(`Bearer ${secret}`);
     if (!configured || given.length !== expected.length || !timingSafeEqual(given, expected)) return res.sendStatus(403);

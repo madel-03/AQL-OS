@@ -1,11 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { reminderPreferences, telegramReminderCandidates, runTelegramReminders, createTelegramReminderRouter } from './telegram-reminders.js';
+import { reminderPreferences, telegramReminderCandidates, runTelegramReminders, createTelegramReminderRouter, reminderErrorResponse } from './telegram-reminders.js';
+import { reminderStorageError, telegramReminderStore } from './telegram-reminder-store.js';
 const start = Date.parse('2026-11-14T06:00:00Z'); // Riyadh 09:00
 const account = { user_id: 'one', chat_id: '100', reminder_chat_id: '100', time_zone: 'Asia/Riyadh', reminders_enabled: true, reminders_tasks: true, reminders_calendar: true, reminder_lead: 10, reminder_task_time: '09:00', reminders_updated_at: 'v1' };
 const tasks = [{ id: 't', title: 'Private task', due_date: '2026-11-14', completed: false }];
 const events = [{ id: 'e', title: 'Meeting', start: { dateTime: new Date(start + 5 * 60000).toISOString() } }];
+test('database diagnostics distinguish setup failures without disclosing SQL arguments or secrets', async () => {
+  const cases = [['42P01', 'table missing', 'REMINDER_SCHEMA'], ['PGRST202', 'function missing', 'REMINDER_RPC_CACHE'], ['42501', 'permission denied', 'REMINDER_PERMISSIONS'], ['42883', 'vault.create_secret missing', 'REMINDER_VAULT'], ['3F000', 'cron schema missing', 'REMINDER_CRON']];
+  for (const [code, message, expected] of cases) {
+    const result = reminderErrorResponse(reminderStorageError({ code, message: `${message} secret=DO_NOT_DISCLOSE` }, 'install_cron'));
+    assert.equal(result.code, expected); assert.equal(result.databaseCode, code); assert.equal(result.stage, 'install_cron'); assert(!JSON.stringify(result).includes('DO_NOT_DISCLOSE'));
+  }
+  const store = telegramReminderStore({ rpc: async () => ({ error: { code: 'PGRST202', message: 'private URL and secret must stay private' } }) });
+  await assert.rejects(store.install('https://private.example', 'private-token'), error => { const result = reminderErrorResponse(error); assert.equal(result.code, 'REMINDER_RPC_CACHE'); assert(!JSON.stringify(result).includes('private')); return true; });
+  assert(!JSON.stringify(reminderErrorResponse(new Error('https://secret-token.example'))).includes('secret-token'));
+});
 function fixture() {
   let time = start; let locked = false; const rows = new Map(); const sent = []; const owners = [];
   const connection = { ...account };
@@ -69,4 +80,7 @@ test('reminder API separates scheduler credentials from user sessions and instal
   const value = await call('', 'PUT', { enabled: true, tasks: true, calendar: true, lead: 15, taskTime: '10:30', endpoint: 'https://evil.example', user_id: 'two' }); assert.equal(value.status, 200);
   assert.deepEqual(installed, ['https://api.example/api/telegram/reminders/run', config.TELEGRAM_REMINDER_SECRET]); assert.equal(f.connection.reminder_lead, 15);
   assert(!JSON.stringify((await call('')).data).includes(config.TELEGRAM_REMINDER_SECRET)); assert.equal((await call('/test', 'POST')).data.accepted, true);
+  f.store.install = async () => { throw reminderStorageError({ code: '42883', message: `vault.create_secret failed with ${config.TELEGRAM_REMINDER_SECRET}` }, 'install_cron'); };
+  const failure = await call('', 'PUT', { enabled: true, tasks: true, calendar: true, lead: 15, taskTime: '10:30' });
+  assert.equal(failure.status, 503); assert.equal(failure.data.code, 'REMINDER_VAULT'); assert.equal(failure.data.stage, 'install_cron'); assert(!JSON.stringify(failure).includes(config.TELEGRAM_REMINDER_SECRET));
 });

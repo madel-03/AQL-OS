@@ -85,3 +85,6 @@ begin
 end $$;
 revoke all on function public.install_telegram_reminder_cron(text,text) from public, anon, authenticated;
 grant execute on function public.install_telegram_reminder_cron(text,text) to service_role;
+
+-- Make new RPC signatures visible immediately to PostgREST after the transaction commits.
+notify pgrst, 'reload schema';

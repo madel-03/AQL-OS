@@ -65,3 +65,7 @@ select cron.unschedule('aql-telegram-reminders');
 `npm.cmd run test:telegram` من backend. اختبار الواجهة: `node scripts/verify-telegram-reminders-ui.js` مع frontend على 127.0.0.1:5175. الاختبارات تستخدم خدمات وقاعدة وهمية؛ الترحيل وCron الفعليان يُتحقق منهما عند تشغيل SQL وإعداد المشروع. لم نرسل رسائل إلى البوت الحقيقي أثناء التطوير.
 
 مراجع: https://supabase.com/docs/guides/functions/schedule-functions وhttps://supabase.com/docs/guides/database/vault وhttps://render.com/docs/free
+
+
+## إذا ظهرت رسالة التعذّر العامة عند حفظ الإعدادات
+الإعدادات قد تُقرأ بنجاح بينما دالة تثبيت Cron تتعثر. لا تغيّر مفاتيح البوت أو Google عشوائيًا. نفّذ `NOTIFY pgrst, 'reload schema';` ثم انتظر قليلًا وأعد الحفظ. إذا لم تنجح، شغّل الملف القرائي `migrations/telegram-reminders-diagnostics.sql` في مشروع Supabase نفسه المرتبط بالخادم. يرجع جدول readiness flags فقط؛ يمكن مشاركة النتيجة دون كشف أسرار. بعد نشر الخادم الأحدث، تظهر رموز تشخيص منفصلة مثل `REMINDER_RPC_CACHE/PGRST202` أو `REMINDER_VAULT/42883` مع المرحلة `install_cron` أو `save_preferences`، دون نص SQL الخام أو معاملات الدوال. هذه الرموز هي التي تحدد الإصلاح، ولا تعني الرسالة العامة وحدها أن السر ناقص.
