@@ -1,4 +1,5 @@
 import WakeAssistant from './components/WakeAssistant';
+import ReminderCenter from './components/ReminderCenter';
 import ProductivityProvider from './components/ProductivityProvider';
 import { QuickSearch, ActivityStatus } from './components/ProductivityTools';
 import Navigation from './components/Navigation';
@@ -419,6 +420,7 @@ function LayoutBody({ page, setPage, displayName, onLogout, onCompose, children 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <QuickSearch onNavigate={(id, taskId) => window.dispatchEvent(new CustomEvent('aql-navigate', { detail: { id, taskId } }))} />
             <ActivityStatus />
+            <ReminderCenter />
             <WakeAssistant speak={(text, done) => { const saved = localStorage.getItem('aql-voice') || ''; const voice = lang === 'ar' ? (saved.startsWith('ar-') ? saved : 'ar-SA-HamedNeural') : (saved.startsWith('en-') ? saved : 'en-GB-RyanNeural'); jarvisSpeak(text, lang, done, voice); }} stopSpeech={jarvisStop} />
             <AssistantCompanion compact />
             <AppearancePanel />

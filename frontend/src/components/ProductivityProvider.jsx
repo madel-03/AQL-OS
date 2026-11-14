@@ -5,6 +5,7 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 export default function ProductivityProvider({ children }) {
   const version = useRef(0);
   const [taskTarget, setTaskTarget] = useState(null);
+  const [tasksUpdatedAt, setTasksUpdatedAt] = useState(0);
   const [tasks, setTasks] = useState([]); const [events, setEvents] = useState([]); const [calendar, setCalendar] = useState(null);
   const [errors, setErrors] = useState({}); const [loading, setLoading] = useState(true); const [day, setDay] = useState(localDay); const [activity, setActivity] = useState(null);
   const refresh = useCallback(async () => {
@@ -13,7 +14,7 @@ export default function ProductivityProvider({ children }) {
     const { data } = await supabase.auth.getSession(); if (!data.session) return null;
     const get = async path => { const response = await fetch(`${API}/api/${path}`, { headers: { Authorization: `Bearer ${data.session.access_token}` }, signal: AbortSignal.timeout(25000) }); const value = await response.json(); if (!response.ok) throw new Error(value.error || 'تعذّر تحميل البيانات'); return value; };
     await Promise.allSettled([
-      (async () => { try { const value = await get('tasks'); if (run !== version.current) return; if (!Array.isArray(value.tasks)) throw new Error('تعذّر تحميل المهام'); snapshot.tasks = value.tasks; setTasks(value.tasks); setErrors(previous => ({ ...previous, tasks: '' })); } catch (error) { snapshot.errors.tasks = error.message; if (run === version.current) setErrors(previous => ({ ...previous, tasks: error.message })); } })(),
+      (async () => { try { const value = await get('tasks'); if (run !== version.current) return; if (!Array.isArray(value.tasks)) throw new Error('تعذّر تحميل المهام'); snapshot.tasks = value.tasks; setTasks(value.tasks); setTasksUpdatedAt(Date.now()); setErrors(previous => ({ ...previous, tasks: '' })); } catch (error) { snapshot.errors.tasks = error.message; if (run === version.current) setErrors(previous => ({ ...previous, tasks: error.message })); } })(),
       (async () => { try { const status = await get('calendar/status'); if (run !== version.current) return; snapshot.calendar = status; setCalendar(status); if (status.connected) { const start = new Date(); start.setHours(0, 0, 0, 0); const end = new Date(start); end.setDate(end.getDate() + 1); const query = new URLSearchParams({ from: start.toISOString(), until: end.toISOString() }); let all = [], page;
         for (let count = 0; count < 5; count++) { const value = await get(`calendar/events?${query}${page ? `&pageToken=${encodeURIComponent(page)}` : ''}`); all = [...all, ...value.events]; page = value.nextPageToken; if (!page) break; }
         if (page) throw new Error('عدد مواعيد اليوم كبير؛ افتح التقويم لعرض القائمة الكاملة.'); if (run !== version.current) return; snapshot.events = all; setEvents(all);
@@ -25,5 +26,5 @@ export default function ProductivityProvider({ children }) {
     window.addEventListener('aql-data-changed', changed); window.addEventListener('aql-device-activity', onActivity); document.addEventListener('visibilitychange', update); const interval = setInterval(() => { if (document.visibilityState === 'visible') void refresh(); }, 60000);
     return () => { invalidate(); clearTimeout(timer); clearInterval(interval); window.removeEventListener('aql-data-changed', changed); window.removeEventListener('aql-device-activity', onActivity); document.removeEventListener('visibilitychange', update); };
   }, [refresh, invalidate]);
-  return <ProductivityContext.Provider value={{ taskTarget, setTaskTarget, tasks, events, calendar, errors, loading, day, refresh, activity }}>{children}</ProductivityContext.Provider>;
+  return <ProductivityContext.Provider value={{ taskTarget, setTaskTarget, tasks, tasksUpdatedAt, events, calendar, errors, loading, day, refresh, activity }}>{children}</ProductivityContext.Provider>;
 }

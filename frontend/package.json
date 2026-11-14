@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test:appearance": "node --test tests/appearance.test.mjs",
     "test:studio": "node --test tests/studio.test.mjs",
-    "test:wake": "node --test tests/wake.test.mjs"
+    "test:wake": "node --test tests/wake.test.mjs",
+    "test:reminders": "node --test tests/reminders.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
