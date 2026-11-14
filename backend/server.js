@@ -13,6 +13,8 @@ import { createTasksRouter } from './tasks.js';
 import { createTelegramRouter, registerTelegramWebhook } from './telegram.js';
 import { telegramStore } from './telegram-store.js';
 import { calendarReader } from './calendar-reader.js';
+import { createTelegramReminderRouter } from './telegram-reminders.js';
+import { telegramReminderStore } from './telegram-reminder-store.js';
 
 
 
@@ -279,6 +281,7 @@ app.use('/api/device', createDevicePlanRouter({ requireAuth, generate: generateS
 app.use('/api/calendar', createCalendarRouter({ requireAuth, store: calendarStore(supabase), generate: generateStructured }));
 app.use('/api/tasks', createTasksRouter({ requireAuth, supabase, generate: generateStructured }));
 const telegramStorage = telegramStore(supabase);
+app.use('/api/telegram/reminders', createTelegramReminderRouter({ requireAuth, store: telegramReminderStore(supabase), readCalendar: calendarReader({ store: calendarStore(supabase) }) }));
 app.use('/api/telegram', createTelegramRouter({ requireAuth, store: telegramStorage, readCalendar: calendarReader({ store: calendarStore(supabase) }) }));
 void registerTelegramWebhook().then(ready => { if (ready) console.log('Telegram webhook ready'); }).catch(() => console.warn('Telegram setup failed; check bot username and environment settings.'));
 const telegramCleanup = setInterval(() => { if (process.env.TELEGRAM_BOT_TOKEN) void telegramStorage.cleanup().catch(() => {}); }, 3600000);

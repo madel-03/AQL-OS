@@ -15,7 +15,7 @@ export function calendarReader({ store, config = process.env, fetcher = fetch })
     for (let count = 0; count < 5; count++) {
       const query = new URLSearchParams({ timeMin: from, timeMax: until, singleEvents: 'true', orderBy: 'startTime', maxResults: '250', ...(page ? { pageToken: page } : {}) });
       const body = await json(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${query}`, { headers: { Authorization: `Bearer ${tokens.access_token}` } });
-      events = [...events, ...(body.items || []).filter(item => item.status !== 'cancelled').map(item => ({ title: item.summary || '(بدون عنوان)', start: item.start }))];
+      events = [...events, ...(body.items || []).filter(item => item.status !== 'cancelled').map(item => ({ id: item.id, title: item.summary || '(بدون عنوان)', start: item.start }))];
       page = body.nextPageToken; if (!page) return { connected: true, events };
     }
     throw new Error('Calendar result limit');

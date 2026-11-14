@@ -13,7 +13,7 @@ export function telegramClient(config, fetcher = fetch) {
     try { response = await fetcher(`https://api.telegram.org/bot${config.token}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) }); }
     catch { throw new Error('Telegram network unavailable'); }
     const value = await response.json().catch(() => ({}));
-    if (!response.ok || value.ok !== true) throw new Error('Telegram request failed');
+    if (!response.ok || value.ok !== true) throw Object.assign(new Error('Telegram request failed'), { definitive: value.ok === false, telegramCode: value.error_code || response.status, retryAfter: value.parameters?.retry_after });
     return value.result;
   };
 }
@@ -87,7 +87,7 @@ export function createTelegramRouter({ requireAuth, store, readCalendar, config 
           if (tasks === null) lines.push('تعذّرت قراءة المهام الآن.');
           else { lines.push(today ? 'مهام مستحقة اليوم أو متأخرة:' : 'المهام:'); if (!selected.length) lines.push('لا توجد مهام في هذا العرض.'); for (const task of selected.slice(0, 12)) lines.push(`• ${String(task.title).slice(0, 160)}${task.due_date ? ` — ${task.due_date}` : ''}`); if (selected.length > 12 || tasks.length >= 100) lines.push('توجد مهام أخرى؛ افتح القائمة الكاملة في عقل.'); }
           await send(lines.join('\n'));
-        } else await send('أنا جارفس المرتبط بعقل.\n/today — مواعيدك ومهامك اليوم\n/tasks — مهامك المتبقية\n/unlink — فصل الربط\n\nهذه النسخة للقراءة فقط. إضافة المواعيد والمهام وتأكيدها تتم من الموقع. التذكيرات المجدولة من Telegram لم تُفعّل بعد.');
+        } else await send('أنا جارفس المرتبط بعقل.\n/today — مواعيدك ومهامك اليوم\n/tasks — مهامك المتبقية\n/unlink — فصل الربط\n\nإضافة المواعيد والمهام وتأكيدها تتم من الموقع. لتفعيل تذكيرات Telegram: الموقع ← الخدمات ← Telegram ← التذكيرات.');
       }
       res.json({ ok: true });
     } catch {
