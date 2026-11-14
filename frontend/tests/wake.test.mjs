@@ -2,7 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createWakeListener, wakeMatch, validWakeName } from '../src/lib/wake-listener.js';
 import { spokenToday, voiceIntent } from '../src/lib/voice-commands.js';
+import { calendarConversation } from '../src/lib/calendar-conversation.js';
 const tick = (ms = 12) => new Promise(resolve => setTimeout(resolve, ms));
+test('gym scheduling reaches calendar review in English and Arabic without capturing schedule questions', () => {
+  for (const text of ['Can you schedule a gym session starting five minutes from now?', 'Please add Gym five minutes from now', 'Insert a gym session in five minutes', 'حط لي النادي بعد خمس دقائق', 'جدول لي تمرين بكرة']) assert.equal(voiceIntent(text).type, 'calendar-prepare', text);
+  assert.equal(voiceIntent('What is my schedule today?').type, 'today');
+  assert.equal(voiceIntent('Can you tell me my schedule today?').type, 'today');
+  assert.equal(voiceIntent('How can I schedule a workout?').type, 'chat');
+  assert.equal(voiceIntent('كيف اضيف موعد في التقويم؟').type, 'chat');
+});
+test('direct chat uses calendar preparation, clarification and explicit confirmation without claiming a save', async () => {
+  const calls = [];
+  const actions = { pending: false, prepare: async text => { calls.push(['prepare', text]); return { kind: 'clarify', question: 'How long?' }; }, confirm: async () => { calls.push(['save']); return 'Saved'; } };
+  assert.equal(await calendarConversation('Schedule a gym session in five minutes', actions, true), 'How long?');
+  assert.deepEqual(calls.map(row => row[0]), ['prepare']);
+  actions.pending = true;
+  assert.equal(await calendarConversation('Thirty minutes', actions, true), 'How long?');
+  assert.equal(await calendarConversation('confirm appointment', actions, true), 'Saved');
+  assert.equal(await calendarConversation('Hello', { ...actions, pending: false }, true), null);
+});
 function fixture(onCommand = async () => {}, options = {}) {
   const instances = [], phases = [], errors = [];
   const engine = createWakeListener({ name: 'جارفس', lang: 'ar-SA', restartDelay: 2, commandWindow: 40, onCommand, onStatus: value => phases.push(value), onError: value => errors.push(value), createRecognition: () => {

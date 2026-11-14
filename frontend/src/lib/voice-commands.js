@@ -11,7 +11,12 @@ export function voiceIntent(text) {
   if (/(مهمه|مهمة|task)/.test(value) && /(اضف|ضيف|حط|انشئ|سجل|جهز|علم|خلصت|انجز|منجز|add|create|complete|finish|done|mark)/.test(value)) return { type: 'task-prepare' };
   if (/^(?:نعم )?(?:اكد(?: لي)? (?:الموعد|الحفظ)|احفظ(?: لي)? الموعد|نفذ(?: لي)? الموعد|confirm (?:the )?(?:event|appointment))(?: (?:لو سمحت|من فضلك|please))?$/.test(value)) return { type: 'calendar-confirm' };
   if (/^(الغ طلب الموعد|الغي طلب الموعد|الغ الموعد|الغي الموعد|cancel (the )?(event|appointment)( request)?)$/.test(value)) return { type: 'calendar-cancel' };
-  if (/(موعد|اجتماع|تقويم|calendar|appointment|meeting)/.test(value) && /(اضف|تضيف|ضيف|احجز|حجز|حدد|حط|سجل|رتب|انشئ|جهز|add|create|schedule|book)/.test(value)) return { type: 'calendar-prepare' };
+  const advice = /^(?:how (?:do|can|should) i|كيف (?:اقدر|اضيف|احجز|اسوي))(?:\s|$)/.test(value);
+  const readQuery = /\b(?:what(?: s| is)|show|tell|list)\b|^(?:وش|ايش|اعرض|متي|متى)(?:\s|$)/.test(value);
+  const calendarAction = /\b(?:add|create|schedule|book|insert|put|plan)\b|(?:اضف|تضيف|ضيف|احجز|حجز|حدد|حط|سجل|رتب|انشئ|جهز|جدول)/.test(value);
+  const calendarSubject = /(?:موعد|اجتماع|تقويم)|\b(?:calendar|appointment|meeting|session|workout)\b/.test(value);
+  const scheduledTime = /(?:بعد|بكره|بكرة|غدا|الساعة)|\b(?:tomorrow|tonight|today|from now|in (?:\d+|five|ten|fifteen|thirty|an?|one|two) (?:minutes?|hours?)|at \d)\b/.test(value);
+  if (!advice && !readQuery && calendarAction && (calendarSubject || scheduledTime)) return { type: 'calendar-prepare' };
   if (/^(اضف|احذف|عدل|انشئ|شغل|ارسل|سجل|add|delete|edit|create|run|send|schedule)(?:\s|$)/.test(value)) return { type: 'review-required' };
   if (/(اليوم|today)/.test(value) && /(وش|ايش|ماذا|عندي|جدول|مواعيد|مهام|what|schedule|agenda|appointments|tasks)/.test(value)) return { type: 'today' };
   if (/^(مهامي|المهام|مواعيدي|المواعيد|my tasks|my appointments|my schedule)$/.test(value)) return { type: 'today' };

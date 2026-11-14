@@ -4,6 +4,14 @@ import express from 'express';
 import { localCalendarTime, prepareCalendarDraft, planCalendarRequest } from './calendar-planning.js';
 import { createCalendarRouter } from './calendar.js';
 
+test('relative-minute starts are calculated exactly by the server across local midnight', () => {
+  const now = Date.parse('2026-11-14T20:58:37Z');
+  const plan = prepareCalendarDraft({ kind: 'event', title: 'Gym', startsInMinutes: 5, durationMinutes: 30 }, 'Asia/Riyadh', now);
+  assert.equal(plan.event.start, '2026-11-14T21:03:37.000Z');
+  assert.equal(plan.event.end, '2026-11-14T21:33:37.000Z');
+  for (const startsInMinutes of [-1, 0, 1.5, '5', 10081]) assert.throws(() => prepareCalendarDraft({ kind: 'event', title: 'Gym', startsInMinutes }, 'Asia/Riyadh', now));
+});
+
 test('wall-clock conversion respects Riyadh, DST gaps/folds and invalid dates', () => {
   assert.equal(localCalendarTime('2026-11-14', '17:00', 'Asia/Riyadh'), '2026-11-14T14:00:00.000Z');
   assert.equal(localCalendarTime('2026-07-14', '17:00', 'America/New_York'), '2026-07-14T21:00:00.000Z');

@@ -1,5 +1,8 @@
 import WakeAssistant from './components/WakeAssistant';
 import ReminderCenter from './components/ReminderCenter';
+import useCalendarActions from './lib/use-calendar-actions';
+import VoiceCalendarCard from './components/VoiceCalendarCard';
+import { calendarConversation } from './lib/calendar-conversation';
 import ProductivityProvider from './components/ProductivityProvider';
 import { QuickSearch, ActivityStatus } from './components/ProductivityTools';
 import Navigation from './components/Navigation';
@@ -1687,6 +1690,7 @@ function ProfilePage({ displayName, email, onLogout }) {
 function ChatPage({ initialDraft = '' }) {
   const { memoryForChat } = useStudio();
   const { lang } = useLang();
+  const calendarActions = useCalendarActions(lang);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState(initialDraft);
   const [busy, setBusy] = useState(false);
@@ -1744,6 +1748,13 @@ function ChatPage({ initialDraft = '' }) {
     setMessages((m) => [...m, { role: 'user', content: text }]);
     setInput('');
     try {
+      const actionReply = await calendarConversation(text, calendarActions, lang === 'en');
+      if (actionReply !== null) {
+        const replyId = `action-${Date.now()}`;
+        setMessages(m => [...m, { role: 'assistant', content: actionReply, id: replyId }]);
+        if (autoSpeak) speak(actionReply, replyId);
+        return;
+      }
       const headers = await getAuthHeaders();
       const response = await fetch(`${API_URL}/api/chat`, { method: 'POST', headers, body: JSON.stringify({ message: text, lang, memory: memoryForChat }) });
       const json = await response.json();
@@ -1788,7 +1799,8 @@ function ChatPage({ initialDraft = '' }) {
         </button>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '0.5rem' }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '0.5rem' }}>
+        <VoiceCalendarCard actions={calendarActions} />
         {messages.length === 0 && (
           <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: '2rem', lineHeight: 1.8 }}>
             🕵️ عَقْل: "ملفك مفتوح أمامي... اضغط المايك وتكلم، أو اكتب سؤالك، وسأرد عليك صوتيًا."

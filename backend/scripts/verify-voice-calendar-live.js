@@ -16,3 +16,9 @@ assert.equal(ambiguous.kind, 'clarify');
 const followup = await planCalendarRequest({ ...options, context: ['أضف موعد لمراجعة المشروع'], message: 'بكرة الخامسة مساءً' });
 assert.equal(followup.kind, 'event'); assert.equal(followup.event.start, '2026-11-14T14:00:00.000Z');
 console.log('PASS: actual AI resolved tomorrow at 5 PM in Riyadh, honored a 30-minute duration, asked about ambiguous AM/PM, and understood a follow-up. No Google calls or events were made.');
+
+for (const message of ['Schedule a gym session starting five minutes from now for thirty minutes', 'حط لي النادي بعد خمس دقائق لمدة نص ساعة']) {
+  const plan = await planCalendarRequest({ ...options, message });
+  assert.equal(plan.kind, 'event'); assert.equal(plan.event.start, new Date(options.now + 300000).toISOString()); assert.equal(Date.parse(plan.event.end) - Date.parse(plan.event.start), 1800000);
+}
+console.log('PASS: real AI gym scheduling in English and Arabic uses exact five-minute server offsets.');
