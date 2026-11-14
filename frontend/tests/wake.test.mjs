@@ -53,8 +53,8 @@ test('enabling during existing speech waits without opening the microphone', asy
   const { engine, instances } = fixture(async () => {}, { initiallyPaused: true }); engine.start();
   assert.equal(instances.length, 0); engine.externalVoice('idle'); await tick(); assert.equal(instances.length, 1); engine.stop();
 });
-test('voice intents remain read-only and today summary excludes completed/future tasks', () => {
-  assert.equal(voiceIntent('وش عندي اليوم؟').type, 'today'); assert.equal(voiceIntent('أضف مهمة جديدة').type, 'review-required'); assert.equal(voiceIntent('افتح التقويم').id, 'calendar'); assert.equal(voiceIntent('وقف الاستماع').type, 'stop');
+test('voice intents route tasks for review and today summary excludes completed/future tasks', () => {
+  assert.equal(voiceIntent('وش عندي اليوم؟').type, 'today'); assert.equal(voiceIntent('أضف مهمة جديدة').type, 'task-prepare'); assert.equal(voiceIntent('افتح التقويم').id, 'calendar'); assert.equal(voiceIntent('وقف الاستماع').type, 'stop');
   const snapshot = { day: '2026-11-13', tasks: [{ title: 'Due', due_date: '2026-11-13', completed: false }, { title: 'Done', due_date: '2026-11-13', completed: true }, { title: 'Future', due_date: '2026-11-14' }], events: [], calendar: { connected: true } };
   const text = spokenToday(snapshot, true); assert.match(text, /Due/); assert(!text.includes('Done')); assert(!text.includes('Future'));
   const failed = spokenToday({ ...snapshot, errors: { calendar: 'offline', tasks: 'offline' } }, true); assert.match(failed, /could not be read/); assert(!failed.includes('0 appointments')); assert(!failed.includes('0 tasks'));
@@ -73,4 +73,12 @@ test('clarification outcomes allow one bounded conversational follow-up', async 
   const calls = []; const { engine, instances } = fixture(async command => { calls.push(command); return { followUp: calls.length === 1 }; });
   engine.start(); instances[0].result('يا جارفس أضف موعد'); await tick(); instances.at(-1).result('بكرة الخامسة مساء'); await tick(); instances.at(-1).result('محادثة جانبية');
   assert.deepEqual(calls, ['اضف موعد', 'بكرة الخامسة مساء']); engine.stop();
+});
+
+test('task execution requires explicit task confirmation', () => {
+  assert.equal(voiceIntent('أضف مهمة مراجعة التقرير بكرة').type, 'task-prepare');
+  assert.equal(voiceIntent('علم مهمة مراجعة التقرير منجزة').type, 'task-prepare');
+  assert.equal(voiceIntent('أكّد المهمة').type, 'task-confirm');
+  assert.equal(voiceIntent('نعم').type, 'chat');
+  assert.equal(voiceIntent('الغ طلب المهمة').type, 'task-cancel');
 });

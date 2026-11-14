@@ -23,7 +23,9 @@ test('authenticated task CRUD isolates accounts and handles retried creation', a
       },
     }; return query;
   } };
-  const app = express(); app.use(express.json()); app.use('/api/tasks', createTasksRouter({ supabase, requireAuth: (req, res, next) => { if (!req.headers.authorization) return res.sendStatus(401); req.user = { id: req.headers.authorization }; next(); } }));
+  let proposal = { kind: 'create', title: 'Read', due_date: null };
+  const generate = async () => proposal;
+  const app = express(); app.use(express.json()); app.use('/api/tasks', createTasksRouter({ supabase, generate, requireAuth: (req, res, next) => { if (!req.headers.authorization) return res.sendStatus(401); req.user = { id: req.headers.authorization }; next(); } }));
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve)); t.after(() => new Promise(resolve => server.close(resolve)));
   const call = async (method, route = '', body, user = 'one') => { const response = await fetch(`http://127.0.0.1:${server.address().port}/api/tasks${route}`, { method, headers: { Authorization: user, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }); const text = await response.text(); return { status: response.status, data: text.startsWith('{') ? JSON.parse(text) : null }; };
   assert.equal((await call('GET', '', null, '')).status, 401);
@@ -36,4 +38,17 @@ test('authenticated task CRUD isolates accounts and handles retried creation', a
   assert.equal((await call('PATCH', `/${id}`, { completed: true })).data.task.completed, true);
   assert.equal((await call('PATCH', `/${id}`, { completed: false, title: 'Edited' })).data.task.title, 'Edited');
   assert.equal((await call('PATCH', `/${id}`, { user_id: 'two' })).status, 400);
+  const draft = await call('POST', '/plan', { message: 'add task', timeZone: 'Asia/Riyadh' });
+  assert.equal(draft.data.kind, 'task'); assert.equal(draft.data.action, 'create'); assert.equal(rows.size, 1, 'planning does not write');
+  proposal = { kind: 'complete', id };
+  assert.equal((await call('POST', '/plan', { message: 'finish Edited' }, 'two')).status, 422, 'cannot select another user task');
+  assert.equal((await call('POST', '/plan', { message: 'finish Edited' })).data.action, 'complete');
+  assert.equal((await call('PATCH', `/${id}`, { completed: true, expected_title: 'old title' })).status, 404);
+  assert.equal(rows.get(id).completed, false, 'stale review does not complete renamed task');
+  const duplicate = '22222222-2222-4222-8222-222222222222';
+  await call('POST', '', { id: duplicate, title: 'Edited' });
+  assert.equal((await call('POST', '/plan', { message: 'finish Edited' })).data.kind, 'clarify');
+  proposal = { kind: 'create', title: 'Bad date', due_date: '2026-02-31' };
+  assert.equal((await call('POST', '/plan', { message: 'add task' })).status, 422);
+
 });

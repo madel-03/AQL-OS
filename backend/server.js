@@ -274,7 +274,7 @@ async function generateStructured(system, input) {
 app.use('/api/research', createResearchRouter({ requireAuth, generate: generateStructured }));
 app.use('/api/device', createDevicePlanRouter({ requireAuth, generate: generateStructured }));
 app.use('/api/calendar', createCalendarRouter({ requireAuth, store: calendarStore(supabase), generate: generateStructured }));
-app.use('/api/tasks', createTasksRouter({ requireAuth, supabase }));
+app.use('/api/tasks', createTasksRouter({ requireAuth, supabase, generate: generateStructured }));
 
 app.get('/api/commitments', requireAuth, async (req, res) => {
   try {

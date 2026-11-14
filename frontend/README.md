@@ -567,3 +567,7 @@ with synthetic requests; it never creates a Google event. Browser QA mocks
 recognition/playback/Google writes and exercises clarification, review, explicit
 confirmation, uncertain retries, success and cancellation. Existing calendar
 router tests cover actual Google-call construction and idempotency behavior.
+
+
+### المهام بالصوت
+بعد نشر الخادم والواجهة، فعّل جارفس وقل «يا جارفس، أضف مهمة مراجعة التقرير بكرة»، ثم «يا جارفس، أكّد المهمة». وللإنجاز: «يا جارفس، علّم مهمة مراجعة التقرير منجزة»، ثم أكّد المهمة. المراجعة لا تحفظ شيئًا؛ التنفيذ بعد التأكيد فقط. يتطلب جدول personal_tasks الموجود في backend/migrations/tasks.sql. لا يحتاج ربط Google إضافيًا. عند انقطاع الرد يحتفظ بمعرّف الطلب لإعادة المحاولة دون إنشاء مهمة ثانية. مسودات المراجعة لهذه الجلسة فقط؛ بعد تحديث الصفحة أثناء حفظ غير مؤكد، راجع قائمة المهام قبل إنشاء طلب جديد.
