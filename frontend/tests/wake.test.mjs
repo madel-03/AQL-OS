@@ -29,12 +29,21 @@ function fixture(onCommand = async () => {}, options = {}) {
   return { engine, instances, phases, errors };
 }
 test('wake matching is anchored and word bounded, with Jarvis spellings and custom names', () => {
+  assert.equal(wakeMatch('ياجارفس وش عندي اليوم', 'جارفس'), 'وش عندي اليوم');
+  assert.equal(wakeMatch('يا جارفز افتح التقويم', 'جارفس'), 'افتح التقويم');
   assert.equal(wakeMatch('يا جارفيس، وش عندي اليوم؟', 'جارفس'), 'وش عندي اليوم');
   assert.equal(wakeMatch('Hey Jarvis what is on today', 'يا جارفس'), 'what is on today');
   assert.equal(wakeMatch('يا عقلان', 'عقل'), null);
   assert.equal(wakeMatch('أنا كنت أتكلم عن جارفس', 'جارفس'), null);
   assert.equal(wakeMatch('يا مساعدي افتح المهام', 'مساعدي'), 'افتح المهام');
   assert.equal(validWakeName(''), false); assert.equal(validWakeName('a'.repeat(31)), false);
+});
+test('Arabic listening settings and alternative wake spellings work without executing interim speech', async () => {
+  const calls = [], heard = []; const { engine, instances } = fixture(async command => calls.push(command), { lang: 'ar-SA', onHeard: text => heard.push(text) });
+  engine.start(); const rec = instances[0]; assert.equal(rec.lang, 'ar-SA'); assert.equal(rec.interimResults, true); assert.equal(rec.maxAlternatives, 3);
+  rec.result('يا جارفس افتح التقويم', false); assert.equal(calls.length, 0); assert.equal(heard.at(-1), 'يا جارفس افتح التقويم');
+  const alternatives = [{ transcript: 'يا جابر افتح التقويم' }, { transcript: 'يا جارفيس افتح التقويم' }]; alternatives.isFinal = true;
+  rec.onresult({ resultIndex: 0, results: [alternatives] }); await tick(); assert.deepEqual(calls, ['افتح التقويم']); engine.stop();
 });
 test('no autostart and ambient/interim speech never becomes a command; stop cleans up', async () => {
   const calls = []; const { engine, instances } = fixture(async command => calls.push(command));

@@ -1,7 +1,8 @@
 export const normalizeVoice = value => String(value || '').normalize('NFKD').toLowerCase().replace(/[\u064b-\u065f\u0670\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
 export function wakeMatch(transcript, name) {
-  const words = normalizeVoice(transcript).split(' '); const targetName = normalizeVoice(name).replace(/^(يا|hey|hi|okay)\s+/, '');
-  const aliases = ['جارفس', 'جارفيس', 'جارفيز', 'jarvis'];
+  const normalized = normalizeVoice(transcript).replace(/^يا(?=جار)/, 'يا ');
+  const words = normalized.split(' '); const targetName = normalizeVoice(name).replace(/^(يا|hey|hi|okay)\s+/, '');
+  const aliases = ['جارفس', 'جارفيس', 'جارفيز', 'جارفز', 'جارڤيس', 'jarvis'];
   if (['يا', 'hey', 'hi', 'okay'].includes(words[0])) words.shift();
   if (aliases.includes(targetName) && aliases.includes(words[0])) return words.slice(1).join(' ');
   const target = targetName.split(' ');
@@ -11,7 +12,7 @@ export function wakeMatch(transcript, name) {
 export function validWakeName(name) { const value = normalizeVoice(name); return value.length >= 2 && value.length <= 30 && value.split(' ').length <= 3; }
 
 // Session-only recognition. No audio/transcript storage, no automatic activation.
-export function createWakeListener({ createRecognition, name, lang, onCommand, onStatus, onError, now = Date.now, commandWindow = 10000, restartDelay = 600, initiallyPaused = false }) {
+export function createWakeListener({ createRecognition, name, lang, onCommand, onStatus, onError, onHeard, now = Date.now, commandWindow = 10000, restartDelay = 600, initiallyPaused = false }) {
   let enabled = false, busy = false, external = initiallyPaused, recognizer = null, restart = null, deadlineTimer = null, deadline = 0, transaction = null, generation = 0;
   const status = phase => onStatus?.(phase);
   const clearRestart = () => { clearTimeout(restart); restart = null; };
@@ -37,15 +38,17 @@ export function createWakeListener({ createRecognition, name, lang, onCommand, o
     restart = null;
     if (!enabled || busy || external || recognizer) return;
     const rec = createRecognition(); recognizer = rec; const consumed = new Set();
-    rec.lang = lang; rec.continuous = true; rec.interimResults = false; rec.maxAlternatives = 1;
+    rec.lang = lang; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 3;
     rec.onstart = () => { if (rec === recognizer && enabled) status(deadline > now() ? 'command' : 'waiting'); };
     rec.onresult = event => {
       if (rec !== recognizer || !enabled || busy || external) return;
       for (let index = event.resultIndex || 0; index < event.results.length; index++) {
         const result = event.results[index];
+        onHeard?.(String(result[0]?.transcript || '').trim().slice(0, 240));
         if (!result.isFinal || consumed.has(index)) continue; consumed.add(index);
         const text = String(result[0]?.transcript || '').trim(); if (!text) continue;
-        const command = wakeMatch(text, name);
+        const alternatives = Array.from(result).slice(0, 3).map(item => wakeMatch(item.transcript || '', name));
+        const command = alternatives.find(value => value !== null) ?? null;
         if (command !== null) { void handle(command, !command); break; }
         if (deadline > now()) { void handle(text, false); break; }
       }
