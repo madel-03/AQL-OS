@@ -1,3 +1,4 @@
+import { pendingCalendarReply } from '../lib/calendar-conversation';
 import useTaskActions from '../lib/use-task-actions';
 import VoiceTaskCard from './VoiceTaskCard';
 import { describeTaskPlan } from '../lib/voice-task';
@@ -60,7 +61,7 @@ export default function WakeAssistant({ speak, stopSpeech }) {
     listener.current = createWakeListener({ name: name.trim(), lang: speechLanguage, onHeard: text => setDetected(text), initiallyPaused: otherVoice.current !== 'idle', createRecognition: () => new SR(),
       onStatus: next => { setPhase(next); if (['waiting', 'command', 'starting'].includes(next)) emit('listening'); else if (next === 'processing') emit('thinking'); else if (['off', 'hidden', 'error'].includes(next)) emit('idle'); },
       onError: (code, context) => {
-        const messages = { 'not-allowed': en ? 'Microphone permission was denied. Allow it in site settings, then enable listening again.' : 'لم يُسمح بالمايك. اسمح له من إعدادات الموقع ثم فعّل الاستماع مجددًا.', 'service-not-allowed': en ? 'Your browser speech service is unavailable or blocked.' : 'خدمة التعرف الصوتي في المتصفح غير متاحة أو محجوبة.', network: en ? 'The speech service could not connect. Check the browser and network, then try again.' : 'تعذّر اتصال خدمة التعرف الصوتي. تحقق من المتصفح والشبكة ثم جرّب مجددًا.', 'audio-capture': en ? 'No usable microphone was found.' : 'لم يُعثر على مايك متاح.' };
+        const messages = { 'speech-incomplete': en ? 'I did not catch the end. Please repeat, or type your request.' : 'ما التقطت نهاية الجملة. أعد طلبك أو اكتبه.', 'not-allowed': en ? 'Microphone permission was denied. Allow it in site settings, then enable listening again.' : 'لم يُسمح بالمايك. اسمح له من إعدادات الموقع ثم فعّل الاستماع مجددًا.', 'service-not-allowed': en ? 'Your browser speech service is unavailable or blocked.' : 'خدمة التعرف الصوتي في المتصفح غير متاحة أو محجوبة.', network: en ? 'The speech service could not connect. Check the browser and network, then try again.' : 'تعذّر اتصال خدمة التعرف الصوتي. تحقق من المتصفح والشبكة ثم جرّب مجددًا.', 'audio-capture': en ? 'No usable microphone was found.' : 'لم يُعثر على مايك متاح.' };
         setError(messages[code] || (en ? 'The voice request could not complete. Try again.' : 'تعذّر إكمال الطلب الصوتي. جرّب مجددًا.'));
         if (code === 'command-failed' && context?.signal && !context.signal.aborted) return say(en ? 'I could not complete that request. Please try again.' : 'ما قدرت أكمل طلبك. جرّب مرة ثانية.', context.signal);
       },
@@ -68,7 +69,8 @@ export default function WakeAssistant({ speak, stopSpeech }) {
         const current = callbacks.current; const english = current.lang === 'en';
         if (wakeOnly) return say(english ? 'Yes? What can I help you with?' : 'تفضّل، وش تحتاج؟', signal);
         setHeard(command); setError('');
-        const intent = voiceIntent(command);
+        const intent = voiceIntent(command, { calendarPending: current.calendarActions.pending, taskPending: current.taskActions.pending });
+        if (intent.type === 'confirmation-unclear') return say(english ? 'Please say confirm appointment or confirm task clearly, or use the confirmation button. Nothing has been saved.' : 'قل أكّد الموعد أو أكّد المهمة بوضوح، أو اضغط زر التأكيد. ما حفظت شيئًا.', signal);
         if (intent.type === 'stop') { stop(); return; }
         if (intent.type === 'today') { const snapshot = await current.data.refresh(); if (!signal.aborted) await say(spokenToday(snapshot, english), signal); return; }
         if (intent.type === 'navigate') { window.dispatchEvent(new CustomEvent('aql-navigate', { detail: { id: intent.id } })); await say(english ? 'Opened it for you.' : 'فتحتها لك.', signal); return; }
@@ -84,9 +86,10 @@ export default function WakeAssistant({ speak, stopSpeech }) {
         if (intent.type === 'calendar-cancel') { const pending = current.calendarActions.pending; const uncertain = current.calendarActions.uncertain; const cancelled = current.calendarActions.cancel(); await say(!cancelled ? (english ? 'A save is already running. Please wait for its result.' : 'الحفظ قيد التنفيذ؛ انتظر نتيجته.') : uncertain ? (english ? 'Cancelled the retry. Check Google Calendar: the previous save was uncertain. No event was deleted.' : 'ألغيت إعادة المحاولة. راجع تقويم Google لأن الحفظ السابق غير مؤكد. ما حذفت أي موعد.') : pending ? (english ? 'Cancelled the unsaved appointment request. No Google event was deleted.' : 'ألغيت طلب الموعد غير المحفوظ. ما حذفت أي موعد من Google.') : (english ? 'There is no pending appointment request.' : 'ما فيه طلب موعد ينتظر التأكيد.'), signal); return; }
         if (intent.type === 'calendar-prepare' || (current.calendarActions.pending && intent.type === 'chat')) {
           if (current.taskActions.pending || current.taskActions.uncertain) return say(english ? 'Confirm or cancel the pending task first.' : 'أكّد أو ألغِ طلب المهمة المعلّق أولًا.', signal);
+          if (intent.type === 'chat') { const guidance = pendingCalendarReply(command, current.calendarActions, english); if (guidance !== null) { await say(guidance, signal); return { followUp: true, followUpMs: 30000 }; } }
           const proposal = await current.calendarActions.prepare(command, signal); if (signal.aborted || proposal.kind === 'cancelled') return;
           await say(proposal.kind === 'event' ? describeCalendarPlan(proposal, english, current.name) : (proposal.question || proposal.message), signal);
-          return { followUp: proposal.kind === 'event' || proposal.kind === 'clarify' };
+          return { followUp: proposal.kind === 'event' || proposal.kind === 'clarify', followUpMs: 30000 };
         }
         if (intent.type === 'review-required') return say(english ? 'Changes and execution need review in their tool. No action has been performed.' : 'الإضافة والتعديل والتنفيذ تحتاج مراجعتك داخل الأداة. ما نفّذت أي تغيير.', signal);
         if (command.length > 1500) return say(english ? 'Please ask a shorter question.' : 'اختصر سؤالك شوي لو سمحت.', signal);

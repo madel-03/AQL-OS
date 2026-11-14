@@ -1,19 +1,22 @@
-import { normalizeVoice } from './wake-listener.js';
-export function voiceIntent(text) {
-  const value = normalizeVoice(text);
+import { normalizeVoice, wakeMatch } from './wake-listener.js';
+export function voiceIntent(text, { calendarPending = false, taskPending = false } = {}) {
+  const raw = normalizeVoice(text); const withoutWake = wakeMatch(raw, 'جارفس');
+  const value = (withoutWake === null ? raw : withoutWake).replace(/^(?:(?:لو سمحت|من فضلك|ممكن|طيب|تمام|ايوه|نعم|please|yes|okay|ok)\s+){1,3}/, '').replace(/\s+(?:لو سمحت|من فضلك|please)$/, '');
   if (/^(وقف الاستماع|اوقف الاستماع|وقف المايك|stop listening|stop microphone)$/.test(value)) return { type: 'stop' };
   if (/^(افتح|open)\s+/.test(value)) {
     const routes = { tasks: ['مهام', 'tasks'], calendar: ['تقويم', 'calendar'], projects: ['مشاريع', 'projects'], device: ['جهاز', 'device'], chat: ['محادث', 'chat', 'مساعد'] };
     for (const [id, words] of Object.entries(routes)) if (words.some(word => value.includes(word))) return { type: 'navigate', id };
   }
-  if (/^(?:اكد المهمة|احفظ المهمة|نفذ المهمة|confirm (?:the )?task)$/.test(value)) return { type: 'task-confirm' };
+  if (/^(?:(?:اكد|تاكيد|احفظ|نفذ)(?: لي)?\s*(?:هذه )?المهم[ةه]|confirm (?:the )?task)$/.test(value)) return { type: 'task-confirm' };
+  if (/^(?:اكد|اكده|تاكيد|احفظ|احفظه|confirm|save it)$/.test(value) && calendarPending !== taskPending) return { type: calendarPending ? 'calendar-confirm' : 'task-confirm' };
   if (/^(?:الغ طلب المهمة|الغي طلب المهمة|cancel (?:the )?task request)$/.test(value)) return { type: 'task-cancel' };
   if (/(مهمه|مهمة|task)/.test(value) && /(اضف|ضيف|حط|انشئ|سجل|جهز|علم|خلصت|انجز|منجز|add|create|complete|finish|done|mark)/.test(value)) return { type: 'task-prepare' };
-  if (/^(?:نعم )?(?:اكد(?: لي)? (?:الموعد|الحفظ)|احفظ(?: لي)? الموعد|نفذ(?: لي)? الموعد|confirm (?:the )?(?:event|appointment))(?: (?:لو سمحت|من فضلك|please))?$/.test(value)) return { type: 'calendar-confirm' };
+  if (/^(?:(?:اكد|تاكيد|احفظ|نفذ)(?: لي)?\s*(?:هذا )?(?:الموعد|الحفظ)|confirm (?:the )?(?:event|appointment))$/.test(value)) return { type: 'calendar-confirm' };
+  if ((calendarPending || taskPending) && /^(?:اكد|تاكيد|احفظ|confirm|save)(?:\s|الموعد|المهمة|$)/.test(value)) return { type: 'confirmation-unclear' };
   if (/^(الغ طلب الموعد|الغي طلب الموعد|الغ الموعد|الغي الموعد|cancel (the )?(event|appointment)( request)?)$/.test(value)) return { type: 'calendar-cancel' };
   const advice = /^(?:how (?:do|can|should) i|كيف (?:اقدر|اضيف|احجز|اسوي))(?:\s|$)/.test(value);
   const readQuery = /\b(?:what(?: s| is)|show|tell|list)\b|^(?:وش|ايش|اعرض|متي|متى)(?:\s|$)/.test(value);
-  const calendarAction = /\b(?:add|create|schedule|book|insert|put|plan)\b|(?:اضف|تضيف|ضيف|احجز|حجز|حدد|حط|سجل|رتب|انشئ|جهز|جدول)/.test(value);
+  const calendarAction = /\b(?:add|create|schedule|book|insert|put|plan)\b|(?:اضف|تضيف|ضيف|احجز|تحجز|حجز|حدد|حط|تحط|سجل|تسجل|رتب|انشئ|جهز|جدول|سوي|تسوي|اعمل|تعمل|ابغا|ابغي|ابغى|ابي|ودي)/.test(value);
   const calendarSubject = /(?:موعد|اجتماع|تقويم)|\b(?:calendar|appointment|meeting|session|workout)\b/.test(value);
   const scheduledTime = /(?:بعد|بكره|بكرة|غدا|الساعة)|\b(?:tomorrow|tonight|today|from now|in (?:\d+|five|ten|fifteen|thirty|an?|one|two) (?:minutes?|hours?)|at \d)\b/.test(value);
   if (!advice && !readQuery && calendarAction && (calendarSubject || scheduledTime)) return { type: 'calendar-prepare' };

@@ -2,6 +2,7 @@ import WakeAssistant from './components/WakeAssistant';
 import ReminderCenter from './components/ReminderCenter';
 import ConnectedServices from './components/ConnectedServices';
 import useCalendarActions from './lib/use-calendar-actions';
+import CalendarActionsProvider from './components/CalendarActionsProvider';
 import VoiceCalendarCard from './components/VoiceCalendarCard';
 import { calendarConversation } from './lib/calendar-conversation';
 import ProductivityProvider from './components/ProductivityProvider';
@@ -9,7 +10,8 @@ import { QuickSearch, ActivityStatus } from './components/ProductivityTools';
 import Navigation from './components/Navigation';
 import AppIcon from './components/AppIcon';
 import { pageNames } from './lib/navigation';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { createWakeListener } from './lib/wake-listener';
 import { supabase } from './lib/supabase';
 import { LangProvider } from './lib/i18n';
 import { useLang } from './lib/lang';
@@ -408,7 +410,7 @@ function NavIcon({ id }) { return <AppIcon name={id} />; }
 
 /* ========== الهيكل ========== */
 /* ========== الهيكل ========== */
-function Layout(props) { return <ProductivityProvider><LayoutBody {...props} /></ProductivityProvider>; }
+function Layout(props) { return <ProductivityProvider><CalendarActionsProvider><LayoutBody {...props} /></CalendarActionsProvider></ProductivityProvider>; }
 function LayoutBody({ page, setPage, displayName, onLogout, onCompose, children }) {
   const { lang, setLang, t } = useLang();
   const heading = pageNames[page]?.[lang === 'en' ? 1 : 0] || ''; 
@@ -1698,6 +1700,9 @@ function ChatPage({ initialDraft = '' }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [listening, setListening] = useState(false);
+  const [micLanguage, setMicLanguage] = useState('ar-SA'); const chatMic = useRef(null);
+  useEffect(() => { let active = true; supabase.auth.getSession().then(({ data }) => { if (!active) return; try { const value = localStorage.getItem(`aql-wake-name:${data.session?.user.id || 'local'}:speech-language`); if (['ar-SA', 'en-US'].includes(value)) setMicLanguage(value); } catch { /* local preference */ } }); return () => { active = false; chatMic.current?.stop(); }; }, []);
+  useEffect(() => { const hide = () => { if (document.visibilityState === 'hidden' && chatMic.current?.enabled) { chatMic.current.hide(); setListening(false); voiceState('idle'); } }; document.addEventListener('visibilitychange', hide); return () => document.removeEventListener('visibilitychange', hide); }, []);
   const [speakingId, setSpeakingId] = useState(null);
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [voiceName, setVoiceName] = useState(() => localStorage.getItem('aql-voice') || 'en-GB-RyanNeural');
@@ -1728,46 +1733,43 @@ function ChatPage({ initialDraft = '' }) {
   const stopSpeaking = () => { jarvisStop(); setSpeakingId(null); };
 
   const startListening = () => {
+    if (chatMic.current?.enabled) { chatMic.current.stop(); setListening(false); voiceState('idle'); return; }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { setError('متصفحك لا يدعم الأوامر الصوتية — جرّب Chrome.'); return; }
-    stopSpeaking();
-    window.dispatchEvent(new Event('aql-mic-claim'));
-    const rec = new SR();
-    rec.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-    rec.onresult = (e) => { const text = e.results[0][0].transcript; setInput(text); sendText(text); };
-    rec.onerror = () => { setError('تعذر سماع صوتك، حاول مجددًا.'); setListening(false); };
-    rec.onstart = () => voiceState('listening');
-    rec.onend = () => { voiceState('idle'); setListening(false); };
-    setListening(true);
-    try { rec.start(); } catch (err) { setListening(false); }
+    stopSpeaking(); setError(''); window.dispatchEvent(new Event('aql-mic-claim'));
+    chatMic.current = createWakeListener({ name: 'جارفس', lang: micLanguage, requireWake: false, createRecognition: () => new SR(),
+      onHeard: text => setInput(text),
+      onStatus: phase => { setListening(['starting', 'waiting', 'command'].includes(phase)); if (['starting', 'waiting', 'command'].includes(phase)) voiceState('listening'); },
+      onError: () => { setError('تعذّر سماع الجملة كاملة. جرّب مجددًا أو اكتبها.'); setListening(false); voiceState('idle'); },
+      onCommand: async (text, { signal }) => { voiceState('thinking'); await sendText(text, signal); },
+    }); chatMic.current.start();
   };
 
-  const sendText = async (text) => {
+  const sendText = async (text, signal) => {
     if (!text || busy) return;
     setBusy(true); setError('');
     setMessages((m) => [...m, { role: 'user', content: text }]);
-    setInput('');
+    setInput(''); let repliedWithSpeech = false;
     try {
-      const actionReply = await calendarConversation(text, calendarActions, lang === 'en');
+      const actionReply = await calendarConversation(text, calendarActions, lang === 'en', signal);
+      if (signal?.aborted) return;
       if (actionReply !== null) {
         const replyId = `action-${Date.now()}`;
         setMessages(m => [...m, { role: 'assistant', content: actionReply, id: replyId }]);
-        if (autoSpeak) speak(actionReply, replyId);
+        if (autoSpeak) { speak(actionReply, replyId); repliedWithSpeech = true; }
         return;
       }
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_URL}/api/chat`, { method: 'POST', headers, body: JSON.stringify({ message: text, lang, memory: memoryForChat }) });
+      const response = await fetch(`${API_URL}/api/chat`, { method: 'POST', headers, signal, body: JSON.stringify({ message: text, lang, memory: memoryForChat }) });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || 'تعذر إرسال الرسالة');
       const replyId = `live-${Date.now()}`;
       setMessages((m) => [...m, { role: 'assistant', content: json.reply, id: replyId }]);
-      if (autoSpeak) speak(json.reply, replyId);
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
+      if (autoSpeak) { speak(json.reply, replyId); repliedWithSpeech = true; }
+    } catch (err) { if (!signal?.aborted) setError(err.message); } finally { setBusy(false); if (!repliedWithSpeech) voiceState('idle'); }
   };
 
-  const send = (e) => { e.preventDefault(); sendText(input.trim()); };
+  const send = (e) => { e.preventDefault(); if (chatMic.current?.enabled) { chatMic.current.stop(); setListening(false); voiceState('idle'); } sendText(input.trim()); };
 
   return (
     <>
@@ -1791,6 +1793,7 @@ function ChatPage({ initialDraft = '' }) {
           <option value="ar-SA-HamedNeural">حامد — عربي</option>
           <option value="ar-SA-ZariyahNeural">زارية — عربي</option>
         </select>
+        <select aria-label="لغة المايك" value={micLanguage} disabled={listening || busy} onChange={event => setMicLanguage(event.target.value)} style={{ ...fieldStyle, width: '150px' }}><option value="ar-SA">المايك: عربي</option><option value="en-US">Mic: English</option></select>
         <button type="button" onClick={() => speak(voiceName.startsWith('ar-') ? 'مرحبًا يا سيدي، أنا عَقْل. كيف أخدمك اليوم؟' : 'At your service, sir.', 'test')}
           style={{ padding: '7px 14px', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.35)', color: '#c4b5fd' }}>
           🔊 جرّب الصوت
@@ -1832,7 +1835,7 @@ function ChatPage({ initialDraft = '' }) {
 
       <form onSubmit={send} style={{ display: 'flex', gap: '0.8rem', marginTop: '0.8rem' }}>
         <input id="chat-compose" value={input} onChange={(e) => setInput(e.target.value)} placeholder="اكتب رسالتك... أو اضغط المايك وتكلم" style={{ ...fieldStyle, flex: 1, fontSize: '1.1rem' }} />
-        <button type="button" onClick={startListening} disabled={busy || listening} title="تكلّم مع عَقْل"
+        <button type="button" onClick={startListening} disabled={busy} title="تكلّم مع عَقْل"
           style={{ padding: '12px 16px', background: listening ? 'rgba(239,68,68,0.2)' : 'rgba(56,189,248,0.1)', border: `1px solid ${listening ? 'rgba(239,68,68,0.5)' : 'rgba(56,189,248,0.35)'}`, color: listening ? '#fca5a5' : '#7dd3fc', borderRadius: '10px', cursor: 'pointer', fontSize: '1.1rem', boxShadow: listening ? '0 0 18px rgba(239,68,68,0.4)' : 'none' }}>
           {listening ? '🎙️ أسمعك...' : '🎤'}
         </button>

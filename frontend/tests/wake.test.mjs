@@ -4,6 +4,36 @@ import { createWakeListener, wakeMatch, validWakeName } from '../src/lib/wake-li
 import { spokenToday, voiceIntent } from '../src/lib/voice-commands.js';
 import { calendarConversation } from '../src/lib/calendar-conversation.js';
 const tick = (ms = 12) => new Promise(resolve => setTimeout(resolve, ms));
+test('confirmation variants save the displayed draft and acknowledgements never re-plan or save', async () => {
+  let saves = 0, preparations = 0;
+  const actions = { pending: true, plan: { event: { title: 'Gym' } }, confirm: async () => { saves++; return 'Saved'; }, prepare: async () => { preparations++; return { kind: 'clarify', question: '?' }; } };
+  for (const text of ['أكدالموعد', 'تأكيد الموعد', 'طيب أكد الموعد', 'يا جارفس أكد الموعد', 'أكد']) assert.equal(await calendarConversation(text, actions), 'Saved', text);
+  assert.equal(saves, 5); assert.equal(preparations, 0);
+  await calendarConversation('نعم', actions); await calendarConversation('تمام', actions);
+  assert.equal(saves, 5); assert.equal(preparations, 0);
+  assert.equal(voiceIntent('لا تؤكد الموعد', { calendarPending: true }).type, 'chat');
+  assert.equal(voiceIntent('اكد الموعد بعد تغيير الساعة', { calendarPending: true }).type, 'confirmation-unclear');
+  for (const text of ['ابغاك تسوي لي موعد بعد خمس دقايق', 'سويلي موعد للنادي', 'ابي موعد تجربة التنبيه بعد ربع ساعة']) assert.equal(voiceIntent(text).type, 'calendar-prepare');
+});
+test('final speech fragments join before dispatch, and speech activity/interim results prevent early cutoff', async () => {
+  const calls = []; const { engine, instances } = fixture(async text => calls.push(text), { silenceDelay: 25 }); engine.start();
+  const rec = instances[0]; rec.result('يا جارفس اضف موعد'); await tick(10); assert.equal(calls.length, 0);
+  rec.onspeechstart(); await tick(40); assert.equal(calls.length, 0);
+  rec.result('بعد خمس دقائق', false); rec.onspeechend(); await tick(40); assert.equal(calls.length, 0);
+  rec.result('بعد خمس دقائق لمدة نصف ساعة', true); await tick(45);
+  assert.deepEqual(calls, ['اضف موعد بعد خمس دقائق لمدة نصف ساعة']); engine.stop();
+});
+test('service restart preserves unfinished fragments; stopping discards queued speech', async () => {
+  const calls = []; const { engine, instances } = fixture(async text => calls.push(text), { silenceDelay: 35 }); engine.start();
+  instances[0].result('يا جارفس اضف موعد'); instances[0].onend(); await tick(8);
+  instances.at(-1).result('بكرة الخامسة مساء'); await tick(50); assert.deepEqual(calls, ['اضف موعد بكرة الخامسة مساء']);
+  instances.at(-1).result('يا جارفس احذف شي'); engine.stop(); await tick(45); assert.equal(calls.length, 1);
+});
+test('direct chat microphone captures one complete utterance without a wake name and stops', async () => {
+  const calls = []; const { engine, instances } = fixture(async text => calls.push(text), { requireWake: false, silenceDelay: 15 }); engine.start();
+  instances[0].result('سوي لي موعد'); instances[0].result('بعد ربع ساعة'); await tick(35);
+  assert.deepEqual(calls, ['سوي لي موعد بعد ربع ساعة']); assert.equal(engine.enabled, false); assert.equal(instances.length, 1);
+});
 test('gym scheduling reaches calendar review in English and Arabic without capturing schedule questions', () => {
   for (const text of ['Can you schedule a gym session starting five minutes from now?', 'Please add Gym five minutes from now', 'Insert a gym session in five minutes', 'حط لي النادي بعد خمس دقائق', 'جدول لي تمرين بكرة']) assert.equal(voiceIntent(text).type, 'calendar-prepare', text);
   assert.equal(voiceIntent('What is my schedule today?').type, 'today');
@@ -23,7 +53,7 @@ test('direct chat uses calendar preparation, clarification and explicit confirma
 });
 function fixture(onCommand = async () => {}, options = {}) {
   const instances = [], phases = [], errors = [];
-  const engine = createWakeListener({ name: 'جارفس', lang: 'ar-SA', restartDelay: 2, commandWindow: 40, onCommand, onStatus: value => phases.push(value), onError: value => errors.push(value), createRecognition: () => {
+  const engine = createWakeListener({ name: 'جارفس', lang: 'ar-SA', silenceDelay: 0, restartDelay: 2, commandWindow: 40, onCommand, onStatus: value => phases.push(value), onError: value => errors.push(value), createRecognition: () => {
     const rec = { aborted: false, results: [], start() { this.onstart?.(); }, abort() { this.aborted = true; }, result(text, final = true) { const result = [{ transcript: text }]; result.isFinal = final; const index = this.results.length && !this.results.at(-1).isFinal ? this.results.length - 1 : this.results.length; this.results[index] = result; this.onresult?.({ resultIndex: index, results: this.results }); } }; instances.push(rec); return rec;
   }, ...options });
   return { engine, instances, phases, errors };

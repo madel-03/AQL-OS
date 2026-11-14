@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useContext, useRef, useState } from 'react';
+import { CalendarActionContext } from './calendar-action-context';
 import { supabase } from './supabase';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-export default function useCalendarActions(lang) {
+export function useCalendarActionsState(lang) {
   const [awaiting, setAwaiting] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const [plan, setPlan] = useState(null); const [question, setQuestion] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [result, setResult] = useState('');
@@ -46,4 +47,9 @@ export default function useCalendarActions(lang) {
   };
   const cancel = () => { if (lock.current) return false; current.current = null; history.current = []; setPlan(null); setQuestion(''); setAwaiting(false); setError(''); setResult(''); setUncertain(false); return true; };
   return { plan, question, busy, error, result, uncertain, prepare, confirm, cancel, pending: !!plan || awaiting };
+}
+export default function useCalendarActions() {
+  const actions = useContext(CalendarActionContext);
+  if (!actions) throw new Error('CalendarActionsProvider is required');
+  return actions;
 }
