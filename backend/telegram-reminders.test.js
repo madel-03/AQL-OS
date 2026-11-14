@@ -1,12 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
+import { readFile } from 'node:fs/promises';
 import { reminderPreferences, telegramReminderCandidates, runTelegramReminders, createTelegramReminderRouter, reminderErrorResponse } from './telegram-reminders.js';
 import { reminderStorageError, telegramReminderStore } from './telegram-reminder-store.js';
 const start = Date.parse('2026-11-14T06:00:00Z'); // Riyadh 09:00
 const account = { user_id: 'one', chat_id: '100', reminder_chat_id: '100', time_zone: 'Asia/Riyadh', reminders_enabled: true, reminders_tasks: true, reminders_calendar: true, reminder_lead: 10, reminder_task_time: '09:00', reminders_updated_at: 'v1' };
 const tasks = [{ id: 't', title: 'Private task', due_date: '2026-11-14', completed: false }];
 const events = [{ id: 'e', title: 'Meeting', start: { dateTime: new Date(start + 5 * 60000).toISOString() } }];
+test('installer and hotfix avoid PostgreSQL regex bounds above 255 while preserving 256-character secrets', async () => {
+  const source = await readFile(new URL('./migrations/telegram-reminders.sql', import.meta.url), 'utf8');
+  const hotfix = await readFile(new URL('./migrations/telegram-reminders-fix-2201b.sql', import.meta.url), 'utf8');
+  for (const sql of [source, hotfix]) {
+    for (const match of sql.matchAll(/\{(\d+)(?:,(\d+))?\}/g)) { assert(Number(match[1]) <= 255); if (match[2]) assert(Number(match[2]) <= 255); }
+    assert(sql.includes('length(p_secret) not between 32 and 256')); assert(sql.includes("p_secret !~ '^[a-zA-Z0-9_-]+$'"));
+    assert(sql.includes('p_secret is null')); assert(sql.includes("notify pgrst, 'reload schema'"));
+  }
+  assert.equal(source.slice(source.indexOf('-- Called by the backend')), hotfix.slice(hotfix.indexOf('-- Called by the backend')));
+});
 test('database diagnostics distinguish setup failures without disclosing SQL arguments or secrets', async () => {
   const cases = [['42P01', 'table missing', 'REMINDER_SCHEMA'], ['PGRST202', 'function missing', 'REMINDER_RPC_CACHE'], ['42501', 'permission denied', 'REMINDER_PERMISSIONS'], ['42883', 'vault.create_secret missing', 'REMINDER_VAULT'], ['3F000', 'cron schema missing', 'REMINDER_CRON']];
   for (const [code, message, expected] of cases) {
