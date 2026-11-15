@@ -12,12 +12,12 @@ test('a stable interim-only wake name receives a spoken acknowledgement, includi
   const ended = fixture(async (text, meta) => calls.push({ text, wakeOnly: meta.wakeOnly })); ended.engine.start(); ended.instances[0].result('يا جارفس', false); ended.instances[0].onend(); await tick();
   assert.equal(calls.length, 2); assert.equal(calls[1].wakeOnly, true); ended.engine.stop();
 });
-test('continued speech cancels the interim greeting and native stop requests a final result before dispatch', async () => {
+test('continued speech cancels the interim greeting and never force-closes the microphone', async () => {
   const calls = []; const f = fixture(async (text, meta) => calls.push({ text, wakeOnly: meta.wakeOnly }), { wakeDelay: 30, finalizeDelay: 20, silenceDelay: 10 });
   f.engine.start(); const rec = f.instances[0]; let nativeStops = 0;
   rec.stop = () => { nativeStops++; rec.result('يا جارفس اضف موعد بعد ربع ساعة', true); rec.onend?.(); };
   rec.result('يا جارفس', false); await tick(5); rec.result('يا جارفس اضف موعد بعد ربع ساعة', false); await tick(55);
-  assert.equal(nativeStops, 1); assert.deepEqual(calls, [{ text: 'اضف موعد بعد ربع ساعة', wakeOnly: false }]); f.engine.stop();
+  assert.equal(nativeStops, 0); assert.deepEqual(calls, []); f.engine.submitCaptured(); await tick(); assert.deepEqual(calls, [{ text: 'اضف موعد بعد ربع ساعة', wakeOnly: false }]); f.engine.stop();
   const stopped = fixture(async () => calls.push('unexpected'), { wakeDelay: 10 }); stopped.engine.start(); stopped.instances[0].result('يا جارفس', false); stopped.engine.hide(); await tick(25); assert.equal(calls.length, 1);
 });
 test('mobile final result settles even when speechend is never emitted', async () => {
@@ -167,4 +167,13 @@ test('task execution requires explicit task confirmation', () => {
   assert.equal(voiceIntent('أكّد المهمة').type, 'task-confirm');
   assert.equal(voiceIntent('نعم').type, 'chat');
   assert.equal(voiceIntent('الغ طلب المهمة').type, 'task-cancel');
+});
+
+test('rapid native service endings stop after one recovery instead of reopening the microphone forever', async () => {
+  const f = fixture(); f.engine.start(); f.instances[0].onend(); await tick(); assert.equal(f.instances.length, 2);
+  f.instances[1].onend(); await tick(30); assert.equal(f.instances.length, 2); assert.equal(f.engine.enabled, false); assert.equal(f.errors.at(-1), 'unstable-recognition');
+});
+test('duplicate audio idle signals do not reopen an already listening microphone; another owner stops it', async () => {
+  const first = fixture(); first.engine.start(); for (let i = 0; i < 10; i++) first.engine.externalVoice('idle'); await tick(); assert.equal(first.instances.length, 1); assert.equal(first.instances[0].aborted, false);
+  const second = fixture(); second.engine.start(); assert.equal(first.engine.enabled, false); assert.equal(first.instances[0].aborted, true); second.engine.stop();
 });

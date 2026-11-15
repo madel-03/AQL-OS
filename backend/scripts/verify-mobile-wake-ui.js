@@ -27,11 +27,12 @@ try{
  const ready=()=>page.waitForFunction(()=>globalThis.__recognizers.some(item=>item.active));
  const say=text=>page.evaluate(value=>globalThis.__say(value),text);
  await page.goto('http://127.0.0.1:5175',{waitUntil:'networkidle2'});assert.equal(await page.evaluate(()=>globalThis.__recognizers.length),0,'No microphone before consent');
+ await page.$$eval('.voice-presence .voice-mode-options button',buttons=>buttons.find(b=>b.textContent.includes('نداء بالاسم')).click());
  await page.click('.wake-trigger');await page.waitForSelector('.wake-dialog[open] .studio-primary:not(:disabled)');assert.equal(await page.$eval('[name="wake-name"]',el=>el.value),'جارفس');
  await page.click('.wake-dialog header button'); await page.waitForSelector('.voice-presence'); await page.click('.voice-main-toggle');await ready(); assert.equal(await page.$eval('.voice-presence',el=>el.dataset.phase),'waiting'); assert.notEqual(await page.$eval('.voice-liquid',el=>getComputedStyle(el).animationName),'none'); await say('أنا أتكلم في محادثة جانبية');assert.equal(chats.length,0);assert.equal(speech.length,0);
 
 
- assert.equal(await page.evaluate(()=>globalThis.__recognizers.at(-1).continuous),false,'Mobile capture uses single-session mode');
+ assert.equal(await page.evaluate(()=>globalThis.__recognizers.at(-1).continuous),true,'Native wake uses continuous mode without forced-stop cycling');
  await page.evaluate(()=>globalThis.__recognizers.at(-1).onspeechstart());await say('يا جارفس اضف موعد تجربة التنبيه بعد 15 دقيقة لمدة نصف ساعة');
  await page.waitForFunction(()=>document.querySelector('.voice-calendar-card')?.textContent.includes('مراجعة المشروع'));await ready();assert.equal(plans.length,1);assert.equal(saves.length,0);
  await page.evaluate(()=>globalThis.__sayInterim('يا جارفس سوي لي موعد للنادي بعد خمس دقائق'));await page.waitForSelector('.voice-presence .captured-speech button');

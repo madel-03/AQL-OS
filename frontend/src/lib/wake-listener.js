@@ -1,3 +1,4 @@
+import { claimMicrophone } from './microphone-owner.js';
 export const normalizeVoice = value => String(value || '').normalize('NFKD').toLowerCase().replace(/[\u064b-\u065f\u0670\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
 export function wakeMatch(transcript, name) {
   const normalized = normalizeVoice(transcript).replace(/^يا(?=جار)/, 'يا ');
@@ -12,11 +13,11 @@ export function wakeMatch(transcript, name) {
 export function validWakeName(name) { const value = normalizeVoice(name); return value.length >= 2 && value.length <= 30 && value.split(' ').length <= 3; }
 
 // Session-only recognition. No audio/transcript storage, no automatic activation.
-export function createWakeListener({ createRecognition, name, lang, onCommand, onStatus, onError, onHeard, onCapture, now = Date.now, commandWindow = 10000, restartDelay = 250, silenceDelay = 1800, utteranceLimit = 30000, wakeDelay = 1000, finalizeDelay = 2400, initiallyPaused = false, requireWake = true, continuous = true }) {
+export function createWakeListener({ createRecognition, name, lang, onCommand, onStatus, onError, onHeard, onCapture, now = Date.now, commandWindow = 10000, restartDelay = 1500, silenceDelay = 1800, utteranceLimit = 30000, wakeDelay = 1000, initiallyPaused = false, requireWake = true, continuous = true }) {
   let enabled = false, busy = false, external = initiallyPaused, recognizer = null, restart = null, deadlineTimer = null, deadline = 0, transaction = null, generation = 0;
   let pending = null, phraseTimer = null, phraseLimit = null, interimActive = false, speechActive = false;
   let captured = '', lastActivity = 0;
-  let settleTimer = null, finalizing = null;
+  let settleTimer = null, releaseOwner = null, unexpectedEnds = [];
   const clearSettle = () => { clearTimeout(settleTimer); settleTimer = null; };
   const capture = text => { captured = String(text).slice(0, 2000); onCapture?.(captured); };
   const combined = tail => {
@@ -28,8 +29,8 @@ export function createWakeListener({ createRecognition, name, lang, onCommand, o
   const clearPhrase = () => { clearTimeout(phraseTimer); clearTimeout(phraseLimit); phraseTimer = phraseLimit = null; pending = null; interimActive = false; };
   const status = phase => onStatus?.(phase);
   const clearRestart = () => { clearTimeout(restart); restart = null; };
-  const detach = () => { clearSettle(); finalizing = null; const previous = recognizer; recognizer = null; speechActive = false; if (previous) { previous.onresult = previous.onstart = previous.onend = previous.onerror = previous.onspeechstart = previous.onspeechend = null; try { previous.abort(); } catch { /* already closed */ } } };
-  const stop = (phase = 'off') => { enabled = false; generation++; clearRestart(); clearPhrase(); capture(''); clearTimeout(deadlineTimer); deadline = 0; transaction?.abort(); transaction = null; detach(); busy = false; status(phase); };
+  const detach = () => { clearSettle(); const previous = recognizer; recognizer = null; speechActive = false; if (previous) { previous.onresult = previous.onstart = previous.onend = previous.onerror = previous.onspeechstart = previous.onspeechend = null; try { previous.abort(); } catch { /* already closed */ } } };
+  const stop = (phase = 'off') => { enabled = false; generation++; clearRestart(); clearPhrase(); capture(''); clearTimeout(deadlineTimer); deadline = 0; transaction?.abort(); transaction = null; detach(); releaseOwner?.(); releaseOwner = null; busy = false; status(phase); };
   const fatal = code => { stop('error'); onError?.(code); };
   const schedule = () => { clearRestart(); if (enabled && !busy && !external) restart = setTimeout(listen, restartDelay); };
   async function handle(command, wakeOnly) {
@@ -75,11 +76,9 @@ export function createWakeListener({ createRecognition, name, lang, onCommand, o
       if (rec !== recognizer || !enabled || busy || external) return;
       // A greeting is read-only. Never interpret interim speech as permission to write.
       if (wakeOnly) { void handle('', true); return; }
-      if (typeof rec.stop === 'function') {
-        finalizing = rec;
-        try { rec.stop(); } catch { finalizing = null; }
-      }
-    }, wakeOnly ? wakeDelay : finalizeDelay);
+      // Do not force-stop recognition to manufacture final results. The user
+      // can submit the displayed capture; recorded speech is available separately.
+    }, wakeOnly ? wakeDelay : silenceDelay);
   }
   function listen() {
     restart = null;
@@ -118,16 +117,18 @@ export function createWakeListener({ createRecognition, name, lang, onCommand, o
     rec.onerror = event => { if (rec !== recognizer || !enabled) return; if (['no-speech', 'aborted'].includes(event.error)) return; fatal(event.error || 'recognition-error'); };
     rec.onend = () => {
       if (rec !== recognizer) return;
-      clearSettle(); const unfinished = finalizing === rec && (interimActive || (!pending && !!captured)); finalizing = null; recognizer = null; speechActive = false;
+      clearSettle(); recognizer = null; speechActive = false;
       if (interimWakeOnly) { void handle('', true); return; }
-      if (unfinished) { clearPhrase(); status('waiting'); onError?.('speech-incomplete'); }
       if (pending && !interimActive) { clearTimeout(phraseTimer); phraseTimer = setTimeout(flushPhrase, silenceDelay); }
+      if (!requireWake) { stop(); return; }
+      unexpectedEnds = unexpectedEnds.filter(time => now() - time < 15000); unexpectedEnds.push(now());
+      if (unexpectedEnds.length >= 2) { fatal('unstable-recognition'); return; }
       schedule();
     };
     try { rec.start(); } catch { fatal('start-failed'); }
   }
   return {
-    start() { if (enabled) return; if (!validWakeName(name)) return fatal('invalid-name'); enabled = true; generation++; status(external ? 'paused-audio' : 'starting'); listen(); },
+    start() { if (enabled) return; if (!validWakeName(name)) return fatal('invalid-name'); releaseOwner = claimMicrophone(() => stop()); unexpectedEnds = []; enabled = true; generation++; status(external ? 'paused-audio' : 'starting'); listen(); },
     stop,
     acknowledge() { if (!enabled || busy || external) return false; void handle('', true); return true; },
     submitCaptured(text = captured) {
@@ -135,8 +136,8 @@ export function createWakeListener({ createRecognition, name, lang, onCommand, o
       const command = wakeMatch(text, name); void handle(command === null ? text.trim().slice(0, 2000) : command, false); return true;
     },
     externalVoice(phase) {
+      const next = phase !== 'idle'; if (external === next) return; external = next;
       if (!enabled || busy) return;
-      external = phase !== 'idle';
       if (external) { clearRestart(); clearPhrase(); capture(''); detach(); deadline = 0; clearTimeout(deadlineTimer); status('paused-audio'); }
       else { status('waiting'); schedule(); }
     },

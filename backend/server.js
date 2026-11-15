@@ -15,6 +15,7 @@ import { telegramStore } from './telegram-store.js';
 import { calendarReader } from './calendar-reader.js';
 import { createTelegramReminderRouter } from './telegram-reminders.js';
 import { telegramReminderStore } from './telegram-reminder-store.js';
+import { createSpeechRouter } from './speech.js';
 
 
 
@@ -280,6 +281,7 @@ app.use('/api/research', createResearchRouter({ requireAuth, generate: generateS
 app.use('/api/device', createDevicePlanRouter({ requireAuth, generate: generateStructured }));
 app.use('/api/calendar', createCalendarRouter({ requireAuth, store: calendarStore(supabase), generate: generateStructured }));
 app.use('/api/tasks', createTasksRouter({ requireAuth, supabase, generate: generateStructured }));
+app.use('/api/speech', createSpeechRouter({ requireAuth }));
 const telegramStorage = telegramStore(supabase);
 app.use('/api/telegram/reminders', createTelegramReminderRouter({ requireAuth, store: telegramReminderStore(supabase), readCalendar: calendarReader({ store: calendarStore(supabase) }) }));
 app.use('/api/telegram', createTelegramRouter({ requireAuth, store: telegramStorage, readCalendar: calendarReader({ store: calendarStore(supabase) }) }));

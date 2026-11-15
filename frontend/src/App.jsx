@@ -1,3 +1,4 @@
+import { claimMicrophone } from './lib/microphone-owner';
 import { speechAudioElement, unlockSpeechAudio } from './lib/speech-audio';
 import WakeAssistant from './components/WakeAssistant';
 import ReminderCenter from './components/ReminderCenter';
@@ -689,15 +690,16 @@ function VoiceAgentBar({ onRefresh }) {
     if (!SR) return;
     window.dispatchEvent(new Event('aql-mic-claim'));
     const rec = new SR();
+    const releaseMic = claimMicrophone(() => { rec.onend = null; try { rec.abort(); } catch { /* already ended */ } setListening(false); voiceState('idle'); });
     rec.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
     rec.interimResults = false;
     rec.maxAlternatives = 1;
     rec.onresult = (e) => { const t = e.results[0][0].transcript; setText(t); run(t); };
     rec.onstart = () => voiceState('listening');
-    rec.onend = () => { voiceState('idle'); setListening(false); };
+    rec.onend = () => { releaseMic(); voiceState('idle'); setListening(false); };
     rec.onerror = () => setListening(false);
     setListening(true);
-    try { rec.start(); } catch (err) { setListening(false); }
+    try { rec.start(); } catch (err) { releaseMic(); setListening(false); }
   };
 
   return (
@@ -1114,11 +1116,12 @@ useEffect(() => {
     jarvisStop();
     window.dispatchEvent(new Event('aql-mic-claim'));
     const rec = new SR();
+    const releaseMic = claimMicrophone(() => { rec.onend = null; try { rec.abort(); } catch { /* already ended */ } setListening(false); voiceState('idle'); });
     rec.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
     rec.interimResults = false;
     rec.onresult = (e) => { const t2 = e.results[0][0].transcript; setCommand(t2); sendCommand(t2); };
     rec.onstart = () => voiceState('listening');
-    rec.onend = () => { voiceState('idle'); setListening(false); };
+    rec.onend = () => { releaseMic(); voiceState('idle'); setListening(false); };
     rec.onerror = () => setListening(false);
     setListening(true);
     try { rec.start(); } catch (e) { setListening(false); }
@@ -1739,11 +1742,12 @@ function ChatPage({ initialDraft = '' }) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { setError('متصفحك لا يدعم الأوامر الصوتية — جرّب Chrome.'); return; }
     stopSpeaking(); setError(''); window.dispatchEvent(new Event('aql-mic-claim'));
-    chatMic.current = createWakeListener({ name: 'جارفس', lang: micLanguage, requireWake: false, continuous: !window.matchMedia('(pointer: coarse)').matches, createRecognition: () => new SR(),
+    let submitted = false;
+    chatMic.current = createWakeListener({ name: 'جارفس', lang: micLanguage, requireWake: false, continuous: true, createRecognition: () => new SR(),
       onHeard: text => setInput(text), onCapture: text => { if (text) setInput(text); },
-      onStatus: phase => { setListening(['starting', 'waiting', 'command'].includes(phase)); if (['starting', 'waiting', 'command'].includes(phase)) voiceState('listening'); },
+      onStatus: phase => { setListening(['starting', 'waiting', 'command'].includes(phase)); if (['starting', 'waiting', 'command'].includes(phase)) voiceState('listening'); else if (['off', 'hidden', 'error'].includes(phase) && !submitted) voiceState('idle'); },
       onError: () => { setError('تعذّر سماع الجملة كاملة. جرّب مجددًا أو اكتبها.'); setListening(false); voiceState('idle'); },
-      onCommand: async (text, { signal }) => { voiceState('thinking'); await sendText(text, signal); },
+      onCommand: async (text, { signal }) => { submitted = true; voiceState('thinking'); await sendText(text, signal); },
     }); chatMic.current.start();
   };
 
