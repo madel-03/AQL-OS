@@ -2,7 +2,7 @@ import { useLang } from '../lib/lang';
 import AppIcon from './AppIcon';
 import '../voice-presence.css';
 
-export default function VoicePresence({ phase, name, enabled, ready, supported, label, error, heard, reply, onToggle, onSettings, calendarAction, captureAction, hint, detected }) {
+export default function VoicePresence({ phase, name, enabled, ready, supported, label, error, heard, reply, onToggle, onSettings, onTestVoice, calendarAction, captureAction, hint, detected }) {
   const { lang } = useLang(); const en = lang === 'en';
   return <section className={`voice-presence voice-${phase}`} data-phase={phase} data-skip-i18n="1" aria-label={en ? 'Your voice companion' : 'مساعدك الصوتي'}>
     <div className="voice-presence-heading"><span className="voice-presence-tag"><i />{en ? 'YOUR VOICE COMPANION' : 'صوتك يوصلني'}</span><button className="voice-settings" onClick={onSettings} aria-label={en ? 'Voice settings' : 'إعدادات الصوت'}><AppIcon name="more" /></button></div>
@@ -11,6 +11,7 @@ export default function VoicePresence({ phase, name, enabled, ready, supported, 
     <h2>{phase === 'off' ? (en ? `Hey ${name}.` : `يا ${name}.`) : label}</h2>
     <p className="voice-presence-hint">{hint || (phase === 'off' ? (en ? 'One call. A little help with your day.' : 'نادني، وخلّنا نشوف وش عندك اليوم.') : phase === 'waiting' ? (en ? `Say “Hey ${name}, what is on today?”` : `قل: «يا ${name}، وش عندي اليوم؟»`) : phase === 'speaking' ? (en ? 'I’m talking. The microphone is paused.' : 'أتحدث معك. المايك متوقف أثناء الرد.') : ['processing', 'executing'].includes(phase) ? (en ? 'A moment, I’m getting your answer.' : 'لحظة، أرتّب لك الإجابة.') : phase === 'command' ? (en ? 'Go ahead with your question.' : 'قل سؤالك، أنا معك.') : (en ? 'You control when the microphone is on.' : 'أنت تتحكم بتشغيل المايك وإيقافه.'))}</p>
     <div className="voice-presence-actions"><button className={`voice-main-toggle ${enabled ? 'is-enabled' : ''}`} disabled={!ready || (!supported && !enabled)} onClick={onToggle}><AppIcon name={enabled ? 'close' : 'mic'} />{enabled ? (en ? 'Stop listening' : 'أوقف الاستماع') : (en ? 'Talk to me' : 'كلّمني')}</button><button className="voice-settings-link" onClick={onSettings}>{en ? 'Settings' : 'الإعدادات'}</button></div>
+    {enabled && <button className="voice-settings-link wake-test-voice" disabled={!['waiting', 'command'].includes(phase)} onClick={onTestVoice}>{en ? 'Test voice reply' : 'اختبر الرد الصوتي'}</button>}
     {error && <p className="voice-inline-error" role="alert">{error}</p>}{!supported && <p className="voice-inline-error">{en ? 'Speech recognition is unavailable in this browser.' : 'التعرف على الصوت غير متاح في هذا المتصفح.'}</p>}
     {calendarAction}
     {captureAction}

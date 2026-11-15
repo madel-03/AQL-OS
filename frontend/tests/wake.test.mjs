@@ -4,6 +4,22 @@ import { createWakeListener, wakeMatch, validWakeName } from '../src/lib/wake-li
 import { spokenToday, voiceIntent } from '../src/lib/voice-commands.js';
 import { calendarConversation } from '../src/lib/calendar-conversation.js';
 const tick = (ms = 12) => new Promise(resolve => setTimeout(resolve, ms));
+test('a stable interim-only wake name receives a spoken acknowledgement, including immediate service end', async () => {
+  const calls = []; const f = fixture(async (text, meta) => calls.push({ text, wakeOnly: meta.wakeOnly }), { wakeDelay: 12 });
+  f.engine.start(); f.instances[0].result('يا جارفس', false); await tick(30);
+  assert.deepEqual(calls, [{ text: '', wakeOnly: true }]);
+  f.engine.stop();
+  const ended = fixture(async (text, meta) => calls.push({ text, wakeOnly: meta.wakeOnly })); ended.engine.start(); ended.instances[0].result('يا جارفس', false); ended.instances[0].onend(); await tick();
+  assert.equal(calls.length, 2); assert.equal(calls[1].wakeOnly, true); ended.engine.stop();
+});
+test('continued speech cancels the interim greeting and native stop requests a final result before dispatch', async () => {
+  const calls = []; const f = fixture(async (text, meta) => calls.push({ text, wakeOnly: meta.wakeOnly }), { wakeDelay: 30, finalizeDelay: 20, silenceDelay: 10 });
+  f.engine.start(); const rec = f.instances[0]; let nativeStops = 0;
+  rec.stop = () => { nativeStops++; rec.result('يا جارفس اضف موعد بعد ربع ساعة', true); rec.onend?.(); };
+  rec.result('يا جارفس', false); await tick(5); rec.result('يا جارفس اضف موعد بعد ربع ساعة', false); await tick(55);
+  assert.equal(nativeStops, 1); assert.deepEqual(calls, [{ text: 'اضف موعد بعد ربع ساعة', wakeOnly: false }]); f.engine.stop();
+  const stopped = fixture(async () => calls.push('unexpected'), { wakeDelay: 10 }); stopped.engine.start(); stopped.instances[0].result('يا جارفس', false); stopped.engine.hide(); await tick(25); assert.equal(calls.length, 1);
+});
 test('mobile final result settles even when speechend is never emitted', async () => {
   const calls = []; const { engine, instances } = fixture(async text => calls.push(text), { silenceDelay: 15, continuous: false });
   engine.start(); const rec = instances[0]; assert.equal(rec.continuous, false); rec.onspeechstart(); rec.result('يا جارفس اضف موعد بعد ربع ساعة');

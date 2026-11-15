@@ -12,10 +12,12 @@ export function wakeMatch(transcript, name) {
 export function validWakeName(name) { const value = normalizeVoice(name); return value.length >= 2 && value.length <= 30 && value.split(' ').length <= 3; }
 
 // Session-only recognition. No audio/transcript storage, no automatic activation.
-export function createWakeListener({ createRecognition, name, lang, onCommand, onStatus, onError, onHeard, onCapture, now = Date.now, commandWindow = 10000, restartDelay = 250, silenceDelay = 1800, utteranceLimit = 30000, initiallyPaused = false, requireWake = true, continuous = true }) {
+export function createWakeListener({ createRecognition, name, lang, onCommand, onStatus, onError, onHeard, onCapture, now = Date.now, commandWindow = 10000, restartDelay = 250, silenceDelay = 1800, utteranceLimit = 30000, wakeDelay = 1000, finalizeDelay = 2400, initiallyPaused = false, requireWake = true, continuous = true }) {
   let enabled = false, busy = false, external = initiallyPaused, recognizer = null, restart = null, deadlineTimer = null, deadline = 0, transaction = null, generation = 0;
   let pending = null, phraseTimer = null, phraseLimit = null, interimActive = false, speechActive = false;
   let captured = '', lastActivity = 0;
+  let settleTimer = null, finalizing = null;
+  const clearSettle = () => { clearTimeout(settleTimer); settleTimer = null; };
   const capture = text => { captured = String(text).slice(0, 2000); onCapture?.(captured); };
   const combined = tail => {
     const prefix = pending?.parts.join(' ').trim() || '';
@@ -26,7 +28,7 @@ export function createWakeListener({ createRecognition, name, lang, onCommand, o
   const clearPhrase = () => { clearTimeout(phraseTimer); clearTimeout(phraseLimit); phraseTimer = phraseLimit = null; pending = null; interimActive = false; };
   const status = phase => onStatus?.(phase);
   const clearRestart = () => { clearTimeout(restart); restart = null; };
-  const detach = () => { const previous = recognizer; recognizer = null; speechActive = false; if (previous) { previous.onresult = previous.onstart = previous.onend = previous.onerror = previous.onspeechstart = previous.onspeechend = null; try { previous.abort(); } catch { /* already closed */ } } };
+  const detach = () => { clearSettle(); finalizing = null; const previous = recognizer; recognizer = null; speechActive = false; if (previous) { previous.onresult = previous.onstart = previous.onend = previous.onerror = previous.onspeechstart = previous.onspeechend = null; try { previous.abort(); } catch { /* already closed */ } } };
   const stop = (phase = 'off') => { enabled = false; generation++; clearRestart(); clearPhrase(); capture(''); clearTimeout(deadlineTimer); deadline = 0; transaction?.abort(); transaction = null; detach(); busy = false; status(phase); };
   const fatal = code => { stop('error'); onError?.(code); };
   const schedule = () => { clearRestart(); if (enabled && !busy && !external) restart = setTimeout(listen, restartDelay); };
@@ -67,10 +69,22 @@ export function createWakeListener({ createRecognition, name, lang, onCommand, o
     clearTimeout(phraseTimer);
     if (silenceDelay === 0) flushPhrase(); else phraseTimer = setTimeout(flushPhrase, speechActive ? silenceDelay * 2 : silenceDelay);
   }
+  function settleInterim(rec, wakeOnly) {
+    clearSettle();
+    settleTimer = setTimeout(() => {
+      if (rec !== recognizer || !enabled || busy || external) return;
+      // A greeting is read-only. Never interpret interim speech as permission to write.
+      if (wakeOnly) { void handle('', true); return; }
+      if (typeof rec.stop === 'function') {
+        finalizing = rec;
+        try { rec.stop(); } catch { finalizing = null; }
+      }
+    }, wakeOnly ? wakeDelay : finalizeDelay);
+  }
   function listen() {
     restart = null;
     if (!enabled || busy || external || recognizer) return;
-    const rec = createRecognition(); recognizer = rec; const consumed = new Set();
+    const rec = createRecognition(); recognizer = rec; const consumed = new Set(); let interimWakeOnly = false;
     rec.lang = lang; rec.continuous = continuous; rec.interimResults = true; rec.maxAlternatives = 3;
     rec.onstart = () => { if (rec === recognizer && enabled) status(deadline > now() ? 'command' : 'waiting'); };
     rec.onspeechstart = () => { if (rec !== recognizer) return; speechActive = true; lastActivity = now(); clearTimeout(phraseTimer); if (pending) phraseTimer = setTimeout(flushPhrase, silenceDelay * 2); };
@@ -83,9 +97,15 @@ export function createWakeListener({ createRecognition, name, lang, onCommand, o
         onHeard?.(String(result[0]?.transcript || '').trim().slice(0, 240));
         if (!result.isFinal) {
           const text = String(result[0]?.transcript || '').trim(); const command = wakeMatch(text, name);
-          if (command !== null || pending || deadline > now() || !requireWake) capture(combined(command === null ? text : command));
+          if (command !== null || pending || deadline > now() || !requireWake) {
+            capture(combined(command === null ? text : command));
+            interimWakeOnly = command === '' && !pending?.parts.length;
+            settleInterim(rec, interimWakeOnly);
+          } else { interimWakeOnly = false; clearSettle(); }
           if (pending) { interimActive = true; clearTimeout(phraseTimer); } continue;
         }
+        clearSettle();
+        interimWakeOnly = false;
         if (consumed.has(index)) continue; consumed.add(index);
         const text = String(result[0]?.transcript || '').trim(); if (!text) continue;
         const alternatives = Array.from(result).slice(0, 3).map(item => wakeMatch(item.transcript || '', name));
@@ -96,12 +116,20 @@ export function createWakeListener({ createRecognition, name, lang, onCommand, o
       }
     };
     rec.onerror = event => { if (rec !== recognizer || !enabled) return; if (['no-speech', 'aborted'].includes(event.error)) return; fatal(event.error || 'recognition-error'); };
-    rec.onend = () => { if (rec !== recognizer) return; recognizer = null; speechActive = false; if (pending && !interimActive) { clearTimeout(phraseTimer); phraseTimer = setTimeout(flushPhrase, silenceDelay); } schedule(); };
+    rec.onend = () => {
+      if (rec !== recognizer) return;
+      clearSettle(); const unfinished = finalizing === rec && (interimActive || (!pending && !!captured)); finalizing = null; recognizer = null; speechActive = false;
+      if (interimWakeOnly) { void handle('', true); return; }
+      if (unfinished) { clearPhrase(); status('waiting'); onError?.('speech-incomplete'); }
+      if (pending && !interimActive) { clearTimeout(phraseTimer); phraseTimer = setTimeout(flushPhrase, silenceDelay); }
+      schedule();
+    };
     try { rec.start(); } catch { fatal('start-failed'); }
   }
   return {
     start() { if (enabled) return; if (!validWakeName(name)) return fatal('invalid-name'); enabled = true; generation++; status(external ? 'paused-audio' : 'starting'); listen(); },
     stop,
+    acknowledge() { if (!enabled || busy || external) return false; void handle('', true); return true; },
     submitCaptured(text = captured) {
       if (!enabled || busy || external || !captured || typeof text !== 'string' || !text.trim()) return false;
       const command = wakeMatch(text, name); void handle(command === null ? text.trim().slice(0, 2000) : command, false); return true;

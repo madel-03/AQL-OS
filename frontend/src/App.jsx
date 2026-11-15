@@ -1,3 +1,4 @@
+import { speechAudioElement, unlockSpeechAudio } from './lib/speech-audio';
 import WakeAssistant from './components/WakeAssistant';
 import ReminderCenter from './components/ReminderCenter';
 import ConnectedServices from './components/ConnectedServices';
@@ -121,22 +122,22 @@ function chunkText(text, max = 550) {
 
 function playChunkLocal(chunk, lang, signal, selectedVoice) {
   return new Promise((resolve) => {
-    if (signal.aborted || !('speechSynthesis' in window)) return resolve();
+    if (signal.aborted || !('speechSynthesis' in window)) return resolve(false);
     const parts = chunkText(chunk, 160).filter((part) => part.trim());
-    if (!parts.length) return resolve();
+    if (!parts.length) return resolve(false);
     const locale = /[\u0600-\u06ff]/.test(chunk) ? 'ar-SA' : lang === 'ar' ? 'ar-SA' : 'en-GB';
     const voices = window.speechSynthesis.getVoices();
     const preferred = voices.find((voice) => voice.name.includes(selectedVoice))
       || voices.find((voice) => voice.lang === locale)
       || voices.find((voice) => voice.lang.startsWith(locale.slice(0, 2)));
-    let done = 0;
+    let done = 0; let failed = false;
     const resumeTimer = setInterval(() => {
       if (window.speechSynthesis.speaking) window.speechSynthesis.resume();
     }, 8000);
     const cleanup = () => {
       clearInterval(resumeTimer);
       signal.removeEventListener('abort', cleanup);
-      resolve();
+      resolve(!failed && !signal.aborted);
     };
     signal.addEventListener('abort', cleanup, { once: true });
     const finish = () => {
@@ -148,7 +149,7 @@ function playChunkLocal(chunk, lang, signal, selectedVoice) {
       u.pitch = 1; u.rate = 1;
       u.lang = locale;
       if (preferred) u.voice = preferred;
-      u.onend = u.onerror = finish;
+      u.onend = finish; u.onerror = () => { failed = true; finish(); };
       u.onstart = () => voiceState('speaking');
       window.speechSynthesis.speak(u);
     });
@@ -189,7 +190,7 @@ function playPreparedAudio(blob, signal) {
   if (signal.aborted) return Promise.resolve(false);
   return new Promise((resolve) => {
     const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
+    const audio = speechAudioElement() || new Audio(); audio.src = url;
     let finished = false;
     const finish = (ok = false) => {
       if (finished) return;
@@ -213,7 +214,7 @@ function playPreparedAudio(blob, signal) {
   });
 }
 
-function jarvisSpeak(text, lang, onEnd, voice, onFallback) {
+function jarvisSpeak(text, lang, onEnd, voice, onFallback, onAudioFailure) {
   jarvisStop();
   voiceState('thinking');
   const my = jarvisSession;
@@ -233,12 +234,13 @@ function jarvisSpeak(text, lang, onEnd, voice, onFallback) {
       if (my !== jarvisSession) return;
       if (!ok) {
         onFallback?.();
-        await playChunkLocal(chunks[i], lang, signal, selectedVoice);
+        const localPlayed = await playChunkLocal(chunks[i], lang, signal, selectedVoice);
+        if (!localPlayed && !signal.aborted) { onAudioFailure?.(); break; }
       }
       if (my !== jarvisSession) return;
     }
     if (my === jarvisSession) { voiceState('idle'); onEnd && onEnd(); }
-  })();
+  })().catch(() => { if (my === jarvisSession && !signal.aborted) { onAudioFailure?.(); voiceState('idle'); onEnd?.(); } });
 }
 
 /* ========== لوحات العقل ========== */
@@ -428,7 +430,7 @@ function LayoutBody({ page, setPage, displayName, onLogout, onCompose, children 
             <ActivityStatus />
             <ReminderCenter />
             <ConnectedServices />
-            <WakeAssistant speak={(text, done) => { const saved = localStorage.getItem('aql-voice') || ''; const voice = lang === 'ar' ? (saved.startsWith('ar-') ? saved : 'ar-SA-HamedNeural') : (saved.startsWith('en-') ? saved : 'en-GB-RyanNeural'); jarvisSpeak(text, lang, done, voice); }} stopSpeech={jarvisStop} />
+            <WakeAssistant unlockAudio={unlockSpeechAudio} speak={(text, done, onAudioFailure) => { const saved = localStorage.getItem('aql-voice') || ''; const voice = lang === 'ar' ? (saved.startsWith('ar-') ? saved : 'ar-SA-HamedNeural') : (saved.startsWith('en-') ? saved : 'en-GB-RyanNeural'); jarvisSpeak(text, lang, done, voice, undefined, onAudioFailure); }} stopSpeech={jarvisStop} />
             <AssistantCompanion compact />
             <AppearancePanel />
             <button data-language-switch onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', color: '#7dd3fc', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>◐ {lang === 'ar' ? 'EN' : 'AR'}</button>
