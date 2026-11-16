@@ -177,3 +177,15 @@ test('duplicate audio idle signals do not reopen an already listening microphone
   const first = fixture(); first.engine.start(); for (let i = 0; i < 10; i++) first.engine.externalVoice('idle'); await tick(); assert.equal(first.instances.length, 1); assert.equal(first.instances[0].aborted, false);
   const second = fixture(); second.engine.start(); assert.equal(first.engine.enabled, false); assert.equal(first.instances[0].aborted, true); second.engine.stop();
 });
+
+test('event requests reach calendar review instead of conversational refusal, including missing details', async () => {
+  for (const text of ['أضف حدث', 'ممكن تضيف لي حدث', 'أريد إضافة حدث', 'إضافة حدث للنادي', 'Can you add an event for me?', 'Create an event']) {
+    assert.equal(voiceIntent(text).type, 'calendar-prepare', text);
+    let prepared = 0;
+    const reply = await calendarConversation(text, { pending: false, prepare: async () => { prepared++; return { kind: 'clarify', question: 'متى يبدأ الحدث؟' }; }, confirm: () => assert.fail('must not save without confirmation') });
+    assert.equal(prepared, 1, text);
+    assert.equal(reply, 'متى يبدأ الحدث؟');
+  }
+  assert.equal(voiceIntent('How can I add an event?').type, 'chat');
+  assert.equal(voiceIntent('كيف اضيف حدث؟').type, 'chat');
+});
