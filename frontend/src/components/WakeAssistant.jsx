@@ -1,3 +1,4 @@
+import { openMusicRequest } from '../lib/music';
 import RecordedVoice from './RecordedVoice';
 import CapturedSpeech from './CapturedSpeech';
 import { pendingCalendarReply } from '../lib/calendar-conversation';
@@ -61,6 +62,8 @@ export default function WakeAssistant({ speak, stopSpeech, unlockAudio }) {
         const current = callbacks.current; const english = current.lang === 'en';
         if (wakeOnly) return say(english ? 'Yes? What can I help you with?' : 'تفضّل، وش تحتاج؟', signal);
         setHeard(command); setError('');
+        const musicReply = openMusicRequest(command, english);
+        if (musicReply) return say(musicReply, signal);
         const intent = voiceIntent(command, { calendarPending: current.calendarActions.pending, taskPending: current.taskActions.pending });
         if (intent.type === 'confirmation-unclear') return say(english ? 'Please say confirm appointment or confirm task clearly, or use the confirmation button. Nothing has been saved.' : 'قل أكّد الموعد أو أكّد المهمة بوضوح، أو اضغط زر التأكيد. ما حفظت شيئًا.', signal);
         if (intent.type === 'stop') { stop(); return; }

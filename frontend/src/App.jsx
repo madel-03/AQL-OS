@@ -1,3 +1,4 @@
+import { openMusicRequest } from './lib/music';
 import { claimMicrophone } from './lib/microphone-owner';
 import { speechAudioElement, unlockSpeechAudio } from './lib/speech-audio';
 import WakeAssistant from './components/WakeAssistant';
@@ -1757,7 +1758,7 @@ function ChatPage({ initialDraft = '' }) {
     setMessages((m) => [...m, { role: 'user', content: text }]);
     setInput(''); let repliedWithSpeech = false;
     try {
-      const actionReply = await calendarConversation(text, calendarActions, lang === 'en', signal);
+      const actionReply = openMusicRequest(text, lang === 'en') ?? await calendarConversation(text, calendarActions, lang === 'en', signal);
       if (signal?.aborted) return;
       if (actionReply !== null) {
         const replyId = `action-${Date.now()}`;
