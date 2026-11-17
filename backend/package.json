@@ -14,7 +14,7 @@
     "test:device": "node --test device-bridge.test.js device-processes.test.js device-diagnostics.test.js",
     "test:telegram": "node --test telegram.test.js telegram-reminders.test.js",
     "test:speech": "node --test speech.test.js",
-    "test:lectures": "node --test lectures.test.js lecture-export.test.js",
+    "test:lectures": "node --test lectures.test.js lecture-export.test.js lecture-ai.test.js",
     "test:documents": "node --test document-export.test.js"
   },
   "dependencies": {

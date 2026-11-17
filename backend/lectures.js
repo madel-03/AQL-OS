@@ -1,3 +1,4 @@
+import { createLectureGemini } from './lecture-ai.js';
 import { exportLecture } from './lecture-export.js';
 import { Router, raw } from 'express';
 import { unzipSync, strFromU8 } from 'fflate';
@@ -65,16 +66,11 @@ export function createLecturesRouter({ requireAuth, config = process.env, fetche
     catch { res.status(400).json({ error: 'تعذّر تصدير المحاضرة. أعد المحاولة أو اختر Markdown.' }); }
     finally { exports--; }
   });
-  const model = config.LECTURE_GEMINI_MODEL || 'gemini-3.5-flash'; const groqModel = config.LECTURE_GROQ_MODEL || 'openai/gpt-oss-120b';
+  const groqModel = config.LECTURE_GROQ_MODEL || 'openai/gpt-oss-120b';
   const request = async (url, key, body, signal) => {
     const response = await fetcher(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...key }, body: JSON.stringify(body), signal: AbortSignal.any([signal, AbortSignal.timeout(180000)]) });
-    if (!response.ok) throw new Error(`${url.includes('groq.com') ? 'Groq' : 'Gemini'} (${response.status}): ${response.status === 429 ? 'خدمة الذكاء مشغولة أو تجاوزت الحصة؛ جرّب لاحقًا.' : response.status === 401 || response.status === 403 ? 'راجع مفتاح الخدمة وصلاحياته في الخادم.' : response.status === 404 ? 'النموذج غير متاح؛ راجع إعداد النموذج في الخادم.' : 'تعذّر تحليل المحاضرة؛ جرّب جزءًا أصغر أو راجع إعداد النموذج.'}`);
+    if (!response.ok) throw Object.assign(new Error(`${url.includes('groq.com') ? 'Groq' : 'Gemini'} (${response.status}): ${response.status === 429 ? 'تجاوزت الخدمة حد الطلبات أو الحصة. انتظر قليلًا وراجع حصة حساب API.' : response.status === 401 || response.status === 403 ? 'راجع مفتاح الخدمة وصلاحياته في الخادم.' : response.status === 404 ? 'النموذج غير متاح؛ راجع إعداد النموذج في الخادم.' : response.status >= 500 ? 'خدمة الذكاء غير متاحة مؤقتًا. أعد المحاولة لاحقًا.' : 'رفض مزود الذكاء الطلب. راجع صيغة الملف وإعدادات النموذج.'}`), { providerStatus: response.status });
     return response.json();
-  };
-  const gemini = async (parts, signal) => {
-    const data = await request(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, { 'x-goog-api-key': config.GEMINI_API_KEY }, { contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json', maxOutputTokens: 16000 } }, signal);
-    if (data.candidates?.[0]?.finishReason !== 'STOP') throw new Error('النتيجة غير مكتملة. قسّم المحاضرة إلى أجزاء أصغر.');
-    return parseJSON(data.candidates[0].content.parts.map(p => p.text || '').join(''));
   };
   const groq = async (prompt, signal) => {
     const data = await request('https://api.groq.com/openai/v1/chat/completions', { Authorization: `Bearer ${config.GROQ_API_KEY}` }, { model: groqModel, messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, max_completion_tokens: 10000 }, signal);
@@ -93,8 +89,9 @@ export function createLecturesRouter({ requireAuth, config = process.env, fetche
       res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8'); res.setHeader('Cache-Control', 'no-store'); res.flushHeaders();
       const send = value => { if (!res.destroyed) res.write(JSON.stringify(value) + '\n'); };
       heartbeat = setInterval(() => send({ heartbeat: true }), 15000);
-      const result = await analyer({ bytes: req.body, name, language: req.query.language, gemini, groq, signal: controller.signal, progress: phase => send({ phase }) });
-      send({ result: { ...result, models: [`Gemini · ${model}: قراءة ومراجعة`, `Groq · ${groqModel}: شرح وتلخيص`] } }); res.end();
+      const reader = createLectureGemini({ config, request, onRetry: retry => send({ retry }) });
+      const result = await analyer({ bytes: req.body, name, language: req.query.language, gemini: reader.generate, groq, signal: controller.signal, progress: phase => send({ phase }) });
+      send({ result: { ...result, models: [`Gemini · ${[...reader.usedModels].join(', ') || 'غير مستخدم'}: قراءة ومراجعة`, `Groq · ${groqModel}: شرح وتلخيص`] } }); res.end();
     } catch (error) {
       const message = error instanceof SyntaxError ? 'لم يُرجع أحد النماذج محتوى صالحًا. أعد المحاولة.' : error.message;
       if (!res.destroyed) { if (res.headersSent) res.end(JSON.stringify({ error: message }) + '\n'); else res.status(400).json({ error: message }); }
