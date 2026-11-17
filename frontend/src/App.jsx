@@ -1,3 +1,4 @@
+import { speechVoice } from './lib/speech-voice';
 import AssistantDocuments from './components/AssistantDocuments';
 import { requestDocument } from './lib/assistant-documents';
 import { openMusicRequest } from './lib/music';
@@ -103,24 +104,17 @@ function jarvisStop() {
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
 }
 
-function chunkText(text, max = 550) {
-  const sentences = text.match(/[^.!؟?\n]+[.!؟?]*/g) || [text];
-  const chunks = [];
-  let cur = '';
-  for (const sentence of sentences) {
-    const words = sentence.trim().split(/\s+/);
-    for (const word of words) {
-      if (word.length > max) {
-        if (cur) { chunks.push(cur); cur = ''; }
-        for (let i = 0; i < word.length; i += max) chunks.push(word.slice(i, i + max));
-        continue;
-      }
-      const s = `${cur ? ' ' : ''}${word}`;
-    if ((cur + s).length > max && cur) { chunks.push(cur); cur = s; }
-    else cur += s;
-    }
+function chunkText(text, max = 1800) {
+  const chunks = []; let current = '';
+  for (const word of String(text).trim().split(/\s+/)) {
+    if (!word) continue;
+    if (word.length > max) {
+      if (current) { chunks.push(current); current = ''; }
+      for (let i = 0; i < word.length; i += max) chunks.push(word.slice(i, i + max));
+    } else if (current && current.length + word.length + 1 > max) { chunks.push(current); current = word; }
+    else current += `${current ? ' ' : ''}${word}`;
   }
-  if (cur) chunks.push(cur);
+  if (current) chunks.push(current);
   return chunks;
 }
 
@@ -225,7 +219,7 @@ function jarvisSpeak(text, lang, onEnd, voice, onFallback, onAudioFailure) {
   const controller = new AbortController();
   jarvisController = controller;
   const { signal } = controller;
-  const selectedVoice = voice || localStorage.getItem('aql-voice') || (lang === 'ar' ? 'ar-SA-HamedNeural' : 'en-GB-RyanNeural');
+  const selectedVoice = speechVoice(lang, voice);
   (async () => {
     const chunks = chunkText(String(text || ''));
     let pending = chunks.length ? prepareChunkTTS(chunks[0], lang, selectedVoice, signal) : null;
@@ -434,7 +428,7 @@ function LayoutBody({ page, setPage, displayName, onLogout, onCompose, children 
             <ActivityStatus />
             <ReminderCenter />
             <ConnectedServices />
-            <WakeAssistant unlockAudio={unlockSpeechAudio} speak={(text, done, onAudioFailure) => { const saved = localStorage.getItem('aql-voice') || ''; const voice = lang === 'ar' ? (saved.startsWith('ar-') ? saved : 'ar-SA-HamedNeural') : (saved.startsWith('en-') ? saved : 'en-GB-RyanNeural'); jarvisSpeak(text, lang, done, voice, undefined, onAudioFailure); }} stopSpeech={jarvisStop} />
+            <WakeAssistant unlockAudio={unlockSpeechAudio} speak={(text, done, onAudioFailure) => { jarvisSpeak(text, lang, done, speechVoice(lang), undefined, onAudioFailure); }} stopSpeech={jarvisStop} />
             <AssistantCompanion compact />
             <AppearancePanel />
             <button data-language-switch onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', color: '#7dd3fc', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>◐ {lang === 'ar' ? 'EN' : 'AR'}</button>
@@ -680,7 +674,7 @@ function VoiceAgentBar({ onRefresh }) {
       const json = await res.json();
       if (!res.ok && !json.reply) throw new Error(json.error || 'error');
       setLast(json);
-      jarvisSpeak(json.reply, lang, () => onRefresh && onRefresh(), localStorage.getItem('aql-voice') || 'en-GB-RyanNeural');
+      jarvisSpeak(json.reply, lang, () => onRefresh && onRefresh(), speechVoice(lang));
     } catch (e) {
       setLast({ reply: String(e.message), actions: [] });
       onRefresh && onRefresh();
@@ -1713,7 +1707,7 @@ function ChatPage({ initialDraft = '' }) {
   useEffect(() => { const hide = () => { if (document.visibilityState === 'hidden' && chatMic.current?.enabled) { chatMic.current.hide(); setListening(false); voiceState('idle'); } }; document.addEventListener('visibilitychange', hide); return () => document.removeEventListener('visibilitychange', hide); }, []);
   const [speakingId, setSpeakingId] = useState(null);
   const [autoSpeak, setAutoSpeak] = useState(true);
-  const [voiceName, setVoiceName] = useState(() => localStorage.getItem('aql-voice') || 'en-GB-RyanNeural');
+  const [voiceName, setVoiceName] = useState(() => speechVoice(lang));
 
   useEffect(() => {
     (async () => {
@@ -1792,7 +1786,7 @@ function ChatPage({ initialDraft = '' }) {
         </div>
         <select
           value={voiceName}
-          onChange={(e) => { stopSpeaking(); setError(''); setVoiceName(e.target.value); localStorage.setItem('aql-voice', e.target.value); }}
+          onChange={(e) => { stopSpeaking(); setError(''); setVoiceName(e.target.value); localStorage.setItem('aql-voice', e.target.value); localStorage.setItem(e.target.value.startsWith('ar-') ? 'aql-voice-ar' : 'aql-voice-en', e.target.value); }}
           style={{ ...fieldStyle, width: '170px' }}
         >
           <option value="en-GB-RyanNeural">🎩 Ryan — British Butler</option>

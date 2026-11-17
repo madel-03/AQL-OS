@@ -1,3 +1,5 @@
+import { conversationalArabic } from './speech-text.js';
+import { createElevenSpeech } from './eleven-speech.js';
 import { createDocumentExportRouter } from './document-export.js';
 import { createLecturesRouter } from './lectures.js';
 import express from 'express';
@@ -658,19 +660,24 @@ app.post('/api/directive', requireAuth, async (req, res) => {
   }
 });
 
+const elevenSpeak = createElevenSpeech();
 app.post('/api/tts', requireAuth, async (req, res) => {
   try {
     const body = req.body || {};
-    const text = (body.text || '').slice(0, 600);
+    const text = typeof body.text === 'string' ? body.text.trim().slice(0, 2000) : '';
     const lang = body.lang === 'en' ? 'en' : 'ar';
     if (!text) return res.status(400).json({ error: 'No text' });
-    const defaultVoice = lang === 'ar' ? 'ar-SA-HamedNeural' : 'en-GB-RyanNeural';
+    const defaultVoice = lang === 'ar' ? 'ar-SA-ZariyahNeural' : 'en-GB-RyanNeural';
     const allowedVoices = ['en-GB-RyanNeural', 'en-GB-ThomasNeural', 'en-US-ChristopherNeural', 'en-GB-SoniaNeural', 'ar-SA-HamedNeural', 'ar-SA-ZariyahNeural'];
     const voiceName = body.voice || defaultVoice;
     if (!allowedVoices.includes(voiceName)) return res.status(400).json({ error: 'Unsupported voice' });
-    const buf = await edgeSpeak(text, voiceName);
-    console.log(`🔊 TTS via Edge: ${voiceName}`);
-    res.json({ audio: buf.toString('base64'), mime: 'audio/mpeg' });
+    const useEleven = lang === 'ar' && voiceName !== 'ar-SA-ZariyahNeural' && process.env.ARABIC_TTS_PROVIDER === 'elevenlabs';
+    const controller = new AbortController(); const abort = () => controller.abort(); res.on('close', abort);
+    try {
+      const speechText = lang === 'ar' ? conversationalArabic(text) : text;
+      const buf = useEleven ? await elevenSpeak(speechText, controller.signal) : await edgeSpeak(speechText, voiceName);
+      if (!res.destroyed) res.json({ audio: buf.toString('base64'), mime: 'audio/mpeg', provider: useEleven ? 'elevenlabs' : 'edge' });
+    } finally { res.off('close', abort); }
   } catch (err) {
     console.log('🔇 TTS edge fail:', err.message);
     res.status(500).json({ error: err.message });
