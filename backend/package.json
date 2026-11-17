@@ -15,7 +15,8 @@
     "test:telegram": "node --test telegram.test.js telegram-reminders.test.js",
     "test:speech": "node --test speech.test.js",
     "test:lectures": "node --test lectures.test.js lecture-export.test.js lecture-ai.test.js",
-    "test:documents": "node --test document-export.test.js"
+    "test:documents": "node --test document-export.test.js",
+    "test:models": "node --test chat-models.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

@@ -1,3 +1,4 @@
+import { createModelChat } from './chat-models.js';
 import { conversationalArabic } from './speech-text.js';
 import { createElevenSpeech } from './eleven-speech.js';
 import { createDocumentExportRouter } from './document-export.js';
@@ -45,9 +46,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 // 1️⃣ المفاتيح والموديلات مرتبة حسب الأولوية
 const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY || '';
-const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || 'gpt-oss-120b';
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GROQ_MODELS = (process.env.GROQ_MODELS || 'openai/gpt-oss-120b,openai/gpt-oss-20b').split(',').map((model) => model.trim()).filter(Boolean);
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MODEL_FALLBACKS = (process.env.GEMINI_MODELS || 'gemini-2.5-flash,gemini-2.5-flash-lite,gemini-3-flash-preview').split(',').map((model) => model.trim()).filter(Boolean);
@@ -113,48 +112,12 @@ function parseBrainJson(text) {
   return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-// 🌐 1. Cerebras Chat Helper (الأول والأساسي)
-async function cerebrasChat(system, messages, tools = null) {
-  if (!CEREBRAS_API_KEY) throw new Error('CEREBRAS_API_KEY missing');
-  const body = {
-    model: CEREBRAS_MODEL,
-    temperature: 0.7,
-    messages: [{ role: 'system', content: system }, ...messages],
-  };
-  if (tools) {
-    body.tools = tools;
-    body.tool_choice = 'auto';
-  }
-  const response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
-    signal: AbortSignal.timeout(45000),
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${CEREBRAS_API_KEY}` },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error('Cerebras ' + response.status);
-  return await response.json();
+const modelChat = createModelChat();
+async function cerebrasChat(system, messages, tools = null, preferQwen = false) {
+  return modelChat('cerebras', system, messages, tools, preferQwen);
 }
-
-// 🌐 2. Groq Chat Helper (الثاني الاحتياطي)
-async function groqChat(system, messages, tools = null) {
-  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY missing');
-  let lastErr = null;
-  for (const model of GROQ_MODELS) {
-    try {
-      const body = { model, temperature: 0.7, messages: [{ role: 'system', content: system }, ...messages] };
-      if (tools) { body.tools = tools; body.tool_choice = 'auto'; }
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        signal: AbortSignal.timeout(45000),
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) { lastErr = new Error('Groq ' + response.status + ' on ' + model); continue; }
-      console.log('🧠 Groq via ' + model);
-      return await response.json();
-    } catch (e) { lastErr = e; }
-  }
-  throw lastErr || new Error('All Groq models failed');
+async function groqChat(system, messages, tools = null, preferQwen = false) {
+  return modelChat('groq', system, messages, tools, preferQwen);
 }
 
 // 🌐 3. Gemini Helper (الثالث والأخير)
@@ -267,10 +230,10 @@ async function edgeSpeak(text, voiceName) {
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'AQL-OS backend' }));
 
-async function generateStructured(system, input) {
+async function generateStructured(system, input, preferQwen = false) {
   for (const provider of [cerebrasChat, groqChat]) {
     try {
-      const data = await provider(system, [{ role: 'user', content: input }]);
+      const data = await provider(system, [{ role: 'user', content: input }], null, preferQwen);
       const text = data.choices?.[0]?.message?.content || '';
       return JSON.stringify(parseBrainJson(text));
     } catch (error) { console.warn('Research provider failed:', error.message); }
@@ -286,9 +249,10 @@ async function generateStructured(system, input) {
 app.use('/api/documents', createDocumentExportRouter({ requireAuth }));
 app.use('/api/lectures', createLecturesRouter({ requireAuth }));
 app.use('/api/research', createResearchRouter({ requireAuth, generate: generateStructured }));
-app.use('/api/device', createDevicePlanRouter({ requireAuth, generate: generateStructured }));
-app.use('/api/calendar', createCalendarRouter({ requireAuth, store: calendarStore(supabase), generate: generateStructured }));
-app.use('/api/tasks', createTasksRouter({ requireAuth, supabase, generate: generateStructured }));
+const generateActionStructured = (system, input) => generateStructured(system, input, true);
+app.use('/api/device', createDevicePlanRouter({ requireAuth, generate: generateActionStructured }));
+app.use('/api/calendar', createCalendarRouter({ requireAuth, store: calendarStore(supabase), generate: generateActionStructured }));
+app.use('/api/tasks', createTasksRouter({ requireAuth, supabase, generate: generateActionStructured }));
 app.use('/api/speech', createSpeechRouter({ requireAuth }));
 const telegramStorage = telegramStore(supabase);
 app.use('/api/telegram/reminders', createTelegramReminderRouter({ requireAuth, store: telegramReminderStore(supabase), readCalendar: calendarReader({ store: calendarStore(supabase) }) }));
@@ -539,14 +503,14 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       { role: 'user', content: message }
     ];
 
-    let reply = '';
+    let reply = ''; let usedModel = ''; let usedProvider = '';
 
     // 1️⃣ Cerebras
     if (CEREBRAS_API_KEY) {
       try {
-        const data = await cerebrasChat(systemPrompt, messagesPayload);
+        const data = await cerebrasChat(systemPrompt, messagesPayload, null, true);
         reply = data.choices?.[0]?.message?.content || '';
-        if (reply.trim()) console.log('💬 Chat via Cerebras');
+        if (reply.trim()) { usedModel = data.aqlRequestedModel; usedProvider = 'cerebras'; console.log('💬 Chat via Cerebras · ' + usedModel); }
       } catch (err) {
         console.log('💬 Cerebras chat failed, sliding to Groq:', err.message);
       }
@@ -555,9 +519,9 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     // 2️⃣ Groq
     if (!reply && GROQ_API_KEY) {
       try {
-        const data = await groqChat(systemPrompt, messagesPayload);
+        const data = await groqChat(systemPrompt, messagesPayload, null, true);
         reply = data.choices?.[0]?.message?.content || '';
-        if (reply.trim()) console.log('💬 Chat via Groq');
+        if (reply.trim()) { usedModel = data.aqlRequestedModel; usedProvider = 'groq'; console.log('💬 Chat via Groq · ' + usedModel); }
       } catch (err) {
         console.log('💬 Groq chat failed, sliding to Gemini:', err.message);
       }
@@ -589,7 +553,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
           generationConfig: { temperature: 0.8 },
         });
         reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        if (reply.trim()) console.log('💬 Chat via Gemini');
+        if (reply.trim()) { usedModel = data.modelVersion || 'gemini'; usedProvider = 'gemini'; console.log('💬 Chat via Gemini'); }
       } catch (err) {
         console.error('💬 Gemini chat failed:', err.message);
       }
@@ -608,7 +572,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       { user_id: req.user.id, role: 'assistant', content: reply },
     ]);
     
-    res.json({ reply });
+    res.json({ reply, model: usedModel, provider: usedProvider });
   } catch (err) {
     console.error('Chat error:', err);
     res.status(500).json({ error: err.message });
@@ -727,7 +691,7 @@ const summarize = () => {
       console.log('🤖 Agent: Trying Cerebras...');
       let messages = [{ role: 'user', content: message }];
       for (let step = 0; step < 6; step++) {
-        const data = await cerebrasChat(system, messages, openAiTools);
+        const data = await cerebrasChat(system, messages, openAiTools, true);
         const msg = data.choices?.[0]?.message;
         if (msg?.tool_calls?.length) {
           messages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls });
@@ -755,7 +719,7 @@ const summarize = () => {
       console.log('🤖 Agent: Trying Groq...');
       let messages = [{ role: 'user', content: message }];
       for (let step = 0; step < 6; step++) {
-        const data = await groqChat(system, messages, openAiTools);
+        const data = await groqChat(system, messages, openAiTools, true);
         const msg = data.choices?.[0]?.message;
         if (msg?.tool_calls?.length) {
           messages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls });
