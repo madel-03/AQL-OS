@@ -1,3 +1,4 @@
+import { createLecturesRouter } from './lectures.js';
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
@@ -33,6 +34,7 @@ app.use(cors({
   ],
 }));
 app.use('/api/device', express.json({ limit: '400kb' }));
+app.use('/api/lectures/export', express.json({ limit: '1mb' }));
 app.use(express.json());
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -277,6 +279,7 @@ async function generateStructured(system, input) {
   const text = (data.candidates?.[0]?.content?.parts || []).map((part) => part.text || '').join('');
   return JSON.stringify(parseBrainJson(text));
 }
+app.use('/api/lectures', createLecturesRouter({ requireAuth }));
 app.use('/api/research', createResearchRouter({ requireAuth, generate: generateStructured }));
 app.use('/api/device', createDevicePlanRouter({ requireAuth, generate: generateStructured }));
 app.use('/api/calendar', createCalendarRouter({ requireAuth, store: calendarStore(supabase), generate: generateStructured }));

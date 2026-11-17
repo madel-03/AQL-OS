@@ -1,3 +1,4 @@
+import LectureStudio from './LectureStudio';
 import SpotifySearch from './SpotifySearch';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
@@ -24,7 +25,7 @@ export default function ConnectedServices() {
     return () => { active = false; clearInterval(timer); };
   }, [open, call]);
   const show = () => { dialog.current.showModal(); setOpen(true); };
-  return <><button className="services-trigger" onClick={show} aria-label={en ? 'Connected services' : 'الخدمات المرتبطة'} data-skip-i18n="1"><AppIcon name="services" /><span>{en ? 'Services' : 'الخدمات'}</span></button>
+  return <><LectureStudio /><button className="services-trigger" onClick={show} aria-label={en ? 'Connected services' : 'الخدمات المرتبطة'} data-skip-i18n="1"><AppIcon name="services" /><span>{en ? 'Services' : 'الخدمات'}</span></button>
     <dialog ref={dialog} className="services-dialog" data-skip-i18n="1" onClose={() => setOpen(false)} aria-labelledby="services-title"><header><h2 id="services-title">{en ? 'Connected services' : 'الخدمات المرتبطة'}</h2><button className="studio-text-button" onClick={() => { dialog.current.close(); setOpen(false); }} aria-label={en ? 'Close' : 'إغلاق'}>×</button></header>
       <SpotifySearch /><section><div className="services-heading"><AppIcon name="services" /><div><h3>Telegram</h3><p>@{status?.username || 'aql_jarvis_assistant_bot'}</p></div><strong>{status?.connected ? (en ? 'Connected' : 'متصل') : (en ? 'Not connected' : 'غير متصل')}</strong></div>
       <p>{en ? 'Read your day and tasks from your private bot chat, and optionally receive scheduled reminders. Requested details and enabled reminders are shared with Telegram. Editing still happens on the website.' : 'شوف يومك ومهامك من محادثتك الخاصة مع البوت، وفعّل التذكيرات إذا رغبت. البيانات المطلوبة والتذكيرات المفعّلة تُرسل إلى Telegram. التعديل يبقى من الموقع.'}</p>
