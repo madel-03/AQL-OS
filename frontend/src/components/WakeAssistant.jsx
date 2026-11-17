@@ -1,3 +1,4 @@
+import { requestDocument } from '../lib/assistant-documents';
 import { openMusicRequest } from '../lib/music';
 import RecordedVoice from './RecordedVoice';
 import CapturedSpeech from './CapturedSpeech';
@@ -62,6 +63,9 @@ export default function WakeAssistant({ speak, stopSpeech, unlockAudio }) {
         const current = callbacks.current; const english = current.lang === 'en';
         if (wakeOnly) return say(english ? 'Yes? What can I help you with?' : 'تفضّل، وش تحتاج؟', signal);
         setHeard(command); setError('');
+        const documentReply = await requestDocument(command, english, signal);
+        if (signal.aborted) return;
+        if (documentReply) return say(documentReply, signal);
         const musicReply = openMusicRequest(command, english);
         if (musicReply) return say(musicReply, signal);
         const intent = voiceIntent(command, { calendarPending: current.calendarActions.pending, taskPending: current.taskActions.pending });

@@ -11,7 +11,8 @@
     "test:appearance": "node --test tests/appearance.test.mjs",
     "test:studio": "node --test tests/studio.test.mjs",
     "test:wake": "node --test tests/wake.test.mjs tests/speech-audio.test.mjs tests/speech-capture.test.mjs",
-    "test:reminders": "node --test tests/reminders.test.mjs"
+    "test:reminders": "node --test tests/reminders.test.mjs",
+    "test:documents": "node --test tests/assistant-documents.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

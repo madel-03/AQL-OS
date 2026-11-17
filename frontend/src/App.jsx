@@ -1,3 +1,5 @@
+import AssistantDocuments from './components/AssistantDocuments';
+import { requestDocument } from './lib/assistant-documents';
 import { openMusicRequest } from './lib/music';
 import { claimMicrophone } from './lib/microphone-owner';
 import { speechAudioElement, unlockSpeechAudio } from './lib/speech-audio';
@@ -441,7 +443,7 @@ function LayoutBody({ page, setPage, displayName, onLogout, onCompose, children 
           </div>
         </div>
         <div className="page-content" key={page}>{children}</div>
-        <TaskPreview onContinue={onCompose} />
+        <AssistantDocuments /><TaskPreview onContinue={onCompose} />
         <CompletionNotice />
         <StudioDock onReturn={() => setPage('dashboard')} />
       </div>
@@ -1758,7 +1760,7 @@ function ChatPage({ initialDraft = '' }) {
     setMessages((m) => [...m, { role: 'user', content: text }]);
     setInput(''); let repliedWithSpeech = false;
     try {
-      const actionReply = openMusicRequest(text, lang === 'en') ?? await calendarConversation(text, calendarActions, lang === 'en', signal);
+      const actionReply = await requestDocument(text, lang === 'en', signal) ?? openMusicRequest(text, lang === 'en') ?? await calendarConversation(text, calendarActions, lang === 'en', signal);
       if (signal?.aborted) return;
       if (actionReply !== null) {
         const replyId = `action-${Date.now()}`;

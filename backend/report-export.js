@@ -46,7 +46,7 @@ export function reportHtml(job, font) {
   return `<!doctype html><html lang="${rtl ? 'ar' : 'en'}" dir="${rtl ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><style>
   @font-face{font-family:AQL;src:url(data:font/ttf;base64,${font}) format('truetype');font-weight:100 900}
   *{box-sizing:border-box}body{font-family:AQL,Arial,sans-serif;font-size:11pt;line-height:1.85;color:#202735;margin:0}h1,h2,h3{color:#000;line-height:1.5;break-after:avoid}h1{font-size:25pt;margin:0 0 20px}h2{font-size:16pt;margin:24px 0 10px}h3{font-size:13pt}p{margin:0 0 10px;overflow-wrap:anywhere;orphans:3;widows:3}a{color:#285c8b;text-decoration:underline;overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;margin:14px 0;font-size:10pt;table-layout:fixed}th,td{border:1px solid #cbd5e1;padding:9px;text-align:start;vertical-align:top;overflow-wrap:anywhere}th{background:#edf1f5}tr{break-inside:avoid}thead{display:table-header-group}.bullet{padding-inline-start:12px}.brand{font-size:9pt;color:#657084;margin-bottom:18px;direction:ltr;text-align:${rtl ? 'right' : 'left'}}
-  </style></head><body><div class="brand">AQL · ${job.kind === 'lecture' ? (rtl ? 'مذكرة محاضرة' : 'Lecture notes') : (rtl ? 'تقرير بحث' : 'Research report')}</div>${body}</body></html>`;
+  </style></head><body><div class="brand">AQL · ${job.kind === 'document' ? (rtl ? 'مستند عقل' : 'AQL Document') : job.kind === 'lecture' ? (rtl ? 'مذكرة محاضرة' : 'Lecture notes') : (rtl ? 'تقرير بحث' : 'Research report')}</div>${body}</body></html>`;
 }
 
 export async function exportPdf(job) {

@@ -1,3 +1,4 @@
+import { createDocumentExportRouter } from './document-export.js';
 import { createLecturesRouter } from './lectures.js';
 import express from 'express';
 import cors from 'cors';
@@ -34,6 +35,7 @@ app.use(cors({
   ],
 }));
 app.use('/api/device', express.json({ limit: '400kb' }));
+app.use('/api/documents/export', express.json({ limit: '1mb' }));
 app.use('/api/lectures/export', express.json({ limit: '1mb' }));
 app.use(express.json());
 
@@ -279,6 +281,7 @@ async function generateStructured(system, input) {
   const text = (data.candidates?.[0]?.content?.parts || []).map((part) => part.text || '').join('');
   return JSON.stringify(parseBrainJson(text));
 }
+app.use('/api/documents', createDocumentExportRouter({ requireAuth }));
 app.use('/api/lectures', createLecturesRouter({ requireAuth }));
 app.use('/api/research', createResearchRouter({ requireAuth, generate: generateStructured }));
 app.use('/api/device', createDevicePlanRouter({ requireAuth, generate: generateStructured }));
