@@ -1,3 +1,4 @@
+import { createLocalQwen } from './local-qwen.js';
 import { createModelChat } from './chat-models.js';
 import { conversationalArabic } from './speech-text.js';
 import { createElevenSpeech } from './eleven-speech.js';
@@ -113,6 +114,7 @@ function parseBrainJson(text) {
 }
 
 const modelChat = createModelChat();
+const localQwen = createLocalQwen();
 async function cerebrasChat(system, messages, tools = null, preferQwen = false) {
   return modelChat('cerebras', system, messages, tools, preferQwen);
 }
@@ -492,7 +494,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     const { data: historyData } = await supabase.from('chat_messages').select('role, content').eq('user_id', req.user.id).order('created_at', { ascending: false }).limit(10);
     const history = (historyData || []).reverse();
 
-     const live = await liveWebSearch(message, lang);
+     const live = localQwen ? null : await liveWebSearch(message, lang);
      const systemPrompt = CHAT_PERSONA + (lang === 'en' ? '\nRespond in English, address the user as "sir".' : '\nخاطب المستخدم بلقب "سيدي".')
      + `\nCurrent Case Data:\n- Commitments: ${JSON.stringify(list)}\n- Total Weekly Hours: ${totalHours}h\n- Life & Finance Summary: ${JSON.stringify(life)}`
       + (live ? `\nLIVE WEB RESULTS (اعتمد عليها إذا كانت ذات صلة واذكر المصادر بالروابط):\n${live}` : '')
@@ -505,8 +507,19 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
     let reply = ''; let usedModel = ''; let usedProvider = '';
 
+    if (localQwen) {
+      try {
+        const result = await localQwen([{ role: 'system', content: systemPrompt }, ...messagesPayload]);
+        reply = result.content;
+        usedModel = result.model;
+        usedProvider = 'ollama';
+      } catch {
+        return res.status(503).json({ error: lang === 'en' ? 'Local Qwen is unavailable. Check Ollama and try again.' : 'كوين المحلي غير متاح. تأكد أن Ollama يعمل ثم جرّب مجددًا.' });
+      }
+    }
+
     // 1️⃣ Cerebras
-    if (CEREBRAS_API_KEY) {
+    if (!reply && CEREBRAS_API_KEY) {
       try {
         const data = await cerebrasChat(systemPrompt, messagesPayload, null, true);
         reply = data.choices?.[0]?.message?.content || '';
@@ -929,3 +942,4 @@ app.post('/api/wellness', requireAuth, async (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+
