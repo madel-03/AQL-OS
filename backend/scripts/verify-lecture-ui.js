@@ -36,8 +36,30 @@ try{
  assert.ok((await page.$eval('.lecture-output',e=>e.textContent)).includes('ملخص'));
  await page.$$eval('.lecture-tabs button',buttons=>buttons.find(b=>b.textContent==='الشرح').click());assert.ok((await page.$eval('.lecture-output',e=>e.textContent)).includes('شرح'));
  assert.equal(await page.$eval('.lecture-download select',s=>s.value),'pdf');
- for(const format of ['pdf','docx','md']){await page.select('.lecture-download select',format);await page.click('.lecture-download button');await page.waitForFunction(()=>!document.querySelector('.lecture-download button').disabled);}
- assert.deepEqual(formats,['pdf','docx','md']);
+ await page.evaluate(() => {
+   globalThis.__exportedPdf = null;
+   globalThis.__pdfText = [];
+   const fill = CanvasRenderingContext2D.prototype.fillText;
+   CanvasRenderingContext2D.prototype.fillText = function (text, ...args) {
+     globalThis.__pdfText.push(text);
+     return fill.call(this, text, ...args);
+   };
+   const dispatch = HTMLAnchorElement.prototype.dispatchEvent;
+   HTMLAnchorElement.prototype.dispatchEvent = function (event) {
+     if (this.download === 'lecture.pdf') {
+       globalThis.__exportedPdf = this.download;
+       return true;
+     }
+     return dispatch.call(this, event);
+   };
+ });
+ await page.click('.lecture-download button');
+ await page.waitForFunction(() => globalThis.__exportedPdf === 'lecture.pdf');
+ const pdfText = await page.evaluate(() => globalThis.__pdfText.join('\n'));
+ for (const text of ['ملخص المحاضرة', 'شرح المفهوم', 'سؤال وإجابة']) assert.ok(pdfText.includes(text), text);
+ for (const text of ['مراجعة النص المستخرج', 'الطاقة محفوظة', '[صفحة 1]']) assert.ok(!pdfText.includes(text), text);
+ for(const format of ['docx','md']){await page.select('.lecture-download select',format);await page.click('.lecture-download button');await page.waitForFunction(()=>!document.querySelector('.lecture-download button').disabled);}
+ assert.deepEqual(formats,['docx','md']);
  assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.querySelector('.lecture-dialog').scrollWidth>document.querySelector('.lecture-dialog').clientWidth),false);
  await page.screenshot({path:'data/wake-qa/lecture-mobile.png',fullPage:true});console.log('PASS mobile lecture upload, consent gate, streamed result, tabs, no page errors or dialog overflow. Providers mocked.');
 }finally{await browser.close();}
