@@ -51,6 +51,10 @@ export function createAttachmentsRouter({ requireAuth, generate }) {
     } catch (error) {
       console.warn('Attachment analysis failed', { providerStatus: error.providerStatus, type: error.name });
       if (error.providerStatus === 429) return res.status(429).json({ error: 'provider_limit' });
+      if ([408, 500, 502, 503, 504].includes(error.providerStatus) || error.name === 'TimeoutError' || error instanceof TypeError) {
+        return res.status(503).json({ error: 'provider_busy' });
+      }
+      if (error.providerStatus === 400) return res.status(422).json({ error: 'provider_rejected' });
       return res.status(502).json({ error: 'provider_unavailable' });
     } finally {
       active.delete(req.user.id);

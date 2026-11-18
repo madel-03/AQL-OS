@@ -252,6 +252,7 @@ async function generateStructured(system, input, preferQwen = false) {
 app.use('/api/documents', createDocumentExportRouter({ requireAuth }));
 app.use('/api/lectures', createLecturesRouter({ requireAuth }));
 const attachmentModels = [...new Set([
+  process.env.ATTACHMENT_GEMINI_MODEL || 'gemini-3.5-flash-lite',
   process.env.LECTURE_GEMINI_MODEL || 'gemini-3.5-flash',
   ...(process.env.LECTURE_GEMINI_FALLBACKS || 'gemini-3.5-flash-lite,gemini-3.1-flash-lite').split(','),
 ].map(model => model.trim()).filter(Boolean))].slice(0, 3);

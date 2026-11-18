@@ -64,6 +64,8 @@ export default function AssistantAttachment({ draft = '' }) {
           busy: en ? 'File analysis is busy. Try again shortly.' : 'تحليل الملفات مشغول. جرّب بعد شوي.',
           route_missing: en ? 'File analysis is unavailable on this server version.' : 'خدمة تحليل الملفات غير متاحة في نسخة الخادم الحالية.',
           provider_limit: en ? 'Gemini has reached its request limit. Try again later.' : 'Gemini وصل لحد الطلبات. جرّب لاحقًا.',
+          provider_busy: en ? 'Gemini is temporarily unavailable. Try again shortly.' : 'خدمة Gemini غير متاحة مؤقتًا. جرّب بعد شوي.',
+          provider_rejected: en ? 'Gemini rejected the file or request. Try a PDF containing only the pages you need.' : 'Gemini رفض الملف أو الطلب. جرّب نسخة PDF فيها الصفحات المطلوبة فقط.',
           provider_unavailable: en ? 'Gemini could not process this request. Try again later.' : 'تعذّر على Gemini معالجة الطلب. جرّب لاحقًا.',
           output_limit: en ? 'The result exceeded the response limit. Ask for a smaller page range.' : 'النتيجة تجاوزت حد الرد. حدّد نطاق صفحات أصغر.',
           empty_reply: en ? 'Gemini returned no answer. Try a narrower request.' : 'Gemini ما رجّع إجابة. جرّب طلبًا أكثر تحديدًا.',
