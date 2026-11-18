@@ -35,3 +35,21 @@ test('authenticated streamed route returns stages, handles failures and rejects 
   const response = await fetch(url, options); const lines = (await response.text()).trim().split('\n').map(JSON.parse); assert.equal(lines[0].phase, 'extracting'); assert.equal(lines[1].result.summary, 'ok'); assert.ok(!JSON.stringify(lines).includes('private'));
   const failed = await fetch(url, { ...options, headers: { ...options.headers, 'X-Lecture-Name': 'bad.pdf' } }); assert.ok((await failed.text()).includes('Unreadable source'));
 });
+
+test('a complete draft surfaces before a failed review without claiming verification', async () => {
+  const drafts = [];
+  await assert.rejects(analyzeLecture({
+    name: 'notes.pptx',
+    bytes: pptx(),
+    signal: new AbortController().signal,
+    groq: async () => ({ summary: 'Summary', explanation: 'Explanation', questions: 'Practice and answers' }),
+    preview: draft => drafts.push(draft),
+    gemini: async () => {
+      assert.equal(drafts.length, 1);
+      throw new Error('review unavailable');
+    },
+  }), /review unavailable/);
+  assert.equal(drafts[0].explanation, 'Explanation');
+  assert.match(drafts[0].reviewNotes, /لم يراجعها/);
+  assert.ok(drafts[0].sources.length);
+});

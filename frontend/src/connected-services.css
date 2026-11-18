@@ -14,3 +14,10 @@
 .lecture-notebook summary{cursor:pointer;font-weight:700}
 .lecture-notebook button:focus-visible,.lecture-notebook summary:focus-visible{outline:2px solid var(--appearance-accent,#cab4ff);outline-offset:3px}
 .lecture-notebook textarea{resize:vertical}
+.lecture-reading{display:grid;gap:10px;white-space:normal}
+.lecture-reading p,.lecture-reading h3{margin:0;overflow-wrap:anywhere}
+.lecture-reading h3{margin-block-start:8px}
+.lecture-reading-item{border-inline-start:2px solid var(--appearance-accent,#cab4ff);padding:8px 12px;background:#ffffff07;border-radius:6px}
+.lecture-reading-item .lecture-answer{margin-block-start:6px;padding-block-start:6px;border-top:1px solid #ffffff20}
+.lecture-reading bdi{display:inline-block;color:#cbb5ff;font-size:.82em;margin-inline:2px}
+.lecture-item-number{color:#cbb5ff}
