@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLang } from '../lib/lang';
 import { supabase } from '../lib/supabase';
+import ScreenRequests from './ScreenRequests';
 import '../device.css';
 
 const BRIDGE = 'http://127.0.0.1:47831';
@@ -78,6 +79,7 @@ export default function DeviceSpace() {
   const statusLabel = status => ({ running: en ? 'Running' : 'يعمل الآن', stopping: en ? 'Stopping' : 'جارٍ الإيقاف', stopped: en ? 'Stopped' : 'تم إيقافه', completed: en ? 'Completed' : 'اكتمل', failed: en ? 'Failed' : 'فشل', timed_out: en ? 'Time limit reached' : 'انتهت مهلة التشغيل', queued: en ? 'Queued' : 'بانتظار الدور', skipped: en ? 'Skipped' : 'لم يُنفّذ', cancelled: en ? 'Cancelled' : 'أُلغي' })[status] || status;
   const quickPlan = (operation, summary) => perform('preview', async () => { setCodeApproved(false); setResult(null); setPreview(await local('preview', { summary, operations: [operation] })); });
   return <section className="device-space">
+    <ScreenRequests />
     <div className="section-heading"><div><span className="section-kicker">{en ? 'LOCAL DEVICE SERVICE' : 'خدمات جهازك'}</span><h3>{en ? 'AQL, with a workspace on your device.' : 'عقل صار له مساحة على جهازك.'}</h3></div><span className="status-pill">{device ? (en ? 'Connected' : 'متصل') : (en ? 'Disconnected' : 'غير متصل')}</span></div>
     <p className="studio-muted">{en ? 'Browse text files, build projects and review changes before applying them. File browsing and editing stay within your selected folder. Running programs use your normal device permissions.' : 'تصفّح ملفاتك النصية وابنِ مشاريع وراجع التغييرات قبل تطبيقها. التصفح والتعديل عبر الجسر داخل مجلدك المختار. البرامج المشغّلة تعمل بصلاحيات حسابك على الجهاز.'}</p>
     {!device ? <div className="device-setup"><ol><li>{en ? 'Create a separate work folder, then run this from the backend folder (replace the example path):' : 'أنشئ مجلد عمل مستقل، ثم شغّل هذا الأمر من مجلد backend مع استبدال المسار:'}<pre dir="ltr">npm.cmd run device -- --workspace "C:\Users\YOUR_NAME\Desktop\AQL-Workspace" --allow-run</pre></li><li>{en ? 'Paste the device key printed in that terminal. Keep the bridge running.' : 'الصق مفتاح الجهاز الذي يظهر في الطرفية واترك الجسر يعمل.'}</li></ol><form onSubmit={e => { e.preventDefault(); connect(); }} className="studio-actions"><label>{en ? 'Device key' : 'مفتاح الجهاز'}<input className="studio-input" type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required /></label><button className="studio-primary" disabled={!!busy || !key.trim()}>{busy ? '…' : en ? 'Connect device' : 'اربط الجهاز'}</button></form><p className="studio-muted">{en ? 'The key is kept in this panel’s memory only. Closing the bridge revokes it. The website may ask permission to connect to your local network.' : 'المفتاح يبقى في ذاكرة هذه اللوحة فقط؛ إغلاق الجسر يلغيه. قد يطلب المتصفح إذن الاتصال بالشبكة المحلية.'}</p></div> : <>
