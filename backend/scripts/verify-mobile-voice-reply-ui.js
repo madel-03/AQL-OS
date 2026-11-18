@@ -38,6 +38,10 @@ try{
  await say('اضف موعد تجربة التنبيه بعد 15 دقيقة لمدة نصف ساعة');
  await page.waitForFunction(()=>document.querySelector('.voice-calendar-card')?.textContent.includes('مراجعة المشروع'));await ready();assert.equal(plans.length,1);assert.equal(saves.length,0);assert.equal(chats.length,0);
  await page.evaluate(()=>{globalThis.__blockAudio=true;Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{getVoices:()=>[],speaking:false,cancel(){},resume(){},speak(utterance){queueMicrotask(()=>utterance.onerror?.());}}});});
- await page.click('.voice-presence .wake-test-voice');await page.waitForFunction(()=>document.querySelector('.voice-inline-error')?.textContent.includes('تعذّر تشغيل الرد الصوتي'));
+ const testVoice = '.voice-presence .wake-test-voice:not(:disabled)';
+ await page.waitForSelector(testVoice);
+ await page.$eval(testVoice, button => button.scrollIntoView({ block: 'center', behavior: 'instant' }));
+ await page.click(testVoice);
+ await page.waitForFunction(()=>[...document.querySelectorAll('.voice-inline-error')].some(error=>error.textContent.includes('تعذّر تشغيل الرد الصوتي')));
  assert.equal(saves.length,0);assert.deepEqual(errors,[]);console.log('PASS: interim-only mobile wake triggers TTS greeting; final command reaches the planner without forcing the microphone closed; no manual send or calendar write; blocked media plus failed local voice reports an explicit audio error. All recognition/audio/Google simulated.');
 }finally{await browser.close();}

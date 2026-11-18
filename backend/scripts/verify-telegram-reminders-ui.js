@@ -33,8 +33,11 @@ try{
 
 
  await page.click('.services-trigger');await page.waitForSelector('.services-dialog[open]');await page.waitForFunction(()=>document.querySelector('.services-dialog')?.textContent.includes('نحتاج إعداد الخادم'));
- assert.equal(linkCalls,0);configured=true;await page.click('.services-dialog section>button:last-child');await page.waitForSelector('.services-dialog .services-primary');await page.click('.services-dialog .services-primary');await page.waitForSelector('.services-dialog .services-open');assert.equal(linkCalls,1);assert.equal(confirmCalls,0);assert.match(await page.$eval('.services-open',el=>el.href),/^https:\/\/t.me\/aql_jarvis_assistant_bot\?start=/);
- claimed=true;await page.click('.services-dialog section>button:last-child');await page.waitForSelector('.services-pending .services-primary');assert.equal(confirmCalls,0,'No auto-link when Telegram claims the ticket');
+ const telegram = '.services-dialog[open] > section:has(.services-heading)';
+ const refresh = telegram + ' > button:last-child';
+ const botLink = telegram + ' .services-open[href^="https://t.me/"]';
+ assert.equal(linkCalls,0);configured=true;await page.click(refresh);await page.waitForSelector(telegram + ' .services-primary:not(:disabled)');await page.click(telegram + ' .services-primary:not(:disabled)');await page.waitForSelector(botLink);assert.equal(linkCalls,1);assert.equal(confirmCalls,0);assert.match(await page.$eval(botLink,el=>el.href),/^https:\/\/t.me\/aql_jarvis_assistant_bot\?start=/);
+ claimed=true;await page.waitForSelector(refresh + ':not(:disabled)');await page.click(refresh);await page.waitForSelector('.services-pending .services-primary:not(:disabled)');assert.equal(confirmCalls,0,'No auto-link when Telegram claims the ticket');
  await page.setViewport({width:390,height:844});await page.screenshot({path:'data/wake-qa/telegram-link-mobile.png'});assert(await page.$eval('.services-dialog',el=>el.getBoundingClientRect().width<390));
  await page.click('.services-pending .services-primary');await page.waitForFunction(()=>document.querySelector('.services-dialog')?.textContent.includes('/today'));assert.equal(confirmCalls,1);
 
