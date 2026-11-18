@@ -10,3 +10,7 @@
 .lecture-download{margin-block:18px}.lecture-download label{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.lecture-download select{padding:9px;border-radius:10px;background:#0c101e;color:#fff;border:1px solid #ffffff40;font:inherit}
 
 .assistant-document{width:min(1000px,calc(100vw - 24px));max-height:90dvh}.assistant-paper{background:#fff;color:#202735;border-radius:12px;padding:clamp(18px,4vw,48px);margin-top:18px}.assistant-paper .report-reading,.assistant-paper .report-reading p,.assistant-paper .report-reading h2,.assistant-paper .report-reading h3,.assistant-paper .report-reading h4{color:#202735}.assistant-document select{padding:9px;border-radius:8px;background:#191b28;color:#fff;border:1px solid #ffffff50;font:inherit}
+.lecture-notebook{margin-block:16px;padding:12px 14px;border:1px solid #ffffff25;border-radius:12px}
+.lecture-notebook summary{cursor:pointer;font-weight:700}
+.lecture-notebook button:focus-visible,.lecture-notebook summary:focus-visible{outline:2px solid var(--appearance-accent,#cab4ff);outline-offset:3px}
+.lecture-notebook textarea{resize:vertical}
