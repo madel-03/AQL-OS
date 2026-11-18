@@ -1,0 +1,19 @@
+.assistant-attachment {
+  width: min(36rem, calc(100% - 2rem));
+  max-height: 85dvh;
+  overflow: auto;
+  padding: 1.25rem;
+  border: 1px solid #64748b;
+  border-radius: 1rem;
+  background: #171b28;
+  color: #f1f5f9;
+}
+.assistant-attachment::backdrop { background: #060915b8; }
+.assistant-attachment form, .assistant-attachment label { display: grid; gap: .6rem; }
+.assistant-attachment form { gap: 1rem; }
+.assistant-attachment-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.assistant-attachment-heading h2 { margin: 0; font-size: 1.2rem; }
+.assistant-attachment input, .assistant-attachment textarea { min-width: 0; max-width: 100%; }
+.assistant-attachment textarea { min-height: 5rem; padding: .65rem; }
+.assistant-attachment .assistant-attachment-consent { display: flex; align-items: baseline; }
+.assistant-attachment-reply { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; border-top: 1px solid #64748b; padding-top: .75rem; }

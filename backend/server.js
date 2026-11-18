@@ -4,6 +4,7 @@ import { conversationalArabic } from './speech-text.js';
 import { createElevenSpeech } from './eleven-speech.js';
 import { createDocumentExportRouter } from './document-export.js';
 import { createLecturesRouter } from './lectures.js';
+import { createAttachmentsRouter } from './attachments.js';
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
@@ -250,6 +251,7 @@ async function generateStructured(system, input, preferQwen = false) {
 }
 app.use('/api/documents', createDocumentExportRouter({ requireAuth }));
 app.use('/api/lectures', createLecturesRouter({ requireAuth }));
+app.use('/api/attachments', createAttachmentsRouter({ requireAuth, generate: geminiGenerate }));
 app.use('/api/research', createResearchRouter({ requireAuth, generate: generateStructured }));
 const generateActionStructured = (system, input) => generateStructured(system, input, true);
 app.use('/api/device', createDevicePlanRouter({ requireAuth, generate: generateActionStructured }));

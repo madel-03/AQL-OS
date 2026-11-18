@@ -1,5 +1,6 @@
 import { speechVoice } from './lib/speech-voice';
 import AssistantDocuments from './components/AssistantDocuments';
+import AssistantAttachment from './components/AssistantAttachment';
 import { requestDocument } from './lib/assistant-documents';
 import { openMusicRequest } from './lib/music';
 import { claimMicrophone } from './lib/microphone-owner';
@@ -1847,6 +1848,7 @@ function ChatPage({ initialDraft = '' }) {
           إرسال 📨
         </button>
       </form>
+      <AssistantAttachment draft={input} />
     </div>
     </>
   );
