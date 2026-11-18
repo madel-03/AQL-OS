@@ -123,3 +123,4 @@
 }
 @media (prefers-reduced-motion: reduce) { .work-hub *, .assistant-presence *, .completion-notice { animation: none !important; transition: none !important; } }
 .home-tools-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-block:0 16px}.home-tools-heading h2{margin:0}.home-tools .hero-copy{max-width:760px}.home-day>.secondary-action{margin-block:10px 22px}.home-assistant,.home-day,.home-tools{scroll-margin-top:90px}.home-assistant .launcher-bottom{justify-content:flex-end}
+.home-assistant .launcher-bottom:has(.attachment-trigger) { justify-content: space-between; flex-wrap: wrap; }

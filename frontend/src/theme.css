@@ -97,6 +97,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .chat-bubble-user { align-self: flex-end; background: #42796c30; border-color: #8af3d438; border-end-end-radius: 6px; }
 .chat-bubble-assistant { align-self: flex-start; background: linear-gradient(135deg, #a18ae91e, #9f88df0c); border-end-start-radius: 6px; }
 .chat-shell input, .chat-shell select { border-radius: 12px !important; }
+.chat-composer { display: flex; gap: .65rem; margin-top: .8rem; flex-wrap: wrap; }
+.chat-composer > input { flex: 1 1 14rem; min-width: 0; }
+.chat-composer > button { flex: 0 0 auto; }
+@media (max-width: 560px) {
+  .chat-shell { margin-block-end: calc(72px + env(safe-area-inset-bottom, 0px)); }
+  .chat-composer > input { flex-basis: 100%; }
+  .chat-composer > button:last-child { margin-inline-start: auto; }
+}
 .page-content { animation: pageArrive .3s ease-out both; }
 @keyframes pageArrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes companionFloat { 0%, 100% { transform: translateY(0) rotate(-8deg); } 50% { transform: translateY(-9px) rotate(-3deg); } }

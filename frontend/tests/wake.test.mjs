@@ -111,10 +111,20 @@ test('no autostart and ambient/interim speech never becomes a command; stop clea
   instances[0].result('يا جارفس افتح المهام'); await tick(); assert.deepEqual(calls, ['افتح المهام']); assert.equal(instances[0].aborted, true);
   engine.stop(); const count = instances.length; await tick(); assert.equal(instances.length, count);
 });
-test('wake-only allows one follow-up after acknowledgement, then requires wake again', async () => {
-  const calls = []; const { engine, instances } = fixture(async command => calls.push(command)); engine.start();
-  instances[0].result('يا جارفس'); await tick(); instances.at(-1).result('وش عندي اليوم'); await tick();
-  instances.at(-1).result('هذه محادثة جانبية'); assert.deepEqual(calls, ['', 'وش عندي اليوم']); engine.stop();
+test('wake-only allows one follow-up after acknowledgement, then requires wake again', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
+  const calls = [];
+  const { engine, instances } = fixture(async command => { calls.push(command); });
+  t.after(() => engine.stop());
+  engine.start();
+  instances[0].result('يا جارفس');
+  await Promise.resolve();
+  t.mock.timers.tick(2);
+  instances.at(-1).result('وش عندي اليوم');
+  await Promise.resolve();
+  t.mock.timers.tick(2);
+  instances.at(-1).result('هذه محادثة جانبية');
+  assert.deepEqual(calls, ['', 'وش عندي اليوم']);
 });
 test('follow-up window expires instead of treating later speech as commands', async () => {
   const calls = []; const { engine, instances } = fixture(async command => calls.push(command), { commandWindow: 10 }); engine.start();

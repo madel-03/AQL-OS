@@ -1700,6 +1700,7 @@ function ProfilePage({ displayName, email, onLogout }) {
 
 /* ========== اتصال مباشر ========== */
 function ChatPage({ initialDraft = '' }) {
+  const messageList = useRef(null);
   const { memoryForChat } = useStudio();
   const { lang } = useLang();
   const calendarActions = useCalendarActions(lang);
@@ -1727,8 +1728,8 @@ function ChatPage({ initialDraft = '' }) {
   }, []);
 
   useEffect(() => {
-    const el = document.getElementById('chat-bottom');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
+    const list = messageList.current;
+    if (list) list.scrollTop = list.scrollHeight;
   }, [messages, busy]);
 
   const speak = (text, id) => {
@@ -1813,7 +1814,7 @@ function ChatPage({ initialDraft = '' }) {
         </button>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '0.5rem' }}>
+      <div ref={messageList} style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '0.5rem' }}>
         <VoiceCalendarCard actions={calendarActions} />
         {messages.length === 0 && (
           <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: '2rem', lineHeight: 1.8 }}>
@@ -1837,13 +1838,13 @@ function ChatPage({ initialDraft = '' }) {
           );
         })}
         {busy && <div style={{ alignSelf: 'flex-start', color: '#94a3b8', fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}>⚡ عَقْل يفكر...</div>}
-        <div id="chat-bottom" />
       </div>
 
       {error && <div style={{ color: '#fecaca', fontSize: '0.85rem', margin: '0.5rem 0' }}>⚠️ {error}</div>}
 
-      <form onSubmit={send} style={{ display: 'flex', gap: '0.8rem', marginTop: '0.8rem' }}>
-        <input id="chat-compose" value={input} onChange={(e) => setInput(e.target.value)} placeholder="اكتب رسالتك... أو اضغط المايك وتكلم" style={{ ...fieldStyle, flex: 1, fontSize: '1.1rem' }} />
+      <form onSubmit={send} className="chat-composer">
+        <input id="chat-compose" aria-label={lang === 'en' ? 'Message AQL' : 'رسالة لعقل'} value={input} onChange={(e) => setInput(e.target.value)} placeholder={lang === 'en' ? 'Write a message…' : 'اكتب رسالتك…'} style={{ ...fieldStyle, fontSize: '1.1rem' }} />
+        <AssistantAttachment draft={input} />
         <button type="button" onClick={startListening} disabled={busy} title="تكلّم مع عَقْل"
           style={{ padding: '12px 16px', background: listening ? 'rgba(239,68,68,0.2)' : 'rgba(56,189,248,0.1)', border: `1px solid ${listening ? 'rgba(239,68,68,0.5)' : 'rgba(56,189,248,0.35)'}`, color: listening ? '#fca5a5' : '#7dd3fc', borderRadius: '10px', cursor: 'pointer', fontSize: '1.1rem', boxShadow: listening ? '0 0 18px rgba(239,68,68,0.4)' : 'none' }}>
           {listening ? '🎙️ أسمعك...' : '🎤'}
@@ -1853,7 +1854,6 @@ function ChatPage({ initialDraft = '' }) {
           إرسال 📨
         </button>
       </form>
-      <AssistantAttachment draft={input} />
     </div>
     </>
   );

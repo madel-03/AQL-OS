@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useLang } from '../lib/lang';
 import './assistant-attachment.css';
@@ -21,6 +22,7 @@ export default function AssistantAttachment({ draft = '' }) {
 
   async function submit(event) {
     event.preventDefault();
+    event.stopPropagation();
     if (!file || !consent || controller.current) return;
     setError('');
     setReply('');
@@ -66,11 +68,11 @@ export default function AssistantAttachment({ draft = '' }) {
   }
 
   return <>
-    <button className="secondary-action" type="button" onClick={() => {
+    <button className="secondary-action attachment-trigger" type="button" onClick={() => {
       if (!file) setQuestion(draft.slice(0, 600));
       dialog.current.showModal();
     }}>{en ? 'Attach a file' : 'أرفق ملف'}</button>
-    <dialog ref={dialog} className="assistant-attachment" aria-label={en ? 'Ask about a file' : 'اسأل عن ملف'}>
+    {createPortal(<dialog ref={dialog} dir={en ? 'ltr' : 'rtl'} className="assistant-attachment" aria-label={en ? 'Ask about a file' : 'اسأل عن ملف'}>
       <form onSubmit={submit}>
         <div className="assistant-attachment-heading">
           <h2>{en ? 'Ask about a file' : 'اسأل عن ملف'}</h2>
@@ -89,10 +91,13 @@ export default function AssistantAttachment({ draft = '' }) {
         <label className="assistant-attachment-consent"><input type="checkbox" checked={consent} disabled={busy} onChange={event => setConsent(event.target.checked)} />
           {en ? 'I agree to send the file content and question to Gemini for analysis.' : 'أوافق على إرسال محتوى الملف والسؤال إلى Gemini للتحليل.'}
         </label>
-        <button className="primary-action" disabled={busy || !file || !consent}>{busy ? (en ? 'Analyzing…' : 'جاري التحليل…') : (en ? 'Send to AQL' : 'أرسل لعقل')}</button>
+        <div className="assistant-attachment-heading">
+          <button className="primary-action" disabled={busy || !file || !consent}>{busy ? (en ? 'Analyzing…' : 'جاري التحليل…') : (en ? 'Send to AQL' : 'أرسل لعقل')}</button>
+          {busy && <button type="button" className="secondary-action" onClick={() => controller.current?.abort()}>{en ? 'Cancel analysis' : 'ألغِ التحليل'}</button>}
+        </div>
         {error && <p role="alert">{error}</p>}
         {reply && <div className="assistant-attachment-reply" dir="auto" role="status">{reply}</div>}
       </form>
-    </dialog>
+    </dialog>, document.body)}
   </>;
 }

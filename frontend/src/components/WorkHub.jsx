@@ -108,9 +108,8 @@ export default function WorkHub({ displayName, onCompose, onNavigate, compact = 
         }}>
           <label className="sr-only" htmlFor="home-assistant-input">{en ? 'Ask AQL' : 'اطلب من عقل'}</label>
           <textarea id="home-assistant-input" maxLength={1500} value={command} onChange={event => setCommand(event.target.value)} placeholder={en ? 'Try: show my daily report…' : 'جرّب: طلع لي تقرير اليوم…'} />
-          <div className="launcher-bottom"><button className="launch-button" disabled={!command.trim()}>{en ? 'Ask AQL' : 'اطلب من عقل'} ↗</button></div>
+          <div className="launcher-bottom"><AssistantAttachment draft={command} /><button className="launch-button" disabled={!command.trim()}>{en ? 'Ask AQL' : 'اطلب من عقل'} ↗</button></div>
         </form>
-        <AssistantAttachment draft={command} />
       </div>
       <div id="aql-voice-stage" className="voice-stage-slot" />
     </section>}
