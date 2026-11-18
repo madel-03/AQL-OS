@@ -1,4 +1,4 @@
-import { speechVoice } from './lib/speech-voice';
+import { speechLanguage, speechVoice } from './lib/speech-voice';
 import AssistantDocuments from './components/AssistantDocuments';
 import AssistantAttachment from './components/AssistantAttachment';
 import { requestDocument } from './lib/assistant-documents';
@@ -119,14 +119,17 @@ function chunkText(text, max = 1800) {
   return chunks;
 }
 
-function playChunkLocal(chunk, lang, signal, selectedVoice) {
+function playChunkLocal(chunk, signal, selectedVoice) {
   return new Promise((resolve) => {
     if (signal.aborted || !('speechSynthesis' in window)) return resolve(false);
     const parts = chunkText(chunk, 160).filter((part) => part.trim());
     if (!parts.length) return resolve(false);
-    const locale = /[\u0600-\u06ff]/.test(chunk) ? 'ar-SA' : lang === 'ar' ? 'ar-SA' : 'en-GB';
+    const [language, region, voiceId] = selectedVoice.split('-');
+    const locale = `${language}-${region}`;
+    const name = voiceId?.replace(/Neural$/, '').toLowerCase();
     const voices = window.speechSynthesis.getVoices();
     const preferred = voices.find((voice) => voice.name.includes(selectedVoice))
+      || voices.find((voice) => name && voice.lang.toLowerCase().startsWith(language) && voice.name.toLowerCase().split(/\W+/).includes(name))
       || voices.find((voice) => voice.lang === locale)
       || voices.find((voice) => voice.lang.startsWith(locale.slice(0, 2)));
     let done = 0; let failed = false;
@@ -220,20 +223,22 @@ function jarvisSpeak(text, lang, onEnd, voice, onFallback, onAudioFailure) {
   const controller = new AbortController();
   jarvisController = controller;
   const { signal } = controller;
-  const selectedVoice = speechVoice(lang, voice);
+  const spokenText = String(text || '');
+  const spokenLanguage = speechLanguage(spokenText, lang);
+  const selectedVoice = speechVoice(spokenLanguage, voice);
   (async () => {
-    const chunks = chunkText(String(text || ''));
-    let pending = chunks.length ? prepareChunkTTS(chunks[0], lang, selectedVoice, signal) : null;
+    const chunks = chunkText(spokenText);
+    let pending = chunks.length ? prepareChunkTTS(chunks[0], spokenLanguage, selectedVoice, signal) : null;
     for (let i = 0; i < chunks.length; i++) {
       if (my !== jarvisSession) return;
       const blob = await pending;
       if (my !== jarvisSession) return;
-      pending = i + 1 < chunks.length ? prepareChunkTTS(chunks[i + 1], lang, selectedVoice, signal) : null;
+      pending = i + 1 < chunks.length ? prepareChunkTTS(chunks[i + 1], spokenLanguage, selectedVoice, signal) : null;
       const ok = blob && await playPreparedAudio(blob, signal);
       if (my !== jarvisSession) return;
       if (!ok) {
         onFallback?.();
-        const localPlayed = await playChunkLocal(chunks[i], lang, signal, selectedVoice);
+        const localPlayed = await playChunkLocal(chunks[i], signal, selectedVoice);
         if (!localPlayed && !signal.aborted) { onAudioFailure?.(); break; }
       }
       if (my !== jarvisSession) return;

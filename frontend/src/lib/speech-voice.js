@@ -1,3 +1,11 @@
+export function speechLanguage(text, fallback) {
+  const letters = text.match(/\p{Letter}+/gu)?.join('') ?? '';
+  const arabic = letters.match(/\p{Script=Arabic}/gu)?.length ?? 0;
+  const latin = letters.match(/\p{Script=Latin}/gu)?.length ?? 0;
+  if (arabic === latin) return fallback;
+  return arabic > latin ? 'ar' : 'en';
+}
+
 export function speechVoice(lang, explicit, storage = globalThis.localStorage) {
   const prefix = lang === 'ar' ? 'ar-' : 'en-';
   if (explicit?.startsWith(prefix)) return explicit;
