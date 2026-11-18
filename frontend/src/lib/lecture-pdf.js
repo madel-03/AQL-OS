@@ -1,6 +1,27 @@
 import { studySections, studyMap } from './lecture-study.js';
+import { lectureBlocks, lectureInline } from './lecture-reading.js';
 
-export async function downloadLecturePdf(result, title, en) {
+export function downloadLecturePdf(result, title, en) {
+  return downloadReadingPdf({
+    title, en,
+    label: en ? 'AQL   /   STUDY NOTES' : 'عقل  /  مذكرة دراسية',
+    sections: studySections(result, en),
+    map: studyMap(result, en),
+    draft: result.isDraft,
+  });
+}
+
+export function downloadAttachmentPdf({ title, text, en, partial }) {
+  return downloadReadingPdf({
+    title, en,
+    label: en ? 'AQL   /   FILE RESULT' : 'عقل  /  نتيجة الملف',
+    notice: partial ? (en ? 'Partial result' : 'نتيجة جزئية') : '',
+    sections: [{ blocks: lectureBlocks(text) }],
+    map: [],
+  });
+}
+
+async function downloadReadingPdf({ title, en, label, sections, map, draft, notice }) {
   const { jsPDF } = await import('jspdf');
   const pdf = new jsPDF({ compress: true });
   const canvas = document.createElement('canvas');
@@ -27,7 +48,7 @@ export async function downloadLecturePdf(result, title, en) {
     ctx.fillStyle = '#14746f';
     ctx.fillRect(0, 0, width, 12);
     y = 42;
-    paint(en ? 'AQL   /   STUDY NOTES' : 'عقل  /  مذكرة دراسية', 15, '#14746f', true);
+    paint(label, 15, '#14746f', true);
     y += 36;
   };
   const flush = () => {
@@ -63,8 +84,8 @@ export async function downloadLecturePdf(result, title, en) {
 
   reset();
   write(title, 32, '#13253b', true);
-  if (result.isDraft) write(en ? 'Draft awaiting review' : 'مسودة بانتظار المراجعة', 16, '#854d0e', true);
-  const map = studyMap(result, en);
+  if (draft) write(en ? 'Draft awaiting review' : 'مسودة بانتظار المراجعة', 16, '#854d0e', true);
+  if (notice) write(notice, 16, '#854d0e', true);
   if (map.length > 1) {
     ensure(42);
     y += 14;
@@ -79,19 +100,21 @@ export async function downloadLecturePdf(result, title, en) {
       y = Math.max(y + 8, start + 53);
     }
   }
-  for (const [index, section] of studySections(result, en).entries()) {
+  for (const [index, section] of sections.entries()) {
     if (!section.blocks.length) continue;
     ensure(105);
     y += 18;
-    ctx.fillStyle = '#e6f3f0';
-    ctx.fillRect(margin, y, width - 2 * margin, 43);
-    y += 9;
-    paint(String(index + 1) + ' · ' + section.title, 22, '#115e59', true, 12);
-    y += 47;
+    if (section.title) {
+      ctx.fillStyle = '#e6f3f0';
+      ctx.fillRect(margin, y, width - 2 * margin, 43);
+      y += 9;
+      paint(String(index + 1) + ' · ' + section.title, 22, '#115e59', true, 12);
+      y += 47;
+    }
     for (const block of section.blocks) {
       const prefix = block.type === 'item' ? (block.number ? block.number + '. ' : '• ') : '';
       ensure(55);
-      write(prefix + block.text, 18, '#202735', block.type === 'heading' || !!block.answer, block.type === 'item' ? 12 : 0);
+      write(prefix + lectureInline(block.text).map(part => part.text).join(''), 18, '#202735', block.type === 'heading' || !!block.answer, block.type === 'item' ? 12 : 0);
       if (block.answer) write(block.answer, 17, '#334155', false, 26);
       y += 9;
     }

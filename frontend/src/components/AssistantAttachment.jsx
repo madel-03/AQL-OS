@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useLang } from '../lib/lang';
+import { speechLanguage } from '../lib/speech-voice';
+import { downloadAttachmentPdf } from '../lib/lecture-pdf';
+import LectureReading from './LectureReading';
 import './assistant-attachment.css';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -18,8 +21,22 @@ export default function AssistantAttachment({ draft = '' }) {
   const [busy, setBusy] = useState(false);
   const [reply, setReply] = useState('');
   const [partial, setPartial] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => () => controller.current?.abort(), []);
+
+  async function savePdf() {
+    setSaving(true);
+    setError('');
+    try {
+      const title = file.name.replace(/\.[^.]+$/, '');
+      await downloadAttachmentPdf({ title, text: reply, en: speechLanguage(reply, lang) === 'en', partial });
+    } catch {
+      setError(en ? 'Could not save the PDF. Try again.' : 'تعذّر حفظ PDF. جرّب مرة ثانية.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -109,7 +126,12 @@ export default function AssistantAttachment({ draft = '' }) {
           {busy && <button type="button" className="secondary-action" onClick={() => controller.current?.abort()}>{en ? 'Cancel analysis' : 'ألغِ التحليل'}</button>}
         </div>
         {error && <p role="alert">{error}</p>}
-        {reply && <div className="assistant-attachment-reply" dir="auto" role="status">{reply}</div>}
+        {reply && <div className="assistant-attachment-reply">
+          <button className="secondary-action" type="button" disabled={saving} onClick={savePdf}>
+            {saving ? (en ? 'Preparing PDF…' : 'جاري تجهيز PDF…') : (en ? 'Save result as PDF' : 'احفظ النتيجة PDF')}
+          </button>
+          <div dir="auto"><LectureReading text={reply} /></div>
+        </div>}
         {reply && partial && <p role="status">{en ? 'This is a partial answer. Ask for a smaller page range to continue.' : 'الرد جزئي. حدّد نطاق صفحات أصغر لإكمال الطلب.'}</p>}
       </form>
     </dialog>, document.body)}
