@@ -124,9 +124,9 @@ async function groqChat(system, messages, tools = null, preferQwen = false) {
 }
 
 // 🌐 3. Gemini Helper (الثالث والأخير)
-async function geminiGenerate(payload) {
+async function geminiGenerate(payload, models = MODEL_FALLBACKS) {
   let lastError = null;
-  for (const model of MODEL_FALLBACKS) {
+  for (const model of models) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
     try {
       const response = await fetch(url, {
@@ -136,13 +136,13 @@ async function geminiGenerate(payload) {
         body: JSON.stringify(payload),
       });
       if (response.status === 503 || response.status === 429 || response.status === 404) {
-      lastError = new Error(`Gemini ${response.status} on ${model}`);
+      lastError = Object.assign(new Error(`Gemini ${response.status} on ${model}`), { providerStatus: response.status });
       if (response.status === 429) await new Promise((r) => setTimeout(r, 1200));
       continue;
       }
       if (!response.ok) {
         const t = await response.text();
-        throw new Error(`Gemini ${response.status}: ${t}`);
+        throw Object.assign(new Error(`Gemini ${response.status}: ${t}`), { providerStatus: response.status });
       }
       return await response.json();
     } catch (err) {
@@ -251,7 +251,11 @@ async function generateStructured(system, input, preferQwen = false) {
 }
 app.use('/api/documents', createDocumentExportRouter({ requireAuth }));
 app.use('/api/lectures', createLecturesRouter({ requireAuth }));
-app.use('/api/attachments', createAttachmentsRouter({ requireAuth, generate: geminiGenerate }));
+const attachmentModels = [...new Set([
+  process.env.LECTURE_GEMINI_MODEL || 'gemini-3.5-flash',
+  ...(process.env.LECTURE_GEMINI_FALLBACKS || 'gemini-3.5-flash-lite,gemini-3.1-flash-lite').split(','),
+].map(model => model.trim()).filter(Boolean))].slice(0, 3);
+app.use('/api/attachments', createAttachmentsRouter({ requireAuth, generate: payload => geminiGenerate(payload, attachmentModels) }));
 app.use('/api/research', createResearchRouter({ requireAuth, generate: generateStructured }));
 const generateActionStructured = (system, input) => generateStructured(system, input, true);
 app.use('/api/device', createDevicePlanRouter({ requireAuth, generate: generateActionStructured }));
