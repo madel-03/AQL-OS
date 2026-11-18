@@ -11,23 +11,26 @@ export default function useTaskActions(lang) {
     const response = await fetch(`${API}/api/tasks/${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` }, body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(120000)]) : AbortSignal.timeout(120000) });
     const value = await response.json(); if (!response.ok) throw new Error(value.error || 'تعذّر إكمال طلب المهام.'); return value;
   };
-  const prepare = async (message, signal) => {
+  const prepare = async (message, signal, { followUp = false } = {}) => {
     if (uncertain) return { kind: 'error', message: lang === 'en' ? 'The previous save is uncertain. Confirm the same task again or check your task list before changing it.' : 'حالة الحفظ السابقة غير مؤكدة. أكّد نفس المهمة مرة ثانية أو راجع قائمة المهام قبل تغييره.' };
     if (lock.current) return { kind: 'error', message: lang === 'en' ? 'A request is already running.' : 'فيه طلب قيد التنفيذ الآن.' };
+    const context = followUp ? history.current : [];
+    if (!followUp) history.current = [];
     lock.current = true; setBusy(true); setError(''); setResult(''); setUncertain(false); current.current = null; setPlan(null); setQuestion(''); setAwaiting(false);
     try {
-      const value = await call('plan', { message, context: history.current, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, lang }, signal);
+      const value = await call('plan', { message, context, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, lang }, signal);
       if (signal?.aborted) return { kind: 'cancelled' };
-      history.current = [...history.current, message].slice(-6);
+      history.current = [...context, message].slice(-6);
       if (value.kind === 'task') { current.current = value; setPlan(value); setQuestion(''); }
       else { current.current = null; setPlan(null); setQuestion(value.question); setAwaiting(value.kind === 'clarify'); if (value.kind === 'unsupported') history.current = []; }
       return value;
-    } catch (failure) { if (failure.name === 'AbortError') return { kind: 'cancelled' }; setError(failure.message); return { kind: 'error', message: failure.message }; }
+    } catch (failure) { if (failure.name === 'AbortError') return { kind: 'cancelled' }; if (followUp && awaiting) { setAwaiting(true); setQuestion(question); } setError(failure.message); return { kind: 'error', message: failure.message }; }
     finally { lock.current = false; setBusy(false); }
   };
   const confirm = async signal => {
     if (lock.current) return lang === 'en' ? 'A request is already running.' : 'فيه طلب قيد التنفيذ الآن.';
     const draft = current.current;
+    if (!draft && awaiting && question) return question;
     if (!draft) return lang === 'en' ? 'There is no task awaiting confirmation.' : 'ما فيه مهمة تنتظر التأكيد.';
     if (draft.expiresAt < Date.now()) { current.current = null; setPlan(null); history.current = []; const message = uncertain ? (lang === 'en' ? 'Review expired. Check your task list before creating another task because the earlier save was uncertain.' : 'انتهت المراجعة. راجع قائمة المهام قبل إنشاء مهمة أخرى لأن الحفظ السابق غير مؤكد.') : (lang === 'en' ? 'The review expired. Please request the task again.' : 'انتهت مدة مراجعة المهمة. اطلب تجهيزها مرة ثانية.'); setError(message); return message; }
     lock.current = true; setBusy(true); setError('');

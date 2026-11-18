@@ -19,6 +19,7 @@ export function voiceIntent(text, { calendarPending = false, taskPending = false
   const calendarAction = /\b(?:add|create|schedule|book|insert|put|plan)\b|(?:اضف|اضاف[ةه]|تضيف|ضيف|احجز|تحجز|حجز|حدد|حط|تحط|سجل|تسجل|رتب|انشئ|جهز|جدول|سوي|تسوي|اعمل|تعمل|ابغا|ابغي|ابغى|ابي|ودي)/.test(value);
   const calendarSubject = /(?:موعد|اجتماع|تقويم|حدث|فعالي[ةه])|\b(?:calendar|event|appointment|meeting|session|workout)\b/.test(value);
   const scheduledTime = /(?:بعد|بكره|بكرة|غدا|الساعة)|\b(?:tomorrow|tonight|today|from now|in (?:\d+|five|ten|fifteen|thirty|an?|one|two) (?:minutes?|hours?)|at \d)\b/.test(value);
+  if (/^(?:ذكرني|فكرني|remind me)\s+/.test(value) && (scheduledTime || calendarSubject)) return { type: 'calendar-prepare' };
   if (!advice && !readQuery && calendarAction && (calendarSubject || scheduledTime)) return { type: 'calendar-prepare' };
   if (/^(اضف|احذف|عدل|انشئ|شغل|ارسل|سجل|add|delete|edit|create|run|send|schedule)(?:\s|$)/.test(value)) return { type: 'review-required' };
   if (/(اليوم|today)/.test(value) && /(وش|ايش|ماذا|عندي|جدول|مواعيد|مهام|what|schedule|agenda|appointments|tasks)/.test(value)) return { type: 'today' };

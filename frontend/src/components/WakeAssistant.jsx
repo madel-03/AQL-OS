@@ -77,7 +77,7 @@ export default function WakeAssistant({ speak, stopSpeech, unlockAudio }) {
         if (intent.type === 'task-cancel') { const uncertain = current.taskActions.uncertain; const cancelled = current.taskActions.cancel(); await say(!cancelled ? (english ? 'Please wait for the running request.' : 'انتظر نتيجة الطلب الجاري.') : uncertain ? (english ? 'Cancelled retry. Check your tasks: the previous save was uncertain.' : 'ألغيت إعادة المحاولة. راجع مهامك لأن الحفظ السابق غير مؤكد.') : (english ? 'Cancelled the pending task request.' : 'ألغيت طلب المهمة المعلّق.'), signal); return; }
         if (intent.type === 'task-prepare' || (current.taskActions.pending && intent.type === 'chat')) {
           if (current.calendarActions.pending || current.calendarActions.uncertain) return say(english ? 'Confirm or cancel the pending appointment first.' : 'أكّد أو ألغِ طلب الموعد المعلّق أولًا.', signal);
-          const proposal = await current.taskActions.prepare(command, signal); if (signal.aborted || proposal.kind === 'cancelled') return;
+          const proposal = await current.taskActions.prepare(command, signal, { followUp: intent.type === 'chat' }); if (signal.aborted || proposal.kind === 'cancelled') return;
           await say(proposal.kind === 'task' ? describeTaskPlan(proposal, english, current.name) : (proposal.question || proposal.message), signal);
           return { followUp: proposal.kind === 'task' || proposal.kind === 'clarify' };
         }
@@ -86,7 +86,7 @@ export default function WakeAssistant({ speak, stopSpeech, unlockAudio }) {
         if (intent.type === 'calendar-prepare' || (current.calendarActions.pending && intent.type === 'chat')) {
           if (current.taskActions.pending || current.taskActions.uncertain) return say(english ? 'Confirm or cancel the pending task first.' : 'أكّد أو ألغِ طلب المهمة المعلّق أولًا.', signal);
           if (intent.type === 'chat') { const guidance = pendingCalendarReply(command, current.calendarActions, english); if (guidance !== null) { await say(guidance, signal); return { followUp: true, followUpMs: 30000 }; } }
-          const proposal = await current.calendarActions.prepare(command, signal); if (signal.aborted || proposal.kind === 'cancelled') return;
+          const proposal = await current.calendarActions.prepare(command, signal, { followUp: intent.type === 'chat' }); if (signal.aborted || proposal.kind === 'cancelled') return;
           await say(proposal.kind === 'event' ? describeCalendarPlan(proposal, english, current.name) : (proposal.question || proposal.message), signal);
           return { followUp: proposal.kind === 'event' || proposal.kind === 'clarify', followUpMs: 30000 };
         }

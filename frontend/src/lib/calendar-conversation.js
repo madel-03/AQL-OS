@@ -19,7 +19,7 @@ export async function calendarConversation(text, actions, en = false, signal) {
   }
   if (intent.type !== 'calendar-prepare' && !(actions.pending && intent.type === 'chat')) return null;
   if (intent.type === 'chat') { const reply = pendingCalendarReply(text, actions, en); if (reply !== null) return reply; }
-  const proposal = await actions.prepare(text, signal);
+  const proposal = await actions.prepare(text, signal, { followUp: intent.type === 'chat' });
   if (proposal.kind === 'event') return `${describeCalendarPlan(proposal, en, 'جارفس')} ${en ? 'You can also type “confirm appointment” or use the confirmation button.' : 'تقدر أيضًا تكتب «أكّد الموعد» أو تستخدم زر التأكيد.'}`;
   return proposal.question || proposal.message || (en ? 'Please clarify the appointment.' : 'وضّح تفاصيل الموعد.');
 }
