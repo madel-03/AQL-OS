@@ -21,3 +21,4 @@
 .lecture-reading-item .lecture-answer{margin-block-start:6px;padding-block-start:6px;border-top:1px solid #ffffff20}
 .lecture-reading bdi{display:inline-block;color:#cbb5ff;font-size:.82em;margin-inline:2px}
 .lecture-item-number{color:#cbb5ff}
+.lecture-map{margin-block-end:18px}.lecture-map ol{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px;padding-inline-start:24px}.lecture-map li{padding:8px 12px;border:1px solid #ffffff30;background:#ffffff09;border-radius:10px;overflow-wrap:anywhere}
