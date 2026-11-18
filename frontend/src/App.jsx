@@ -427,7 +427,7 @@ function LayoutBody({ page, setPage, displayName, onLogout, onCompose, children 
             <QuickSearch onNavigate={(id, taskId) => window.dispatchEvent(new CustomEvent('aql-navigate', { detail: { id, taskId } }))} />
             <ActivityStatus />
             <ReminderCenter />
-            <ConnectedServices />
+            <ConnectedServices showLectures={page !== 'dashboard'} />
             <WakeAssistant unlockAudio={unlockSpeechAudio} speak={(text, done, onAudioFailure) => { jarvisSpeak(text, lang, done, speechVoice(lang), undefined, onAudioFailure); }} stopSpeech={jarvisStop} />
             <AssistantCompanion compact />
             <AppearancePanel />

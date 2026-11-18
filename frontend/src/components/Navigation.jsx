@@ -28,12 +28,26 @@ export default function Navigation({ page, setPage, displayName }) {
       }
     }; window.addEventListener('aql-navigate', navigate); return () => window.removeEventListener('aql-navigate', navigate);
   }, [setPage, studio, productivity]);
+  const goHomeSection = id => {
+    setPage('dashboard');
+    if (open) close();
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const section = document.getElementById(id);
+      section?.scrollIntoView({ block: 'start' });
+    }));
+  };
   const item = (id, ar, english, tool = false) => {
     const active = tool ? page === 'dashboard' && studio.state.tab === id : page === id;
     return <button key={id} className={`navigation-link nav-btn ${active ? 'active' : ''}`} title={en ? english : ar} aria-current={active ? (tool ? 'location' : 'page') : undefined} data-destination={id} onClick={() => choose(id, tool)}><AppIcon name={id} /><span>{en ? english : ar}</span>{active && <i />}</button>;
   };
   return <>
     <div className="navigation-mobile" data-skip-i18n="1"><strong>AQL<span> / {en ? 'your space' : 'مساحتك'}</span></strong><button ref={menu} aria-label={en ? 'Open navigation' : 'فتح القائمة'} aria-expanded={open} aria-controls="aql-navigation" onClick={() => setOpen(!open)}><AppIcon name={open ? 'close' : 'menu'} /></button></div>
+    <nav className="home-mobile-dock" aria-label={en ? 'Quick navigation' : 'التنقل السريع'} data-skip-i18n="1">
+      <button onClick={() => goHomeSection('home-assistant')}><AppIcon name="dashboard" />{en ? 'Home' : 'الرئيسية'}</button>
+      <button onClick={() => goHomeSection('home-day')}><AppIcon name="calendar" />{en ? 'My day' : 'يومي'}</button>
+      <button onClick={() => goHomeSection('home-tools')}><AppIcon name="projects" />{en ? 'Tools' : 'أدواتي'}</button>
+      <button onClick={() => document.querySelector('.appearance-trigger')?.click()}><AppIcon name="profile" />{en ? 'Settings' : 'الإعدادات'}</button>
+    </nav>
     {open && <button className="navigation-backdrop" aria-label={en ? 'Close navigation' : 'إغلاق القائمة'} onClick={close} />}
     <aside ref={drawer} id="aql-navigation" className={`aql-navigation ${open ? 'is-open' : ''}`} data-skip-i18n="1" onKeyDown={event => { if (event.key === 'Escape') close(); if (open && event.key === 'Tab') { const buttons = [...drawer.current.querySelectorAll('button, summary')].filter(element => element.getClientRects().length); const first = buttons[0]; const last = buttons.at(-1); if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } } }}>
       <div className="navigation-brand"><span className="navigation-monogram">a<span>q</span>l.</span><small>{en ? 'A little more possible.' : 'مساحة لأفكارك.'}</small></div>

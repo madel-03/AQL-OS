@@ -1,3 +1,5 @@
+import LectureStudio from './LectureStudio';
+import { requestDocument } from '../lib/assistant-documents';
 import { TodayCard } from './ProductivityTools';
 import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../lib/lang';
@@ -79,6 +81,7 @@ export function CompletionNotice() {
 export default function WorkHub({ displayName, onCompose, onNavigate, compact = false }) {
   const { lang } = useLang(); const en = lang === 'en';
   const { tasks, active, loading, error, creating, startTask, refresh } = useResearch();
+  const [command, setCommand] = useState('');
   const [draft, setDraft] = useState(''); const [mode, setMode] = useState('research');
   const [filter, setFilter] = useState('all'); const [search, setSearch] = useState('');
   const completed = tasks.filter((task) => task.status === 'completed');
@@ -91,18 +94,40 @@ export default function WorkHub({ displayName, onCompose, onNavigate, compact = 
   };
   const quickModes = en ? [['research', '⌕', 'Research'], ['plan', '↗', 'Plan a goal'], ['file', '▤', 'Create a report']] : [['research', '⌕', 'ابحث'], ['plan', '↗', 'خطّط'], ['file', '▤', 'أنشئ تقريرًا']];
   return <main className={`work-hub ${compact ? 'hub-compact' : ''}`} data-skip-i18n="1">
-    <section className="workspace-hero">
+    {!compact && <section id="home-assistant" className="home-assistant workspace-hero" aria-labelledby="home-assistant-title">
+      <div className="hero-copy">
+        <p className="personal-greeting">{en ? 'Hey' : 'أهلًا'} <bdi>{displayName?.split('@')[0]}</bdi></p>
+        <h1 id="home-assistant-title">{en ? 'What shall we do' : 'وش ننجز'} <em>{en ? 'today?' : 'اليوم؟'}</em></h1>
+        <form className="task-launcher" onSubmit={async event => {
+          event.preventDefault();
+          const text = command.trim();
+          if (!text) return;
+          setCommand('');
+          if (!await requestDocument(text, en)) onCompose(text);
+        }}>
+          <label className="sr-only" htmlFor="home-assistant-input">{en ? 'Ask AQL' : 'اطلب من عقل'}</label>
+          <textarea id="home-assistant-input" maxLength={1500} value={command} onChange={event => setCommand(event.target.value)} placeholder={en ? 'Try: show my daily report…' : 'جرّب: طلع لي تقرير اليوم…'} />
+          <div className="launcher-bottom"><button className="launch-button" disabled={!command.trim()}>{en ? 'Ask AQL' : 'اطلب من عقل'} ↗</button></div>
+        </form>
+      </div>
+      <div id="aql-voice-stage" className="voice-stage-slot" />
+    </section>}
+    {!compact && <section id="home-day" className="home-day" aria-label={en ? 'My day' : 'يومي'}>
+      <TodayCard onNavigate={(id, taskId) => window.dispatchEvent(new CustomEvent('aql-navigate', { detail: { id, taskId } }))} />
+      <button className="secondary-action" onClick={() => void requestDocument(en ? 'show my daily report' : 'طلع لي تقرير اليوم', en)}>{en ? 'Open daily report' : 'طلع لي تقرير اليوم'} ↗</button>
+    </section>}
+    <section id={compact ? undefined : 'home-tools'} className={compact ? 'workspace-hero' : 'workspace-section home-tools'}>
+      {!compact && <div className="home-tools-heading"><h2>{en ? 'My tools' : 'أدواتي'}</h2><LectureStudio /></div>}
       <div className="hero-copy"><div className="workspace-eyebrow"><span />{en ? 'A LITTLE LESS BUSY. A LITTLE MORE DONE.' : 'زحمة أقل. إنجاز أكثر.'}</div>
-        {!compact && <p className="personal-greeting">{en ? 'Hey' : 'أهلًا'} <bdi>{displayName?.split('@')[0]}</bdi> ✧</p>}
-        <h1>{en ? 'What shall we' : 'وش ننجز'} <em>{en ? 'make happen?' : 'اليوم؟'}</em></h1>
+        {compact && <p className="personal-greeting">{en ? 'Hey' : 'أهلًا'} <bdi>{displayName?.split('@')[0]}</bdi> ✧</p>}
+        {compact ? <h1>{en ? 'What shall we' : 'وش ننجز'} <em>{en ? 'make happen?' : 'اليوم؟'}</em></h1> : <h3>{en ? 'Research and reports' : 'البحث والتقارير'}</h3>}
         <p className="hero-subtitle">{en ? 'Bring the idea. I’ll help with the next step.' : 'هات الفكرة، ونرتّب الخطوة اللي بعدها سوا.'}</p>
         <form className="task-launcher" onSubmit={submit}><label htmlFor={compact ? 'chat-task-prompt' : 'home-task-prompt'} className="sr-only">{en ? 'What would you like to accomplish?' : 'ماذا تريد إنجازه؟'}</label><textarea id={compact ? 'chat-task-prompt' : 'home-task-prompt'} maxLength={500} minLength={3} required value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={mode === 'plan' ? (en ? 'A goal you want to turn into a real plan…' : 'هدف تبغى تحوّله لخطة واضحة…') : mode === 'file' ? (en ? 'What should your PDF or Word report cover?' : 'وش موضوع تقرير PDF أو Word اللي تحتاجه؟') : (en ? 'A question to research, a comparison to explore…' : 'سؤال نبحثه، أو خيارات محتار بينها…')} /><div className="launcher-bottom"><span>{mode === 'plan' ? (en ? 'We’ll plan together in chat' : 'نرتّب الخطة سوا في المحادثة') : (en ? 'Web research → cited PDF & Word' : 'بحث ومصادر ← تقرير PDF وWord')}</span><button className="launch-button" disabled={creating || (mode !== 'plan' && !!active.length) || draft.trim().length < 3}>{creating ? (en ? 'Starting…' : 'أبدأ…') : (en ? 'Let’s do it' : 'يلا نبدأ')} <span aria-hidden="true">↗</span></button></div></form>
         <div className="quick-modes" role="group" aria-label={en ? 'Task type' : 'نوع المهمة'}>{quickModes.map(([id, icon, label]) => <button key={id} aria-pressed={mode === id} className={mode === id ? 'mode-active' : ''} onClick={() => setMode(id)}><span aria-hidden="true">{icon}</span>{label}</button>)}</div>
         {!!active.length && <p className="launcher-hint">{en ? 'AQL is already researching. You can view progress below or plan something in chat.' : 'عقل يبحث الآن. تابع التقدم تحت، أو خطّط لشيء ثاني في المحادثة.'}</p>}
       </div>
-      {compact ? <div className="hero-companion"><span className="companion-sticker">{en ? 'BIG IDEAS WELCOME' : 'الأفكار الكبيرة مرحّب بها'}</span><AssistantCompanion /><span className="handwritten-note">{en ? 'Your brain’s +1' : 'عقل إضافي لليوم'}</span></div> : <div id="aql-voice-stage" className="voice-stage-slot" />} 
+      {compact && <div className="hero-companion"><span className="companion-sticker">{en ? 'BIG IDEAS WELCOME' : 'الأفكار الكبيرة مرحّب بها'}</span><AssistantCompanion /><span className="handwritten-note">{en ? 'Your brain’s +1' : 'عقل إضافي لليوم'}</span></div>} 
     </section>
-    {!compact && <TodayCard onNavigate={(id, taskId) => window.dispatchEvent(new CustomEvent('aql-navigate', { detail: { id, taskId } }))} />}
     {!compact && <LivingSpace onCompose={onCompose} onNavigate={onNavigate} />}
     {error && <div className="workspace-error" role="alert"><span>{error}</span><button onClick={refresh}>{en ? 'Retry' : 'حاول مجددًا'} ↻</button></div>}
     <section className="workspace-section" aria-labelledby={compact ? 'chat-progress-title' : 'progress-title'}><div className="section-heading"><div><span className="section-kicker">{en ? 'IN MOTION' : 'في الطريق'}</span><h2 id={compact ? 'chat-progress-title' : 'progress-title'}>{en ? 'AQL is on it' : 'عقل ماسكها'} <span className="count-badge">{active.length}</span></h2></div><span className="quiet-text">{en ? 'Real progress, as it happens' : 'خطوة بخطوة، قدّامك'}</span></div>

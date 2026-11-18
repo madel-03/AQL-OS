@@ -30,3 +30,11 @@
 @media(prefers-reduced-motion:reduce) { .aql-navigation * { transition:none; } }
 
 .aql-navigation .navigation-link[aria-current="page"] { background: #ffffff09; border-color: #ffffff18; }
+.home-mobile-dock{display:none}
+@media(max-width:760px){
+ .home-mobile-dock{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));position:fixed;inset-inline:0;bottom:0;z-index:44;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));background:#171a27f5;border-top:1px solid #ffffff25}
+ .home-mobile-dock button{display:grid;justify-items:center;gap:4px;padding:7px 2px;background:none;border:0;color:#ece7f5;font:inherit;font-size:.75rem}
+ .home-mobile-dock svg{width:19px;height:19px}
+ .home-mobile-dock button:focus-visible{outline:2px solid var(--appearance-accent,#cab4ff);outline-offset:-2px}
+ .app-layout .app-content{padding-bottom:calc(82px + env(safe-area-inset-bottom,0px)) !important}
+}
