@@ -50,15 +50,30 @@ async function main() {
   await fs.mkdir(root, { recursive: true });
   const workspace = await fs.realpath(root);
   console.log('مجلد عمل جارفس:', workspace, '\nتُشارك أسماء العناصر في هذا المجلد مع حساب عقل لتخطيط طلباتك. Ctrl+C لإيقاف الاتصال.');
-  let code;
-  try { code = (await terminal.question('ألصق رمز الربط من خدمات الجهاز في عقل: ')).trim(); }
-  finally { terminal.close(); }
   async function post(route, body, token) {
     const response = await fetch(base + route, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token && { Authorization: 'Bearer ' + token }) }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw Object.assign(Error('الاتصال: ' + response.status), { status: response.status });
+    if (!response.ok) {
+      const reason = await response.json().catch(() => ({}));
+      throw Object.assign(Error('الاتصال: ' + response.status), { status: response.status, reason: reason.error });
+    }
     return response.json();
   }
-  const { token } = await post('/claim', { code });
+  let token;
+  try {
+    while (!token) {
+      const pasted = await terminal.question('ألصق رمز الربط من خدمات الجهاز في عقل: ');
+      const code = pasted.replace(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim();
+      if (!/^[A-Za-z0-9_-]{32}$/.test(code)) {
+        console.log('انسخ الرمز كاملًا من عقل والصقه وحده.');
+        continue;
+      }
+      try { ({ token } = await post('/claim', { code })); }
+      catch (e) {
+        if (e.reason !== 'invalid_code') throw e;
+        console.log('الرمز غير صالح الآن. أنشئ رمز ربط جديدًا من الجوال والصقه هنا خلال دقيقتين.');
+      }
+    }
+  } finally { terminal.close(); }
   console.log('تم الربط. تقدر تقفل صفحة عقل وتترك هذه النافذة مفتوحة.');
   let report;
   for (;;) {
