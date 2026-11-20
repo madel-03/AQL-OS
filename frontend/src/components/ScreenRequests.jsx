@@ -19,8 +19,7 @@ async function call(path = '', { method = 'GET', body, signal } = {}) {
   return value.request;
 }
 
-async function takeScreenshot() {
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+async function takeScreenshot(stream) {
   const video = document.createElement('video');
   video.srcObject = stream;
   video.muted = true;
@@ -37,13 +36,25 @@ async function takeScreenshot() {
     const context = canvas.getContext('2d');
     if (!context) throw new Error('capture_failed');
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const image = canvas.toDataURL('image/jpeg', 0.68);
+    let image = canvas.toDataURL('image/jpeg', 0.68);
+    if (image.length > 360000) image = canvas.toDataURL('image/jpeg', 0.38);
     if (image.length > 360000) throw new Error('capture_failed');
     return image;
   } finally {
     clearTimeout(timer);
-    stream.getTracks().forEach(track => track.stop());
+    video.pause();
     video.srcObject = null;
+  }
+}
+
+async function requestFresh(message) {
+  const post = () => call('', { method: 'POST', body: { message } });
+  try { return await post(); } catch (failure) {
+    if (failure.message !== 'request_exists') throw failure;
+    const current = await call();
+    if (current && !current.image) return current;
+    if (current) await call('/' + current.id, { method: 'DELETE' });
+    return post();
   }
 }
 
@@ -53,7 +64,9 @@ export function ScreenRequestDialog() {
   const [draft, setDraft] = useState(null);
   useEffect(() => {
     const open = event => {
-      setDraft(event.detail);
+      const message = event.detail;
+      const request = requestFresh(message).then(value => ({ value }), failure => ({ error: failure.message }));
+      setDraft({ message, request, key: crypto.randomUUID() });
       if (!dialog.current.open) dialog.current.showModal();
     };
     window.addEventListener('aql-screen-compose', open);
@@ -61,22 +74,44 @@ export function ScreenRequestDialog() {
   }, []);
   return <dialog ref={dialog} className="task-preview" aria-label={lang === 'en' ? 'Computer screenshot' : 'لقطة من شاشة الكمبيوتر'} onClose={() => setDraft(null)}>
     <button className="studio-text-button" onClick={() => dialog.current.close()}>{lang === 'en' ? 'Close' : 'إغلاق'}</button>
-    {draft !== null && <ScreenRequests key={draft} initialMessage={draft} />}
+    {draft !== null && <ScreenRequests key={draft.key} initialMessage={draft.message} request={draft.request} />}
   </dialog>;
 }
 
-export default function ScreenRequests({ initialMessage = '' }) {
+export default function ScreenRequests({ initialMessage = '', request }) {
   const { lang } = useLang();
   const en = lang === 'en';
   const [receiver, setReceiver] = useState(false);
-  const [incoming, setIncoming] = useState(null);
   const [outgoing, setOutgoing] = useState(null);
-  const [preview, setPreview] = useState(null);
+  const streamRef = useRef(null);
+  const mounted = useRef(false);
   const [message, setMessage] = useState(initialMessage.slice(0, 240));
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(!!request);
   const [error, setError] = useState('');
   const supportsCapture = Boolean(navigator.mediaDevices?.getDisplayMedia);
   const outgoingId = outgoing?.image ? null : outgoing?.id;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      streamRef.current?.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    request?.then(({ value, error }) => {
+      if (active) { setOutgoing(value); setError(error || ''); setBusy(false); }
+    });
+    return () => { active = false; };
+  }, [request]);
+
+  function stopSharing() {
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    setReceiver(false);
+  }
 
   useEffect(() => {
     if (!receiver && !outgoingId) return;
@@ -86,7 +121,16 @@ export default function ScreenRequests({ initialMessage = '' }) {
       try {
         const result = await call(receiver ? '?receiver=true' : `?id=${outgoingId}`, { signal: controller.signal });
         if (controller.signal.aborted) return;
-        if (receiver) setIncoming(result);
+        if (receiver) {
+          const stream = streamRef.current;
+          if (result && stream?.active) {
+            const image = await takeScreenshot(stream);
+            if (!controller.signal.aborted && stream.active && streamRef.current === stream) {
+              await call('/' + result.id, { method: 'PUT', body: { image }, signal: controller.signal });
+              setError('');
+            }
+          }
+        }
         else {
           setOutgoing(result);
           if (!result) setError('request_expired');
@@ -123,16 +167,19 @@ export default function ScreenRequests({ initialMessage = '' }) {
     <h4>{en ? 'Computer screenshot' : 'لقطة من شاشة الكمبيوتر'}</h4>
     <p className="studio-muted">{en ? 'Sign in to the same AQL account on both devices. Keep this panel open on the computer to receive a request.' : 'افتح نفس حساب عقل على الجهازين. خلّ هذي اللوحة مفتوحة على الكمبيوتر لاستقبال الطلب.'}</p>
     {supportsCapture && !initialMessage && !outgoing && <button type="button" className="studio-text-button" disabled={busy} onClick={() => {
-      setReceiver(!receiver); setIncoming(null); setPreview(null); setError('');
-    }}>{receiver ? (en ? 'Stop receiving requests' : 'أوقف استقبال الطلبات') : (en ? 'Receive requests on this computer' : 'استقبل الطلبات على هذا الكمبيوتر')}</button>}
+      if (receiver) { stopSharing(); return; }
+      void run(async () => {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        if (!mounted.current) { stream.getTracks().forEach(track => track.stop()); return; }
+        streamRef.current = stream;
+        stream.getVideoTracks()[0].addEventListener('ended', () => { if (streamRef.current === stream) stopSharing(); }, { once: true });
+        setReceiver(true);
+      });
+    }}>{receiver ? (en ? 'Stop sharing' : 'أوقف المشاركة') : (en ? 'Choose a screen for automatic screenshots' : 'اختر شاشة لإرسال اللقطات تلقائيًا')}</button>}
     {!receiver && !outgoing && <form className="studio-form" onSubmit={event => {
       event.preventDefault();
       void run(async () => {
-        try { setOutgoing(await call('', { method: 'POST', body: { message: message.trim() } })); }
-        catch (failure) {
-          if (failure.message !== 'request_exists') throw failure;
-          setOutgoing(await call());
-        }
+        setOutgoing(await requestFresh(message.trim()));
       });
     }}>
       <label>{en ? 'Ask AQL for a screenshot' : 'اطلب من عقل لقطة شاشة'}
@@ -140,22 +187,10 @@ export default function ScreenRequests({ initialMessage = '' }) {
       </label>
       <button className="studio-primary" disabled={busy || !message.trim()}>{en ? 'Send request' : 'أرسل الطلب'}</button>
     </form>}
-    {receiver && !incoming && <p role="status">{en ? 'Waiting for a request…' : 'بانتظار طلب…'}</p>}
-    {receiver && incoming && <div className="studio-actions">
-      <button type="button" className="studio-primary" disabled={busy} onClick={() => void run(async () => setPreview({ id: incoming.id, image: await takeScreenshot() }))}>{en ? 'Choose a screen and preview' : 'اختر الشاشة وعاين اللقطة'}</button>
-      <button type="button" className="studio-text-button" disabled={busy} onClick={() => void run(async () => {
-        await call(`/${incoming.id}`, { method: 'DELETE' }); setIncoming(null); setPreview(null);
-      })}>{en ? 'Decline' : 'رفض الطلب'}</button>
-    </div>}
-    {receiver && preview && preview.id === incoming?.id && <div>
-      <img src={preview.image} alt={en ? 'Screenshot preview' : 'معاينة لقطة الشاشة'} style={{ maxWidth: '100%' }} />
-      <button type="button" className="studio-primary" disabled={busy} onClick={() => void run(async () => {
-        await call(`/${preview.id}`, { method: 'PUT', body: { image: preview.image } }); setPreview(null); setIncoming(null);
-      })}>{en ? 'Send this screenshot to my account' : 'أرسل هذه اللقطة لحسابي'}</button>
-    </div>}
+    {receiver && <p role="status">{en ? 'Sharing is active. Requests from your account receive a screenshot automatically.' : 'المشاركة مفعّلة. تُرسل لقطة من الشاشة المختارة تلقائيًا عند طلبها من حسابك.'}</p>}
     {outgoing && <div>
       {outgoing.image ? <img src={outgoing.image} alt={en ? 'Computer screenshot' : 'لقطة شاشة الكمبيوتر'} style={{ maxWidth: '100%' }} />
-        : <p role="status">{en ? 'Waiting for approval on your computer…' : 'بانتظار موافقتك من الكمبيوتر…'}</p>}
+        : <p role="status">{en ? 'Waiting for your computer. Keep screen sharing active there.' : 'بانتظار اللقطة. تأكد أن مشاركة الشاشة مفعّلة على الكمبيوتر.'}</p>}
       <button type="button" className="studio-text-button" disabled={busy} onClick={() => void run(async () => {
         await call(`/${outgoing.id}`, { method: 'DELETE' }); setOutgoing(null);
       })}>{outgoing.image ? (en ? 'Delete screenshot' : 'احذف اللقطة') : (en ? 'Cancel request' : 'ألغِ الطلب')}</button>

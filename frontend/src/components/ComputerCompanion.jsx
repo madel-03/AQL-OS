@@ -58,6 +58,14 @@ export function ComputerResult() {
     return () => { window.removeEventListener('aql-companion-result', show); data.subscription.unsubscribe(); };
   }, []);
   const id = view?.job?.done ? null : view?.job?.id;
+  const captureAfter = view?.showResult && view.job?.succeeded ? view.job.id : null;
+  useEffect(() => {
+    if (!captureAfter) return;
+    const timer = setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('aql-screen-compose', { detail: 'خذ لقطة من شاشة الكمبيوتر' }));
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [captureAfter]);
   useEffect(() => {
     if (!id) return;
     const controller = new AbortController();

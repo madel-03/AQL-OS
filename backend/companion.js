@@ -104,7 +104,10 @@ export function companionRouter({ requireAuth, generate }) {
         job.observations.push({ path: step.path, entries: (Array.isArray(report.entries) ? report.entries : []).filter(e => typeof e === 'string').slice(0, 80).map(e => e.slice(0, 100)) });
         job.steps = null; job.next = 0;
         void prepare(job, session).catch(() => { job.done = true; job.note = 'تعذّر تحديد الخطوة التالية.'; });
-      } else if (report.ok !== true || job.next === job.steps.length) job.done = true;
+      } else if (report.ok !== true || job.next === job.steps.length) {
+        job.done = true;
+        job.succeeded = report.ok === true;
+      }
     }
     if (job.stopped || Date.now() - job.seen > 180000) {
       job.done = true; job.note = 'توقفت المهمة. راجع النتائج المنفّذة.';
@@ -119,7 +122,7 @@ export function companionRouter({ requireAuth, generate }) {
 }
 
 function publicJob(job) {
-  return { id: job.id, done: !!job.done, results: job.results, note: job.note || '' };
+  return { id: job.id, done: !!job.done, succeeded: !!job.succeeded && !job.note && !job.stopped, results: job.results, note: job.note || '' };
 }
 
 export function validStep(step) {
