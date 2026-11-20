@@ -3,6 +3,7 @@ import AssistantDocuments from './components/AssistantDocuments';
 import AssistantAttachment from './components/AssistantAttachment';
 import { requestAssistantTool } from './lib/assistant-tools';
 import { ScreenRequestDialog } from './components/ScreenRequests';
+import { ComputerResult } from './components/ComputerCompanion';
 import { openMusicRequest } from './lib/music';
 import { claimMicrophone } from './lib/microphone-owner';
 import { speechAudioElement, unlockSpeechAudio } from './lib/speech-audio';
@@ -444,7 +445,7 @@ function LayoutBody({ page, setPage, displayName, onLogout, onCompose, children 
           </div>
         </div>
         <div className="page-content" key={page}>{children}</div>
-        <ScreenRequestDialog /><AssistantDocuments /><TaskPreview onContinue={onCompose} />
+        <ComputerResult /><ScreenRequestDialog /><AssistantDocuments /><TaskPreview onContinue={onCompose} />
         <CompletionNotice />
         <StudioDock onReturn={() => setPage('dashboard')} />
       </div>

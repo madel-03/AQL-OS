@@ -15,6 +15,7 @@ import { memoryContext } from './user-memory.js';
 import { executeToolCalls } from './agent-execution.js';
 import { createDevicePlanRouter } from './device-plan.js';
 import { createScreenRequestRouter } from './screen-requests.js';
+import { companionRouter } from './companion.js';
 import { createCalendarRouter } from './calendar.js';
 import { calendarStore } from './calendar-store.js';
 import { createTasksRouter } from './tasks.js';
@@ -260,6 +261,7 @@ const attachmentModels = [...new Set([
 app.use('/api/attachments', createAttachmentsRouter({ requireAuth, generate: payload => geminiGenerate(payload, attachmentModels) }));
 app.use('/api/research', createResearchRouter({ requireAuth, generate: generateStructured }));
 const generateActionStructured = (system, input) => generateStructured(system, input, true);
+app.use('/api/device/companion', companionRouter({ requireAuth, generate: generateActionStructured }));
 app.use('/api/device/screens', createScreenRequestRouter({
   requireAuth,
   supabase,

@@ -1,5 +1,6 @@
 import { requestDocument } from './assistant-documents.js';
 import { normalizeVoice, wakeMatch } from './wake-listener.js';
+import { companionCommand } from './companion';
 
 export function requestAssistantTool(text, en, signal) {
   const command = normalizeVoice(wakeMatch(text, 'جارفس') ?? text);
@@ -9,5 +10,7 @@ export function requestAssistantTool(text, en, signal) {
     window.dispatchEvent(new CustomEvent('aql-screen-compose', { detail: text }));
     return en ? 'Press Send request. Approve the screenshot on your computer.' : 'اضغط «أرسل الطلب»، ثم وافق على اللقطة من الكمبيوتر.';
   }
-  return requestDocument(text, en, signal);
+  return sessionStorage.getItem('aql-companion-mode')
+    ? companionCommand(text, signal).then(reply => reply ?? requestDocument(text, en, signal))
+    : requestDocument(text, en, signal);
 }
