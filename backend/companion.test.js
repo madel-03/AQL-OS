@@ -75,4 +75,10 @@ test('paired phone creates a note, reports its result and stops remaining steps'
   assert.equal(task.index, 1);
   assert.equal(await performStep(root, task.step), 'تم إنشاء الملف جامعة/مراجعة.md');
   assert.equal(await fs.readFile(path.join(root, 'جامعة/مراجعة.md'), 'utf8'), 'واجب.txt');
+  await call('/tick', { report: { id: task.id, index: task.index, ok: true, message: 'تم' } }, token);
+  await call('/task', { message: 'يا جارفس شغّل تحديثات ستيم المعلّقة' });
+  const updateTask = await call('/tick', {}, token);
+  assert.deepEqual(updateTask.step, { type: 'steam_updates' });
+  await call('/tick', { report: { id: updateTask.id, index: updateTask.index, ok: false, message: 'تعذّر التحقق' } }, token);
+  assert.equal((await call('/status')).job.succeeded, false);
 });

@@ -36,7 +36,7 @@ export function createScreenRequestRouter({ requireAuth, supabase, classify }) {
     if (existing.error) return reply(res, existing);
     if (existing.data) return res.status(409).json({ error: 'request_exists' });
     let intent;
-    try { intent = await classify(message); }
+    try { intent = message === 'خذ لقطة من شاشة الكمبيوتر' ? 'screen_capture' : await classify(message); }
     catch { return res.status(503).json({ error: 'model_unavailable' }); }
     if (intent !== 'screen_capture') return res.status(422).json({ error: 'unsupported_request' });
     const result = await rows().insert({ user_id: req.user.id }).select('id,expires_at').single();

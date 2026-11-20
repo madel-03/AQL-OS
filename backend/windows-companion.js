@@ -14,14 +14,26 @@ export async function performStep(root, step, desktop) {
     root = desktop;
   }
   const displayPath = step.location === 'desktop' ? 'سطح المكتب/' + step.path : step.path;
-  if (step.type === 'steam' || step.type === 'steam_downloads') {
+  if (['steam', 'steam_downloads', 'steam_updates'].includes(step.type)) {
     if (process.platform !== 'win32') throw Error('يتطلب فتح Steam جهاز ويندوز');
     const exe = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Steam', 'steam.exe');
     await fs.access(exe);
-    const args = step.type === 'steam_downloads' ? ['steam://open/downloads'] : [];
+    const args = step.type === 'steam' ? [] : ['steam://open/downloads'];
     const processHandle = spawn(exe, args, { detached: true, stdio: 'ignore', shell: false });
     await new Promise((resolve, reject) => { processHandle.once('spawn', resolve); processHandle.once('error', reject); });
     processHandle.unref();
+    if (step.type === 'steam_updates') {
+      const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+      const script = await fs.readFile(new URL('./steam-updates.ps1', import.meta.url), 'utf8');
+      let result;
+      try {
+        const { stdout } = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 30000 });
+        result = JSON.parse(stdout.trim());
+      } catch { throw Error('تعذّر فحص مكتبات Steam أو التحقق من أزرار التحديث في نافذته. راجع صفحة التنزيلات.'); }
+      if (!result.pending) return 'لم يرصد Steam تحديثات معلّقة للألعاب المثبّتة في ملفات المكتبة المحلية.';
+      if (!result.requested) throw Error('رصدت تحديثات معلّقة لكن لم أجد زر تنزيل متاحًا مرتبطًا باللعبة. راجع صفحة التنزيلات.');
+      return `أرسلت طلب بدء التحديث إلى Steam لعدد ${result.requested} من أصل ${result.pending}. تابع تقدم التنزيل داخل Steam.`;
+    }
     return args.length ? 'أُرسل طلب فتح صفحة التنزيلات إلى Steam' : 'بدأ تشغيل Steam';
   }
   const parts = step.path.split('/');
