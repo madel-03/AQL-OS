@@ -1,6 +1,14 @@
 import { normalizeVoice } from './wake-listener.js';
 
 export function screenIntent(text) {
+  const command = normalizeVoice(text);
+  const downloads = '(?:(?:قائمة|صفحة) )?(?:ال)?(?:تحديثات|تنزيلات|تحميلات)';
+  const steam = '(?:ستيم|steam)';
+  const showDownloads = new RegExp('^(?:(?:يا جارفس|ممكن|لو سمحت) )?(?:افتح ' + steam + ' (?:و ?|ثم ))?(?:وريني|ورني|ارني|اعرض) ' + downloads + '(?: (?:في |علي )?' + steam + ')?$');
+  if ((showDownloads.test(command) && /ستيم|steam/.test(command)) || /^(?:open steam and show me (?:the )?(?:updates|downloads)|show me (?:the )?steam (?:updates|downloads))$/.test(command)) {
+    // Keep the downloads destination when the visual request includes an object.
+    return { action: text, steamView: 'downloads' };
+  }
   const show = /^(?:ورني|وريني|ارني|show me)(?: (?:الشاش[ةه]|شاش[ةه] الكمبيوتر|النتيج[ةه]|the screen|the result))?$/u;
   if (show.test(normalizeVoice(text))) return { standalone: true };
   // Split only the trailing visual request. Keep the original app/file name.
