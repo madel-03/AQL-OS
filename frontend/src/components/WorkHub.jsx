@@ -1,6 +1,7 @@
 import LectureStudio from './LectureStudio';
 import AssistantAttachment from './AssistantAttachment';
 import { requestDocument } from '../lib/assistant-documents';
+import { requestAssistantTool } from '../lib/assistant-tools';
 import { TodayCard } from './ProductivityTools';
 import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../lib/lang';
@@ -104,7 +105,7 @@ export default function WorkHub({ displayName, onCompose, onNavigate, compact = 
           const text = command.trim();
           if (!text) return;
           setCommand('');
-          if (!await requestDocument(text, en)) onCompose(text);
+          if (!await requestAssistantTool(text, en)) onCompose(text);
         }}>
           <label className="sr-only" htmlFor="home-assistant-input">{en ? 'Ask AQL' : 'اطلب من عقل'}</label>
           <textarea id="home-assistant-input" maxLength={1500} value={command} onChange={event => setCommand(event.target.value)} placeholder={en ? 'Try: show my daily report…' : 'جرّب: طلع لي تقرير اليوم…'} />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useLang } from '../lib/lang';
 
@@ -47,14 +47,32 @@ async function takeScreenshot() {
   }
 }
 
-export default function ScreenRequests() {
+export function ScreenRequestDialog() {
+  const { lang } = useLang();
+  const dialog = useRef(null);
+  const [draft, setDraft] = useState(null);
+  useEffect(() => {
+    const open = event => {
+      setDraft(event.detail);
+      if (!dialog.current.open) dialog.current.showModal();
+    };
+    window.addEventListener('aql-screen-compose', open);
+    return () => window.removeEventListener('aql-screen-compose', open);
+  }, []);
+  return <dialog ref={dialog} className="task-preview" aria-label={lang === 'en' ? 'Computer screenshot' : 'لقطة من شاشة الكمبيوتر'} onClose={() => setDraft(null)}>
+    <button className="studio-text-button" onClick={() => dialog.current.close()}>{lang === 'en' ? 'Close' : 'إغلاق'}</button>
+    {draft !== null && <ScreenRequests key={draft} initialMessage={draft} />}
+  </dialog>;
+}
+
+export default function ScreenRequests({ initialMessage = '' }) {
   const { lang } = useLang();
   const en = lang === 'en';
   const [receiver, setReceiver] = useState(false);
   const [incoming, setIncoming] = useState(null);
   const [outgoing, setOutgoing] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(initialMessage.slice(0, 240));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const supportsCapture = Boolean(navigator.mediaDevices?.getDisplayMedia);
@@ -104,7 +122,7 @@ export default function ScreenRequests() {
   return <section className="device-preview">
     <h4>{en ? 'Computer screenshot' : 'لقطة من شاشة الكمبيوتر'}</h4>
     <p className="studio-muted">{en ? 'Sign in to the same AQL account on both devices. Keep this panel open on the computer to receive a request.' : 'افتح نفس حساب عقل على الجهازين. خلّ هذي اللوحة مفتوحة على الكمبيوتر لاستقبال الطلب.'}</p>
-    {supportsCapture && !outgoing && <button type="button" className="studio-text-button" disabled={busy} onClick={() => {
+    {supportsCapture && !initialMessage && !outgoing && <button type="button" className="studio-text-button" disabled={busy} onClick={() => {
       setReceiver(!receiver); setIncoming(null); setPreview(null); setError('');
     }}>{receiver ? (en ? 'Stop receiving requests' : 'أوقف استقبال الطلبات') : (en ? 'Receive requests on this computer' : 'استقبل الطلبات على هذا الكمبيوتر')}</button>}
     {!receiver && !outgoing && <form className="studio-form" onSubmit={event => {
