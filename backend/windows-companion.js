@@ -1,13 +1,19 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createInterface } from 'node:readline/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { validStep } from './companion.js';
 
-export async function performStep(root, step) {
+export async function performStep(root, step, desktop) {
   if (!validStep(step)) throw Error('خطوة غير مدعومة');
+  if (step.location === 'desktop') {
+    if (!desktop) throw Error('تعذّر تحديد سطح مكتب ويندوز');
+    root = desktop;
+  }
+  const displayPath = step.location === 'desktop' ? 'سطح المكتب/' + step.path : step.path;
   if (step.type === 'steam') {
     if (process.platform !== 'win32') throw Error('يتطلب فتح Steam جهاز ويندوز');
     const exe = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Steam', 'steam.exe');
@@ -34,9 +40,9 @@ export async function performStep(root, step) {
   }
   if (filename) {
     await fs.writeFile(path.join(dir, filename), step.content, { flag: 'wx', encoding: 'utf8' });
-    return 'تم إنشاء الملف ' + step.path;
+    return 'تم إنشاء الملف ' + displayPath;
   }
-  return 'المجلد جاهز ' + step.path;
+  return 'المجلد جاهز ' + displayPath;
 }
 
 async function listEntries(dir) {
@@ -49,6 +55,16 @@ async function main() {
   const root = path.join(process.env.USERPROFILE || process.cwd(), 'AQL-Workspace');
   await fs.mkdir(root, { recursive: true });
   const workspace = await fs.realpath(root);
+  let desktop;
+  if (process.platform === 'win32') {
+    try {
+      const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+      const { stdout } = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-Command', "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); [Environment]::GetFolderPath('DesktopDirectory')"], { windowsHide: true, timeout: 10000 });
+      const knownFolder = stdout.trim();
+      if (path.isAbsolute(knownFolder) && (await fs.stat(knownFolder)).isDirectory()) desktop = await fs.realpath(knownFolder);
+    } catch { /* Workspace tasks remain available. */ }
+  }
+  if (desktop) console.log('وجهة سطح المكتب:', desktop);
   console.log('مجلد عمل جارفس:', workspace, '\nتُشارك أسماء العناصر في هذا المجلد مع حساب عقل لتخطيط طلباتك. Ctrl+C لإيقاف الاتصال.');
   async function post(route, body, token) {
     const response = await fetch(base + route, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token && { Authorization: 'Bearer ' + token }) }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
@@ -79,12 +95,12 @@ async function main() {
   for (;;) {
     try {
       const entries = await listEntries(workspace);
-      const task = await post('/tick', { entries, report }, token);
+      const task = await post('/tick', { entries, report, desktop: !!desktop }, token);
       report = undefined;
       if (task.step) {
         report = { id: task.id, index: task.index };
         try {
-          const result = await performStep(workspace, task.step);
+          const result = await performStep(workspace, task.step, desktop);
           if (typeof result === 'string') report.message = result;
           else Object.assign(report, result);
           report.ok = true;

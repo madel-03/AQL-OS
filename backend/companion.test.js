@@ -7,6 +7,19 @@ import path from 'node:path';
 import { companionRouter } from './companion.js';
 import { performStep } from './windows-companion.js';
 
+test('desktop folder and note use the Windows desktop destination', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'aql-location-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const desktop = path.join(root, 'redirected-desktop');
+  await fs.mkdir(desktop);
+  const folder = { type: 'folder', location: 'desktop', path: 'جامعة' };
+  await assert.rejects(performStep(root, folder));
+  await performStep(root, folder, desktop);
+  await performStep(root, { type: 'note', location: 'desktop', path: 'جامعة/واجب.txt', content: 'اختبار' }, desktop);
+  assert.equal(await fs.readFile(path.join(desktop, 'جامعة/واجب.txt'), 'utf8'), 'اختبار');
+  await assert.rejects(fs.stat(path.join(root, 'جامعة')), { code: 'ENOENT' });
+});
+
 test('paired phone creates a note, reports its result and stops remaining steps', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'aql-companion-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
