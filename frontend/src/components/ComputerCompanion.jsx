@@ -7,6 +7,14 @@ export function ComputerControls() {
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [enabled, setEnabled] = useState(!!sessionStorage.getItem('aql-companion-mode'));
+  async function copyCode() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setStatus('تم نسخ رمز الربط كاملًا.');
+    } catch {
+      setStatus('تعذّر النسخ التلقائي. اضغط مطوّلًا على الرمز واختر «نسخ».');
+    }
+  }
   async function action(kind) {
     setBusy(true);
     try {
@@ -31,7 +39,11 @@ export function ComputerControls() {
     <p>افتح <code dir="ltr">start-companion.cmd</code> من مجلد backend على الكمبيوتر. أنشئ رمزًا هنا والصقه في نافذة ويندوز خلال دقيقتين، ثم فعّل توجيه المحادثة.</p>
     <p>عند التفعيل، تُوجّه طلباتك إلى مجلد عمل الكمبيوتر. يقدر جارفس يجهّز مجلدات وملاحظات ويفتح Steam.</p>
     <div className="studio-actions"><button disabled={busy} onClick={() => action('pair')}>إنشاء رمز ربط جديد</button><button disabled={busy} onClick={() => action('mode')}>{enabled ? 'ارجع للمحادثة العادية' : 'وجّه المحادثة للكمبيوتر'}</button><button disabled={busy} onClick={() => action('disconnect')}>فصل الكمبيوتر</button></div>
-    {code && <p>رمز الربط <code dir="ltr">{code}</code></p>}{status && <p role="status">{status}</p>}
+    {code && <div className="studio-actions">
+      <span>رمز الربط <code dir="ltr" style={{ userSelect: 'all', overflowWrap: 'anywhere' }}>{code}</code></span>
+      <button type="button" disabled={busy} onClick={copyCode}>نسخ الرمز</button>
+    </div>}
+    {status && <p role="status">{status}</p>}
   </section>;
 }
 
