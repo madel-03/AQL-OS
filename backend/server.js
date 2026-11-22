@@ -261,7 +261,7 @@ const attachmentModels = [...new Set([
 app.use('/api/attachments', createAttachmentsRouter({ requireAuth, generate: payload => geminiGenerate(payload, attachmentModels) }));
 app.use('/api/research', createResearchRouter({ requireAuth, generate: generateStructured }));
 const generateActionStructured = (system, input) => generateStructured(system, input, true);
-app.use('/api/device/companion', companionRouter({ requireAuth, generate: generateActionStructured }));
+app.use('/api/device/companion', companionRouter({ requireAuth, generate: generateActionStructured, supabase }));
 app.use('/api/device/screens', createScreenRequestRouter({
   requireAuth,
   supabase,

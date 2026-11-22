@@ -1,12 +1,12 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Router } from 'express';
 
 const secret = () => randomBytes(24).toString('base64url');
 const error = (res, status, message) => res.status(status).json({ error: message });
 
-// Volatile sessions match the lifetime of the single Render process. A restart
-// revokes pairing and discards pending work instead of replaying it.
-export function companionRouter({ requireAuth, generate }) {
+const digest = token => createHash('sha256').update(token).digest('hex');
+
+export function companionRouter({ requireAuth, generate, supabase }) {
   const router = Router();
   const sessions = new Map();
   const workers = new Map();
@@ -55,23 +55,36 @@ export function companionRouter({ requireAuth, generate }) {
   router.post('/pair', requireAuth, (req, res) => {
     drop(req.user.id);
     const code = secret();
-    sessions.set(req.user.id, { code, seen: Date.now() });
+    sessions.set(req.user.id, { code, expires: Date.now() + 120000, seen: Date.now() });
     res.json({ code });
   });
-  router.post('/claim', (req, res) => {
+  router.post('/claim', async (req, res) => {
     const code = req.body?.code;
     if (typeof code !== 'string' || code.length !== 32) return error(res, 403, 'invalid_code');
-    for (const session of sessions.values()) {
-      if (session.code !== code || Date.now() - session.seen > 120000) continue;
+    for (const [user, session] of sessions) {
+      if (session.code !== code || Date.now() >= session.expires) continue;
       delete session.code;
-      session.token = secret();
+      const token = secret();
+      if (supabase) {
+        const result = await supabase.from('companion_devices').upsert({ user_id: user, token_hash: digest(token) });
+        if (result.error) return error(res, 503, 'pair_storage_unavailable');
+      }
+      session.token = token;
       session.seen = Date.now();
       workers.set(session.token, session);
       return res.json({ token: session.token });
     }
     return error(res, 403, 'invalid_code');
   });
-  router.delete('/pair', requireAuth, (req, res) => { drop(req.user.id); res.sendStatus(204); });
+  router.delete('/pair', requireAuth, async (req, res) => {
+    drop(req.user.id);
+    if (supabase) {
+      const result = await supabase.from('companion_devices').delete().eq('user_id', req.user.id);
+      if (result.error) return error(res, 503, 'pair_storage_unavailable');
+      drop(req.user.id);
+    }
+    res.sendStatus(204);
+  });
   router.get('/status', requireAuth, (req, res) => {
     const session = sessions.get(req.user.id);
     res.json({ online: !!session?.token && Date.now() - session.seen < 20000, job: session?.job && publicJob(session.job) });
@@ -97,11 +110,29 @@ export function companionRouter({ requireAuth, generate }) {
     if (sessions.get(req.user.id) !== session) return error(res, 409, 'offline');
     res.json({ job: publicJob(job) });
   });
-  router.post('/tick', (req, res) => {
-    const session = workers.get((req.get('Authorization') || '').replace(/^Bearer /, ''));
+  router.post('/tick', async (req, res) => {
+    const token = (req.get('Authorization') || '').replace(/^Bearer /, '');
+    if (!/^[A-Za-z0-9_-]{32}$/.test(token)) return error(res, 403, 'unpaired');
+    let session = workers.get(token);
+    if (supabase) {
+      const result = await supabase.from('companion_devices').select('user_id').eq('token_hash', digest(token)).maybeSingle();
+      if (result.error) return error(res, 503, 'pair_storage_unavailable');
+      if (!result.data) return error(res, 403, 'unpaired');
+      const user = result.data.user_id;
+      if (!session || sessions.get(user) !== session) {
+        const previous = sessions.get(user);
+        workers.delete(previous?.token);
+        session = previous?.code ? previous : {};
+        session.token = token;
+        session.seen = Date.now();
+        sessions.set(user, session);
+        workers.set(token, session);
+      }
+    }
     if (!session) return error(res, 403, 'unpaired');
     session.seen = Date.now();
     session.desktop = req.body?.desktop === true;
+    if (req.body?.resume === true) return res.json({});
     if (Array.isArray(req.body?.entries)) session.entries = req.body.entries.filter(x => typeof x === 'string').slice(0, 80).map(x => x.slice(0, 100));
     const job = session.job;
     if (!job || job.done) return res.json({});

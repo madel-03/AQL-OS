@@ -88,6 +88,20 @@ async function main() {
     return response.json();
   }
   let token;
+  const pairingFile = path.join(process.env.LOCALAPPDATA || path.dirname(workspace), 'AQL', 'companion-pairing.json');
+  const readPairing = await fs.readFile(pairingFile, 'utf8').catch(e => {
+    if (e.code !== 'ENOENT') throw e;
+    return '{}';
+  });
+  try {
+    const saved = JSON.parse(readPairing);
+    if (saved.base === base && /^[A-Za-z0-9_-]{32}$/.test(saved.token)) {
+      await post('/tick', { desktop: !!desktop, resume: true }, saved.token);
+      token = saved.token;
+    }
+  } catch (e) {
+    if (!(e instanceof SyntaxError) && e.reason !== 'unpaired') throw e;
+  }
   try {
     while (!token) {
       const pasted = await terminal.question('ألصق رمز الربط من خدمات الجهاز في عقل: ');
@@ -96,7 +110,11 @@ async function main() {
         console.log('انسخ الرمز كاملًا من عقل والصقه وحده.');
         continue;
       }
-      try { ({ token } = await post('/claim', { code })); }
+      try {
+        ({ token } = await post('/claim', { code }));
+        await fs.mkdir(path.dirname(pairingFile), { recursive: true });
+        await fs.writeFile(pairingFile, JSON.stringify({ base, token }), { mode: 0o600 });
+      }
       catch (e) {
         if (e.reason !== 'invalid_code') throw e;
         console.log('الرمز غير صالح الآن. أنشئ رمز ربط جديدًا من الجوال والصقه هنا خلال دقيقتين.');
