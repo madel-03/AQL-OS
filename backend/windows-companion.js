@@ -6,9 +6,23 @@ import { createInterface } from 'node:readline/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { validStep } from './companion.js';
+import { createLocalQwen } from './local-qwen.js';
+
+const localAnswer = createLocalQwen({ config: { AQL_LOCAL_QWEN_MODEL: 'qwen3:0.6b' } });
 
 export async function performStep(root, step, desktop) {
   if (!validStep(step)) throw Error('خطوة غير مدعومة');
+  if (step.type === 'local_answer') {
+    try {
+      const result = await localAnswer([
+        { role: 'system', content: 'Answer the question directly and concisely in its language. Mention apps or device features only when relevant to the question. Do not append generic offers of help.' },
+        { role: 'user', content: step.question },
+      ]);
+      return 'Ollama · Qwen3 0.6B\n' + result.content;
+    } catch {
+      throw Error('تعذّر الرد من Ollama. تأكد أنه شغّال وأن نموذج qwen3:0.6b مثبّت.');
+    }
+  }
   if (step.location === 'desktop') {
     if (!desktop) throw Error('تعذّر تحديد سطح مكتب ويندوز');
     root = desktop;

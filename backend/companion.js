@@ -34,7 +34,7 @@ export function companionRouter({ requireAuth, generate, supabase }) {
       session.clarification = { request: job.message, question: job.note };
       return;
     }
-    if (!Array.isArray(value?.steps) || !value.steps.length || value.steps.length > 8 || !value.steps.every(validStep)) throw Error();
+    if (!Array.isArray(value?.steps) || !value.steps.length || value.steps.length > 8 || !value.steps.every(step => validStep(step) && step.type !== 'local_answer')) throw Error();
     const desktopRequested = /سطح\s*المكتب|\bdesktop\b/i.test(job.message);
     if (desktopRequested && value.steps.some(s => ['note', 'folder'].includes(s.type)) && !value.steps.some(s => s.location === 'desktop')) {
       job.note = 'تعذّر تحديد وجهة سطح المكتب في خطة التنفيذ. حدّد اسم المجلد المطلوب على سطح المكتب.'; job.done = true; return;
@@ -91,7 +91,8 @@ export function companionRouter({ requireAuth, generate, supabase }) {
   });
   router.get('/status', requireAuth, (req, res) => {
     const session = sessions.get(req.user.id);
-    res.json({ online: !!session?.token && Date.now() - session.seen < 20000, job: session?.job && publicJob(session.job) });
+    const answering = session?.job?.pending && session.job.steps?.[session.job.next]?.type === 'local_answer';
+    res.json({ online: !!session?.token && Date.now() - session.seen < (answering ? 105000 : 20000), job: session?.job && publicJob(session.job) });
   });
   router.post('/stop', requireAuth, (req, res) => {
     const job = sessions.get(req.user.id)?.job;
@@ -109,7 +110,11 @@ export function companionRouter({ requireAuth, generate, supabase }) {
     try {
       const previous = session.clarification;
       delete session.clarification;
-      await prepare(job, session, previous);
+      if (req.body.localQuestion === true) {
+        job.steps = [{ type: 'local_answer', question: message.trim() }];
+      } else {
+        await prepare(job, session, previous);
+      }
     } catch { job.done = true; job.note = 'تعذّر تجهيز المهمة. جرّب مرة ثانية.'; }
     if (sessions.get(req.user.id) !== session) return error(res, 409, 'offline');
     res.json({ job: publicJob(job) });
@@ -143,7 +148,7 @@ export function companionRouter({ requireAuth, generate, supabase }) {
     const report = req.body?.report;
     if (job.pending && report?.id === job.id && report.index === job.sequence) {
       const step = job.steps[job.next];
-      job.results.push(String(report.message || '').slice(0, 500));
+      job.results.push(String(report.message || '').slice(0, step.type === 'local_answer' ? 4000 : 500));
       job.pending = false; job.next++; job.sequence++;
       if (step.type === 'inspect' && report.ok === true && !job.stopped) {
         job.observations.push({ path: step.path, entries: (Array.isArray(report.entries) ? report.entries : []).filter(e => typeof e === 'string').slice(0, 80).map(e => e.slice(0, 100)) });
@@ -171,6 +176,7 @@ function publicJob(job) {
 }
 
 export function validStep(step) {
+  if (step?.type === 'local_answer') return typeof step.question === 'string' && !!step.question.trim() && step.question.length <= 1500;
   if (step?.location !== undefined && step.location !== 'workspace' && !(step.location === 'desktop' && ['folder', 'note'].includes(step.type))) return false;
   if (['steam', 'steam_downloads', 'steam_updates'].includes(step?.type)) return true;
   if (!['folder', 'note', 'inspect'].includes(step?.type) || typeof step.path !== 'string' || !step.path || step.path.length > 200) return false;

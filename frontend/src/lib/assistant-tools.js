@@ -4,6 +4,11 @@ import { companionCommand } from './companion';
 import { screenIntent } from './screen-intent.js';
 
 export function requestAssistantTool(text, en, signal) {
+  const local = text.trim().match(/^(?:(?:يا جارفس|hey jarvis)[،,]?\s+)?(?:اسأل|اسال|ask)\s+(?:ollama|[أا]و\s?ل[اأ]م[اةه])[\s:،,]+(.+)$/isu);
+  if (local) {
+    return companionCommand(local[1].trim(), signal, false, undefined, true).then(reply =>
+      reply ?? (en ? 'Enable computer mode in Device services.' : 'فعّل «وجّه المحادثة للكمبيوتر» من خدمات الجهاز.'));
+  }
   const command = normalizeVoice(wakeMatch(text, 'جارفس') ?? text);
   const visual = screenIntent(text) || screenIntent(command);
   if (visual?.action && sessionStorage.getItem('aql-companion-mode')) {

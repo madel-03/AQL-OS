@@ -13,14 +13,14 @@ export async function companionCall(route, method = 'GET', body, signal) {
   }
   return res.json();
 }
-export async function companionCommand(text, signal, showResult = false, steamView) {
+export async function companionCommand(text, signal, showResult = false, steamView, localQuestion = false) {
   const owner = sessionStorage.getItem('aql-companion-mode');
   if (!owner) return null;
   const { data } = await supabase.auth.getSession();
   if (data.session?.user.id !== owner || signal?.aborted) return null;
   try {
-    const stop = /^(?:وقف|توقف|أوقف|اوقف|إيقاف|الغ|ألغ|stop|cancel)(?: المهمة| التنفيذ| task)?[.!؟]?$/i.test(text.trim());
-    const { job } = await companionCall(stop ? '/stop' : '/task', 'POST', stop ? {} : { message: text, steamView }, signal);
+    const stop = !localQuestion && /^(?:وقف|توقف|أوقف|اوقف|إيقاف|الغ|ألغ|stop|cancel)(?: المهمة| التنفيذ| task)?[.!؟]?$/i.test(text.trim());
+    const { job } = await companionCall(stop ? '/stop' : '/task', 'POST', stop ? {} : { message: text, steamView, localQuestion }, signal);
     window.dispatchEvent(new CustomEvent('aql-companion-result', { detail: { job, owner, showResult } }));
     if (stop) return job && !job.done ? 'طلبت إيقاف الخطوات المتبقية.' : 'ما فيه مهمة قيد التنفيذ.';
     return job.note || 'أُرسل الطلب للكمبيوتر. بتظهر نتيجة التنفيذ هنا.';
