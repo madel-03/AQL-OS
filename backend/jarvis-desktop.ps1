@@ -9,7 +9,7 @@ if ($Check) { $recognizers | Select-Object Name,Culture; return }
 
 $form = [Windows.Forms.Form]::new()
 $form.Text = 'AQL | Jarvis'
-$form.ClientSize = [Drawing.Size]::new(480,220)
+$form.ClientSize = [Drawing.Size]::new(480,285)
 $panel = [Windows.Forms.FlowLayoutPanel]::new()
 $panel.Dock = 'Fill'
 $form.Controls.Add($panel)
@@ -36,7 +36,13 @@ $send = [Windows.Forms.Button]::new()
 $send.Text = 'Send'
 $start.Enabled = $language.Items.Count -gt 0
 if (!$start.Enabled) { $status.Text = 'No Windows speech recognizer. You can type a request below.' }
-$panel.Controls.AddRange(@($language,$start,$stop,$status,$inputBox,$send))
+$meter = [Windows.Forms.ProgressBar]::new()
+$meter.Width = 455
+$transcript = [Windows.Forms.Label]::new()
+$transcript.Width = 455
+$transcript.Height = 45
+$transcript.Text = 'Last heard: —'
+$panel.Controls.AddRange(@($language,$start,$stop,$status,$meter,$transcript,$inputBox,$send))
 $speaker = [System.Speech.Synthesis.SpeechSynthesizer]::new()
 $timer = [Windows.Forms.Timer]::new()
 $timer.Interval = 200
@@ -88,6 +94,7 @@ $stopListening = {
     $status.Text = 'Microphone off'
 }
 function Stop-LocalVoice {
+    $meter.Value = 0
     if (!$script:voiceProcess) { return }
     if (!$script:voiceProcess.HasExited) { $script:voiceProcess.Kill() }
     $script:voiceProcess.Dispose()
@@ -151,7 +158,7 @@ $timer.Add_Tick({
         $status.Text = $reply
         [void]$speaker.SpeakAsync($reply)
     }
-    if ($script:voiceProcess -and $script:voiceLine.IsCompleted) {
+    for ($i = 0; $i -lt 20 -and $script:voiceProcess -and $script:voiceLine.IsCompleted; $i++) {
         $line = $script:voiceLine.GetAwaiter().GetResult()
         if (!$line) {
             Stop-LocalVoice
@@ -161,8 +168,12 @@ $timer.Add_Tick({
             $script:voiceLine = $script:voiceProcess.StandardOutput.ReadLineAsync()
             $eventData = $line | ConvertFrom-Json
             if ($eventData.ready) { $status.Text = 'Listening locally for Jarvis' }
+            if ($null -ne $eventData.level) { $meter.Value = [int]$eventData.level }
             if ($eventData.error) { $status.Text = 'Microphone error: ' + $eventData.error }
-            if ($eventData.text) { Receive-VoicePhrase $eventData.text }
+            if ($eventData.text) {
+                $transcript.Text = 'Last heard: ' + $eventData.text
+                Receive-VoicePhrase $eventData.text
+            }
         }
     }
     if (!$script:engine) { return }

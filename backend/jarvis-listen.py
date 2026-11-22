@@ -20,6 +20,7 @@ def listen(model_path, check=False):
     pre_roll = deque(maxlen=3)
     utterance = []
     quiet = 0
+    levels = []
     with sd.InputStream(samplerate=16000, channels=1, dtype="float32", blocksize=1600) as microphone:
         emit(ready=True)
         while True:
@@ -28,7 +29,12 @@ def listen(model_path, check=False):
                 utterance.clear()
                 pre_roll.clear()
             samples = samples[:, 0]
-            loud = np.sqrt(np.mean(samples * samples)) > 0.008
+            rms = float(np.sqrt(np.mean(samples * samples)))
+            levels.append(rms)
+            if len(levels) == 4:
+                emit(level=min(100, round(max(levels) * 1000)))
+                levels.clear()
+            loud = rms > 0.008
             if not utterance and not loud:
                 pre_roll.append(samples)
                 continue
