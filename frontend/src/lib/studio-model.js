@@ -9,6 +9,10 @@ export const tabs = ['focus', 'desk', 'ideas', 'projects', 'memory', 'ambience',
 export function normalizeStudio(input, now = Date.now()) {
   const value = input && typeof input === 'object' ? input : {};
   const result = defaultStudio();
+  result.contextEnabled = value.contextEnabled === true;
+  const place = value.reminderPlace;
+  result.reminderPlace = place && text(place.name, 80) && Number.isFinite(place.lat) && Math.abs(place.lat) <= 90 && Number.isFinite(place.lon) && Math.abs(place.lon) <= 180
+    ? { name: text(place.name, 80), lat: place.lat, lon: place.lon } : null;
   result.tab = tabs.includes(value.tab) ? value.tab : 'focus';
   result.notes = array(value.notes).slice(0, 75).filter((note) => note && id(note.id)).map((note) => ({ id: id(note.id), title: text(note.title, 100), body: text(note.body, 2000) }));
   result.pins = [...new Set(array(value.pins).filter((pin) => typeof pin === 'string' && /^(note|report|project):/.test(pin)))].slice(0, 60);

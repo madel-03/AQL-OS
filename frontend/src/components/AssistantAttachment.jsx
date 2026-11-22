@@ -5,6 +5,7 @@ import { useLang } from '../lib/lang';
 import { speechLanguage } from '../lib/speech-voice';
 import { downloadAttachmentPdf } from '../lib/lecture-pdf';
 import LectureReading from './LectureReading';
+import StudyDiscussion from './StudyDiscussion';
 import './assistant-attachment.css';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -131,6 +132,7 @@ export default function AssistantAttachment({ draft = '' }) {
             {saving ? (en ? 'Preparing PDF…' : 'جاري تجهيز PDF…') : (en ? 'Save result as PDF' : 'احفظ النتيجة PDF')}
           </button>
           <div dir="auto"><LectureReading text={reply} /></div>
+          <StudyDiscussion key={reply} source={reply} en={en} />
         </div>}
         {reply && partial && <p role="status">{en ? 'This is a partial answer. Ask for a smaller page range to continue.' : 'الرد جزئي. حدّد نطاق صفحات أصغر لإكمال الطلب.'}</p>}
       </form>

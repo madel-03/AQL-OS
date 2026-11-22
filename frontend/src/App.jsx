@@ -4,6 +4,7 @@ import AssistantAttachment from './components/AssistantAttachment';
 import { requestAssistantTool } from './lib/assistant-tools';
 import { ScreenRequestDialog } from './components/ScreenRequests';
 import { ComputerResult } from './components/ComputerCompanion';
+import { ContextReminder } from './components/ContextNotes';
 import { openMusicRequest } from './lib/music';
 import { claimMicrophone } from './lib/microphone-owner';
 import { speechAudioElement, unlockSpeechAudio } from './lib/speech-audio';
@@ -444,6 +445,7 @@ function LayoutBody({ page, setPage, displayName, onLogout, onCompose, children 
             <button onClick={onLogout} style={{ background: 'rgba(255,77,77,0.08)', border: '1px solid rgba(255,77,77,0.35)', color: '#ffb3b3', borderRadius: '999px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700' }}>{t('فصل')} ⏻</button>
           </div>
         </div>
+        <ContextReminder />
         <div className="page-content" key={page}>{children}</div>
         <ComputerResult /><ScreenRequestDialog /><AssistantDocuments /><TaskPreview onContinue={onCompose} />
         <CompletionNotice />

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLang } from '../lib/lang';
 import { useResearch } from '../lib/research-context';
 import { useStudio } from '../lib/studio-context';
+import { ContextSettings } from './ContextNotes';
 import { ideaEdges, projectProgress } from '../lib/studio-model';
 
 const clock = (seconds) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
@@ -48,6 +49,7 @@ export function DeskSpace() {
       <div className="studio-actions">{item && <button className="studio-text-button" onClick={() => { if (type === 'report') openTask(id); else if (type === 'project') studio.setTab('projects'); else { setEditing(id); setTitle(item.title); setBody(item.body); } }}>{type === 'note' ? (en ? 'Edit' : 'عدّل') : (en ? 'Open ↗' : 'افتح ↗')}</button>}{type === 'note' && <button className="studio-text-button" onClick={() => { studio.deleteNote(id); if (editing === id) clear(); }}>{en ? 'Delete note' : 'احذف الملاحظة'}</button>}<button className="desk-move" disabled={index === 0} aria-label={en ? 'Move earlier' : 'قدّم العنصر'} onClick={() => studio.movePin(key, state.pins[index - 1])}>↑</button><button className="desk-move" disabled={index === items.length - 1} aria-label={en ? 'Move later' : 'أخّر العنصر'} onClick={() => studio.movePin(key, state.pins[index + 1])}>↓</button></div>
     </article>)}</div>
     {!items.length && <p className="studio-empty">{en ? 'An empty desk is an invitation. Add your first note below.' : 'المكتب الفاضي دعوة لفكرة. اكتب أول ملاحظة تحت.'}</p>}
+    <ContextSettings en={en} />
     <form className="studio-form note-editor" onSubmit={(event) => { event.preventDefault(); studio.saveNote(editing, title, body); clear(); }}><h4>{editing ? (en ? 'Edit your note' : 'عدّل ملاحظتك') : (en ? 'Leave yourself a note' : 'اترك لنفسك ملاحظة')}</h4><label>{en ? 'Title' : 'العنوان'}<input name="note-title" value={title} maxLength={100} required onChange={(event) => setTitle(event.target.value)} /></label><label>{en ? 'The thought' : 'الفكرة'}<textarea name="note-body" value={body} maxLength={2000} onChange={(event) => setBody(event.target.value)} /></label><div className="studio-actions"><button className="primary-action" disabled={!editing && state.notes.length >= 75}>{en ? 'Save & pin' : 'احفظ وثبّت'}</button>{editing && <button className="secondary-action" type="button" onClick={clear}>{en ? 'Cancel edit' : 'إلغاء التعديل'}</button>}</div></form>
   </section>;
 }
