@@ -116,6 +116,7 @@ async function main() {
         await fs.writeFile(pairingFile, JSON.stringify({ base, token }), { mode: 0o600 });
       }
       catch (e) {
+        if (e.reason === 'pair_storage_unavailable') throw Error('خادم عقل لم يتمكّن من حفظ الربط في قاعدة البيانات. راجع سجل Render.');
         if (e.reason !== 'invalid_code') throw e;
         console.log('الرمز غير صالح الآن. أنشئ رمز ربط جديدًا من الجوال والصقه هنا خلال دقيقتين.');
       }

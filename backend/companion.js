@@ -67,7 +67,11 @@ export function companionRouter({ requireAuth, generate, supabase }) {
       const token = secret();
       if (supabase) {
         const result = await supabase.from('companion_devices').upsert({ user_id: user, token_hash: digest(token) });
-        if (result.error) return error(res, 503, 'pair_storage_unavailable');
+        if (result.error) {
+          if (sessions.get(user) === session) session.code = code;
+          console.error('Companion pairing storage:', result.error.code, result.error.message);
+          return error(res, 503, 'pair_storage_unavailable');
+        }
       }
       session.token = token;
       session.seen = Date.now();
