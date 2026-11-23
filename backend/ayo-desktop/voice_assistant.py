@@ -31,11 +31,13 @@ class VoiceAssistant(QObject):
         self.listener.readyReadStandardOutput.connect(self.read_transcripts)
         self.listener.finished.connect(self.on_exit)
         self.listener.errorOccurred.connect(self.on_error)
-        self.speaker = QTextToSpeech(self)
+        self.speaker = QTextToSpeech("winrt", self) if "winrt" in QTextToSpeech.availableEngines() else QTextToSpeech(self)
         for locale in self.speaker.availableLocales():
             if locale.name().startswith("ar"):
                 self.speaker.setLocale(locale)
                 break
+        self.speaker.setRate(-0.12)
+        self.speaker.setPitch(-0.08)
         self.enabled = False
         self.busy = False
         self.awaiting_request = False
@@ -146,6 +148,11 @@ class VoiceAssistant(QObject):
                 self.answered.emit("تعذر الحصول على رد من Ollama المحلي.")
 
         threading.Thread(target=run, daemon=True).start()
+
+    def preview_voice(self):
+        if not self.busy:
+            self.status.emit("أهلًا، معك جارفس.")
+            self.speaker.say("أهلًا، معك جارفس.")
 
     def reply(self, text):
         self.busy = False

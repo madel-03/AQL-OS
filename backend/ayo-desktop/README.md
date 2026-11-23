@@ -4,7 +4,7 @@ Run setup.cmd and start.cmd to open the published site inside the Windows app.
 The embedded browser has its own persistent profile, so sign in there if prompted.
 Closing the window hides it in the system tray. Use the tray menu to restore it,
 toggle the floating button during minimization, or quit. Build.cmd packages the
-desktop app into dist\current\AQL-Desktop. Use installer.iss to package that folder.
+desktop app into dist\voice-overlay\AQL-Desktop. Use installer.iss to package that folder.
 ## Optional local assistant
 
 The native desktop client uses Python 3.12, Qt Quick Controls and SQLite. Main.qml owns the window, app.py coordinates user actions on the Qt thread, providers.py streams on a background thread, and store.py owns local persistence. Run these commands from this folder on Windows.
@@ -51,4 +51,5 @@ to local Ollama. The app uses Windows text-to-speech for its reply.
 Requirements are the existing local Whisper setup, a Windows speaking voice,
 and a running Ollama service with qwen3:0.6b and qwen2.5vl:3b installed.
 The wake listener starts disabled on each launch.
+
 

@@ -2,10 +2,10 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QUrl, Qt, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QCursor, QIcon
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QPushButton, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QMenu, QPushButton, QSystemTrayIcon
 
 
 from voice_assistant import VoiceAssistant
@@ -39,6 +39,19 @@ class DesktopWindow(QMainWindow):
             " QPushButton:hover { background: #32294d; }"
         )
         self.island.clicked.connect(self.restore)
+        self.voice_card = QLabel(self)
+        self.voice_card.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.voice_card.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.voice_card.setTextFormat(Qt.PlainText)
+        self.voice_card.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.voice_card.setWordWrap(True)
+        self.voice_card.setStyleSheet(
+            "QLabel { background: #191a29; color: #eeedf9; border: 1px solid #9b8aff;"
+            " border-radius: 18px; padding: 12px 16px; font: 16px 'Segoe UI'; }"
+        )
+        self.voice_card_timer = QTimer(self)
+        self.voice_card_timer.setSingleShot(True)
+        self.voice_card_timer.timeout.connect(self.voice_card.hide)
 
         self.tray = QSystemTrayIcon(icon, self)
         self.tray.setToolTip("عقل | AQL")
@@ -54,6 +67,7 @@ class DesktopWindow(QMainWindow):
         self.voice_toggle.toggled.connect(self.voice.enable)
         self.voice.status.connect(self.show_voice_status)
         self.voice.stopped.connect(self.clear_voice_toggle)
+        self.menu.addAction("جرّب صوت جارفس", self.voice.preview_voice)
         self.menu.addSeparator()
         self.menu.addAction("خروج من عقل", self.quit)
         self.tray.setContextMenu(self.menu)
@@ -67,11 +81,17 @@ class DesktopWindow(QMainWindow):
 
     def show_voice_status(self, text):
         self.tray.setToolTip(text[:120])
-        if self.island.isVisible():
-            self.island.setToolTip(text)
-        self.statusBar().showMessage(text, 10000)
-        if not self.isVisible() or self.isMinimized():
-            self.tray.showMessage("جارفس | عقل", text)
+        screen = QApplication.screenAt(QCursor.pos()) or self.screen()
+        area = screen.availableGeometry()
+        width = min(540, area.width() - 32)
+        message = text if len(text) <= 480 else text[:477] + "…"
+        self.voice_card.setText("جارفس  ·  " + message)
+        self.voice_card.setFixedWidth(width)
+        self.voice_card.setFixedHeight(self.voice_card.heightForWidth(width))
+        offset = 60 if self.island.isVisible() and self.island.screen() == screen else 12
+        self.voice_card.move(area.x() + (area.width() - width) // 2, area.top() + offset)
+        self.voice_card.show()
+        self.voice_card_timer.start(6000 if len(text) < 45 else 14000)
 
     def on_tray(self, reason):
         if reason == QSystemTrayIcon.Trigger:
@@ -116,6 +136,7 @@ class DesktopWindow(QMainWindow):
         self.exiting = True
         self.voice.enable(False)
         self.island.hide()
+        self.voice_card.hide()
         self.tray.hide()
         QApplication.quit()
 
