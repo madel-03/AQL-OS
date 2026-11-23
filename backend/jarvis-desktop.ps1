@@ -183,10 +183,31 @@ $timer.Add_Tick({
         if ($result.Confidence -ge 0.45) { Receive-VoicePhrase $result.Text }
     }
 })
+function Test-NearWakeName($candidate) {
+    foreach ($name in 'جارفس','جارفيس','جارڤيس','جارفز') {
+        if ($candidate -eq $name) { return $true }
+        if ($candidate.Length -eq $name.Length) {
+            $differences = 0
+            for ($index = 0; $index -lt $name.Length; $index++) {
+                if ($candidate[$index] -ne $name[$index]) { $differences++ }
+            }
+            if ($differences -eq 1) { return $true }
+        } elseif ([Math]::Abs($candidate.Length - $name.Length) -eq 1) {
+            $longer = $name
+            $shorter = $candidate
+            if ($candidate.Length -gt $name.Length) { $longer = $candidate; $shorter = $name }
+            for ($index = 0; $index -lt $longer.Length; $index++) {
+                if ($longer.Remove($index, 1) -eq $shorter) { return $true }
+            }
+        }
+    }
+    return $false
+}
 function Receive-VoicePhrase($text) {
         if ($script:pending -or $speaker.State -ne 'Ready') { return }
         $request = $text.Trim() -replace '[\u064b-\u065f]', ''
-        if ($request -match '^(?:(?:hey\s+|يا\s*))?(?:jarvis|جارفس|جارفيس|جارڤيس|جارفز)(?=$|[\s,،.!؟:])[\s,،.!؟:]*') {
+        if ($request -match '^(?:(?:hey\s+|يا\s*))?(?:jarvis|جارفس|جارفيس|جارڤيس|جارفز)(?=$|[\s,،.!؟:])[\s,،.!؟:]*' -or
+            ($request -match '^يا\s*(?<name>[\p{IsArabic}]+)(?=$|[\s,،.!؟:])[\s,،.!؟:]*' -and (Test-NearWakeName $Matches.name))) {
             $request = $request.Substring($Matches[0].Length).Trim()
             $script:armedUntil = [datetime]::UtcNow.AddSeconds(10)
             if (!$request) { [void]$speaker.SpeakAsync('Yes?'); return }
