@@ -11,11 +11,12 @@ SolidCompression=yes
 UninstallDisplayIcon={app}\AQL-Desktop.exe
 
 [Files]
-Source: "dist\voice-overlay\AQL-Desktop\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "dist\polished\AQL-Desktop\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{userprograms}\AQL"; Filename: "{app}\AQL-Desktop.exe"
 
 [Run]
 Filename: "{app}\AQL-Desktop.exe"; Description: "Open AQL"; Flags: postinstall nowait skipifsilent
+
 

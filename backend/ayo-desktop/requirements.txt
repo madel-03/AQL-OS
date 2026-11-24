@@ -5,3 +5,7 @@ pyinstaller>=6.12,<7
 PyMuPDF>=1.25,<2
 python-docx>=1.1,<2
 openpyxl>=3.1,<4
+winrt-Windows.Media.Ocr>=4!10.0.28000.2957
+winrt-Windows.Graphics.Imaging>=4!10.0.28000.2957
+winrt-Windows.Storage.Streams>=4!10.0.28000.2957
+winrt-Windows.Globalization>=4!10.0.28000.2957

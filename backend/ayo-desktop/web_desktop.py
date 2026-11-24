@@ -1,11 +1,16 @@
+import hashlib
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QUrl, Qt, QTimer
-from PySide6.QtGui import QCursor, QIcon
+from PySide6.QtCore import QLockFile, QSettings, QStandardPaths, QUrl, Qt, QTimer
+from PySide6.QtGui import QCursor, QDesktopServices, QIcon
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QMenu, QPushButton, QSystemTrayIcon
+from PySide6.QtWidgets import (
+    QApplication, QDialog, QHBoxLayout, QLabel, QMainWindow, QMenu, QMessageBox, QProgressBar,
+    QPushButton, QStackedWidget, QSystemTrayIcon, QTextEdit, QVBoxLayout, QWidget,
+)
 
 
 from voice_assistant import VoiceAssistant
@@ -24,8 +29,7 @@ class DesktopWindow(QMainWindow):
         self.profile = QWebEngineProfile("AQL", self)
         self.web = QWebEngineView(self)
         self.web.setPage(QWebEnginePage(self.profile, self.web))
-        self.setCentralWidget(self.web)
-        self.web.load(SITE)
+        self.build_web_shell()
 
         self.island = QPushButton("عقل", self)
         self.island.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
@@ -64,22 +68,142 @@ class DesktopWindow(QMainWindow):
         self.voice = VoiceAssistant(self)
         self.voice_toggle = self.menu.addAction("استمع لنداء يا جارفس")
         self.voice_toggle.setCheckable(True)
-        self.voice_toggle.toggled.connect(self.voice.enable)
+        self.voice_toggle.toggled.connect(self.toggle_microphone)
+        self.mic_button.clicked.connect(
+            lambda: self.voice_toggle.setChecked(not self.voice_toggle.isChecked())
+        )
         self.voice.status.connect(self.show_voice_status)
+        self.voice.mic_state.connect(self.update_microphone_label)
+        self.voice.mic_level.connect(self.mic_meter.setValue)
         self.voice.stopped.connect(self.clear_voice_toggle)
+        self.voice.answered.connect(self.save_last_reply)
+        self.last_reply = ""
+        self.reply_action = self.menu.addAction("آخر رد من جارفس", self.open_last_reply)
+        self.reply_action.setEnabled(False)
         self.menu.addAction("جرّب صوت جارفس", self.voice.preview_voice)
         self.menu.addSeparator()
         self.menu.addAction("خروج من عقل", self.quit)
         self.tray.setContextMenu(self.menu)
         self.tray.activated.connect(self.on_tray)
         self.tray.show()
+        self.load_site()
+
+    def build_web_shell(self):
+        shell = QWidget(self)
+        shell.setStyleSheet(
+            "QWidget { background: #151522; color: #f1edf9; font: 14px 'Segoe UI'; }"
+            " QPushButton { background: #28243b; border: 1px solid #51476c; border-radius: 8px;"
+            " padding: 6px 12px; } QPushButton:hover { background: #393152; }"
+            " QProgressBar { background: #252339; border: 0; border-radius: 3px; }"
+            " QProgressBar::chunk { background: #a8ebd8; border-radius: 3px; }"
+        )
+        layout = QVBoxLayout(shell)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        toolbar = QHBoxLayout()
+        toolbar.setContentsMargins(12, 8, 12, 8)
+        toolbar.addStretch()
+        self.mic_meter = QProgressBar()
+        self.mic_meter.setAccessibleName("مستوى المايك")
+        self.mic_meter.setRange(0, 100)
+        self.mic_meter.setValue(0)
+        self.mic_meter.setTextVisible(False)
+        self.mic_meter.setFixedSize(66, 6)
+        self.mic_meter.hide()
+        self.mic_label = QLabel("المايك متوقف")
+        self.mic_button = QPushButton("شغّل المايك")
+        for item in (self.mic_meter, self.mic_label, self.mic_button):
+            toolbar.addWidget(item)
+        layout.addLayout(toolbar)
+
+        self.pages = QStackedWidget()
+        self.pages.addWidget(self.web)
+        waiting = QWidget()
+        center = QVBoxLayout(waiting)
+        center.setAlignment(Qt.AlignCenter)
+        self.web_status = QLabel()
+        self.web_status.setAlignment(Qt.AlignCenter)
+        self.web_status.setWordWrap(True)
+        self.web_status.setMaximumWidth(420)
+        center.addWidget(self.web_status)
+        self.retry_button = QPushButton("أعد تحميل الموقع")
+        self.retry_button.clicked.connect(self.load_site)
+        center.addWidget(self.retry_button)
+        browser = QPushButton("افتح في المتصفح")
+        browser.clicked.connect(lambda: QDesktopServices.openUrl(SITE))
+        center.addWidget(browser)
+        self.pages.addWidget(waiting)
+        layout.addWidget(self.pages, 1)
+        self.setCentralWidget(shell)
+
+        self.load_timer = QTimer(self)
+        self.load_timer.setSingleShot(True)
+        self.load_timer.timeout.connect(self.website_timed_out)
+        self.web.loadFinished.connect(self.website_loaded)
+        self.web.renderProcessTerminated.connect(
+            lambda *_: self.website_problem("توقفت صفحة عقل عن العرض.")
+        )
+
+    def load_site(self):
+        self.web_status.setText("يفتح موقع عقل…")
+        self.pages.setCurrentIndex(1)
+        self.retry_button.setEnabled(False)
+        self.load_timer.start(25000)
+        self.web.load(SITE)
+
+    def website_loaded(self, ok):
+        self.load_timer.stop()
+        self.retry_button.setEnabled(True)
+        if ok:
+            self.pages.setCurrentIndex(0)
+        else:
+            self.website_problem("تعذر تحميل موقع عقل. تأكد من اتصال الإنترنت وحاول مرة ثانية.")
+
+    def website_timed_out(self):
+        self.website_problem("تحميل موقع عقل أخذ وقتًا أطول من المعتاد.")
+
+    def website_problem(self, text):
+        self.load_timer.stop()
+        self.web_status.setText(text)
+        self.retry_button.setEnabled(True)
+        self.pages.setCurrentIndex(1)
+
+    def toggle_microphone(self, enabled):
+        self.mic_button.setText("وقّف المايك" if enabled else "شغّل المايك")
+        self.mic_meter.setVisible(enabled)
+        self.voice.enable(enabled)
+
+    def update_microphone_label(self, text):
+        self.mic_label.setText(text[:64])
+        self.mic_label.setToolTip(text)
+        self.island.setText("أستمع" if text.startswith("أستمع") else "عقل")
+
+    def save_last_reply(self, answer):
+        self.last_reply = answer
+        self.reply_action.setEnabled(True)
+
+    def open_last_reply(self):
+        dialog = QDialog(self)
+        dialog.setWindowFlag(Qt.WindowStaysOnTopHint)
+        dialog.setWindowTitle("آخر رد من جارفس")
+        dialog.resize(520, 300)
+        layout = QVBoxLayout(dialog)
+        reply = QTextEdit(dialog)
+        reply.setReadOnly(True)
+        reply.setPlainText(self.last_reply)
+        layout.addWidget(reply)
+        dialog.exec()
 
     def clear_voice_toggle(self):
         self.voice_toggle.blockSignals(True)
         self.voice_toggle.setChecked(False)
         self.voice_toggle.blockSignals(False)
+        self.mic_button.setText("شغّل المايك")
+        self.mic_meter.hide()
 
     def show_voice_status(self, text):
+        if self.exiting:
+            return
         self.tray.setToolTip(text[:120])
         screen = QApplication.screenAt(QCursor.pos()) or self.screen()
         area = screen.availableGeometry()
@@ -87,7 +211,7 @@ class DesktopWindow(QMainWindow):
         message = text if len(text) <= 480 else text[:477] + "…"
         self.voice_card.setText("جارفس  ·  " + message)
         self.voice_card.setFixedWidth(width)
-        self.voice_card.setFixedHeight(self.voice_card.heightForWidth(width))
+        self.voice_card.setFixedHeight(max(44, self.voice_card.heightForWidth(width)))
         offset = 60 if self.island.isVisible() and self.island.screen() == screen else 12
         self.voice_card.move(area.x() + (area.width() - width) // 2, area.top() + offset)
         self.voice_card.show()
@@ -143,14 +267,45 @@ class DesktopWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
-    app.setApplicationName("عقل | AQL")
+    app.setApplicationName("AQL")
+    app.setApplicationDisplayName("عقل | AQL")
     app.setQuitOnLastWindowClosed(False)
     icon = QIcon(str(Path(__file__).resolve().parent / "assets" / "aql.ico"))
     app.setWindowIcon(icon)
+    profile_path = Path(QStandardPaths.writableLocation(QStandardPaths.AppLocalDataLocation))
+    profile_path.mkdir(parents=True, exist_ok=True)
+    instance = "AQL.Desktop." + hashlib.sha256(str(profile_path).encode()).hexdigest()[:20]
+    lock = QLockFile(str(profile_path / "desktop.lock"))
+    lock.setStaleLockTime(0)
+    if not lock.tryLock(150):
+        client = QLocalSocket()
+        client.connectToServer(instance)
+        if client.waitForConnected(1500):
+            client.disconnectFromServer()
+            return 0
+        QMessageBox.warning(None, "عقل | AQL", "عقل شغّال بالفعل أو نافذته ما زالت تفتح.")
+        return 1
+
+    server = QLocalServer()
+    server.setSocketOptions(QLocalServer.UserAccessOption)
+    if not server.listen(instance):
+        QMessageBox.warning(None, "عقل | AQL", "تعذر تجهيز نافذة عقل. جرّب تشغيله مرة ثانية.")
+        return 1
+
     window = DesktopWindow(icon)
+
+    def reopen():
+        while server.hasPendingConnections():
+            client = server.nextPendingConnection()
+            client.disconnectFromServer()
+            client.deleteLater()
+        window.restore()
+
+    server.newConnection.connect(reopen)
     window.show()
     return app.exec()
 
 
 if __name__ == "__main__":
     sys.exit(main())
+

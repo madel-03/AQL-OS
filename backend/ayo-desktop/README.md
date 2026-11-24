@@ -4,7 +4,7 @@ Run setup.cmd and start.cmd to open the published site inside the Windows app.
 The embedded browser has its own persistent profile, so sign in there if prompted.
 Closing the window hides it in the system tray. Use the tray menu to restore it,
 toggle the floating button during minimization, or quit. Build.cmd packages the
-desktop app into dist\voice-overlay\AQL-Desktop. Use installer.iss to package that folder.
+desktop app into dist\polished\AQL-Desktop. Use installer.iss to package that folder.
 ## Optional local assistant
 
 The native desktop client uses Python 3.12, Qt Quick Controls and SQLite. Main.qml owns the window, app.py coordinates user actions on the Qt thread, providers.py streams on a background thread, and store.py owns local persistence. Run these commands from this folder on Windows.
@@ -53,3 +53,14 @@ and a running Ollama service with qwen3:0.6b and qwen2.5vl:3b installed.
 The wake listener starts disabled on each launch.
 
 
+
+
+If the web view fails to load, use the retry or browser button. The desktop
+microphone remains available from the toolbar or tray. Its level bar confirms
+that audio reaches the local listener. The tray can reopen the last reply.
+
+For screen translation, Windows OCR first tries to read visible text locally.
+If OCR finds no text, AQL uses the Ollama vision model. Screen description
+uses the vision model directly. The OCR language depends on installed Windows
+language support. Screen translation and description work on one capture.
+For a read-screen request, recognized text is also available directly via Windows OCR.
