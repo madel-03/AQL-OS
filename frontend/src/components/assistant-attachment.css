@@ -17,3 +17,6 @@
 .assistant-attachment textarea { min-height: 5rem; padding: .65rem; }
 .assistant-attachment .assistant-attachment-consent { display: flex; align-items: baseline; }
 .assistant-attachment-reply { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; border-top: 1px solid #64748b; padding-top: .75rem; }
+
+.assistant-attachment-preview { display: flex; align-items: flex-start; gap: .75rem; }
+.assistant-attachment-preview img { max-width: min(70%, 18rem); max-height: 12rem; object-fit: contain; border-radius: .5rem; }

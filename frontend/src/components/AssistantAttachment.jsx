@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useLang } from '../lib/lang';
@@ -11,7 +11,10 @@ import './assistant-attachment.css';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const ACCEPT = '.jpg,.jpeg,.png,.webp,.mp3,.m4a,.wav,.ogg,.mp4,.webm,.pdf,.pptx,.txt,.md,.csv,.json';
 
-export default function AssistantAttachment({ draft = '' }) {
+const IMAGES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+const shoppingLink = query => `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(query)}`;
+
+export default function AssistantAttachment({ draft = '', ref }) {
   const { lang } = useLang();
   const en = lang === 'en';
   const dialog = useRef(null);
@@ -21,10 +24,50 @@ export default function AssistantAttachment({ draft = '' }) {
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reply, setReply] = useState('');
+  const [productQuery, setProductQuery] = useState('');
+  const preview = useRef(null);
+  const questionField = useRef(null);
+  const picker = useRef(null);
   const [partial, setPartial] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => () => controller.current?.abort(), []);
+  useEffect(() => {
+    if (!file || !preview.current) return;
+    const image = preview.current;
+    const url = URL.createObjectURL(file);
+    image.src = url;
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  function selectFile(next) {
+    setFile(next);
+    setConsent(false);
+    setReply('');
+    setProductQuery('');
+    setError('');
+  }
+
+  function pasteImage(event, fromComposer = false) {
+    if (controller.current) return;
+    const image = Array.from(event.clipboardData?.files || []).find(item => Object.hasOwn(IMAGES, item.type))
+      || Array.from(event.clipboardData?.items || []).find(item => item.kind === 'file' && Object.hasOwn(IMAGES, item.type))?.getAsFile();
+    if (!image) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (fromComposer) setQuestion(draft.slice(0, 600));
+    if (!dialog.current.open) dialog.current.showModal();
+    if (!image.size || image.size > 12 * 1024 * 1024) {
+      setError(en ? 'Paste an image up to 12 MB.' : 'الصق صورة حجمها حتى 12 ميغابايت.');
+      return;
+    }
+    picker.current.value = '';
+    selectFile(new File([image], `clipboard.${IMAGES[image.type]}`, { type: image.type }));
+    questionField.current.focus();
+  }
+
+  useImperativeHandle(ref, () => ({ pasteImage: event => pasteImage(event, true) }));
+
 
   async function savePdf() {
     setSaving(true);
@@ -46,6 +89,8 @@ export default function AssistantAttachment({ draft = '' }) {
     setError('');
     setReply('');
     setPartial(false);
+    setProductQuery('');
+    const productSearch = event.nativeEvent.submitter?.value === 'product';
     if (!ACCEPT.split(',').some(extension => file.name.toLowerCase().endsWith(extension)) || file.size > 12 * 1024 * 1024 || !file.size) {
       setError(en ? 'Choose a supported file up to 12 MB.' : 'اختر ملفًا بصيغة مدعومة وبحجم حتى 12 ميغابايت.');
       return;
@@ -56,7 +101,7 @@ export default function AssistantAttachment({ draft = '' }) {
     try {
       const { data } = await supabase.auth.getSession();
       if (!data.session) throw new Error('session');
-      const response = await fetch(`${API}/api/attachments?lang=${en ? 'en' : 'ar'}`, {
+      const response = await fetch(`${API}/api/attachments?lang=${en ? 'en' : 'ar'}${productSearch ? '&mode=product' : ''}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${data.session.access_token}`,
@@ -73,6 +118,7 @@ export default function AssistantAttachment({ draft = '' }) {
       const result = await response.json();
       if (!response.ok || !result.reply) throw new Error(result.error);
       setReply(result.reply);
+      setProductQuery(typeof result.productQuery === 'string' ? result.productQuery : '');
       setPartial(result.partial === true);
     } catch (failure) {
       if (!run.signal.aborted) {
@@ -98,34 +144,36 @@ export default function AssistantAttachment({ draft = '' }) {
     }
   }
 
+  const pasteImageInDialog = event => pasteImage(event);
   return <>
     <button className="secondary-action attachment-trigger" type="button" onClick={() => {
       if (!file) setQuestion(draft.slice(0, 600));
       dialog.current.showModal();
     }}>{en ? 'Attach a file' : 'أرفق ملف'}</button>
     {createPortal(<dialog ref={dialog} dir={en ? 'ltr' : 'rtl'} className="assistant-attachment" aria-label={en ? 'Ask about a file' : 'اسأل عن ملف'}>
-      <form onSubmit={submit}>
+      <form onSubmit={submit} onPaste={pasteImageInDialog}>
         <div className="assistant-attachment-heading">
           <h2>{en ? 'Ask about a file' : 'اسأل عن ملف'}</h2>
           <button type="button" className="secondary-action" onClick={() => dialog.current.close()}>{en ? 'Close' : 'إغلاق'}</button>
         </div>
-        <label>{en ? 'Choose a file' : 'اختر ملفًا'}<input type="file" accept={ACCEPT} required disabled={busy} onChange={event => {
-          setFile(event.target.files[0] ?? null);
-          setConsent(false);
-          setReply('');
-          setError('');
-        }} /></label>
+        <label>{en ? 'Choose a file' : 'اختر ملفًا'}<input ref={picker} type="file" accept={ACCEPT} disabled={busy} onChange={event => selectFile(event.target.files[0] ?? null)} /></label>
+        {file && Object.hasOwn(IMAGES, file.type) && <div className="assistant-attachment-preview">
+          <img ref={preview} alt={en ? 'Attached image' : 'الصورة المرفقة'} />
+          <button type="button" className="secondary-action" disabled={busy} onClick={() => { picker.current.value = ''; selectFile(null); }}>{en ? 'Remove image' : 'أزل الصورة'}</button>
+        </div>}
         <small>{en ? 'Images, recordings, video, PDF, PPTX and text. One file up to 12 MB.' : 'صور، تسجيلات، فيديو، PDF، PPTX وملفات نصية. ملف واحد حتى 12 ميغابايت.'}</small>
         <label>{en ? 'What should AQL do with it?' : 'وش تبغى عقل يسوي بالملف؟'}
-          <textarea dir="auto" value={question} disabled={busy} maxLength={600} onChange={event => setQuestion(event.target.value)} placeholder={en ? 'For example, transcribe this recording' : 'مثلاً فرّغ هذا التسجيل أو اشرح اللي في الصورة'} />
+          <textarea ref={questionField} dir="auto" value={question} disabled={busy} maxLength={600} onChange={event => setQuestion(event.target.value)} placeholder={en ? 'For example, transcribe this recording' : 'مثلاً فرّغ هذا التسجيل أو اشرح اللي في الصورة'} />
         </label>
         <label className="assistant-attachment-consent"><input type="checkbox" checked={consent} disabled={busy} onChange={event => setConsent(event.target.checked)} />
           {en ? 'I agree to send the file content and question to Gemini for analysis.' : 'أوافق على إرسال محتوى الملف والسؤال إلى Gemini للتحليل.'}
         </label>
         <div className="assistant-attachment-heading">
           <button className="primary-action" disabled={busy || !file || !consent}>{busy ? (en ? 'Analyzing…' : 'جاري التحليل…') : (en ? 'Send to AQL' : 'أرسل لعقل')}</button>
+          {!busy && file && Object.hasOwn(IMAGES, file.type) && <button value="product" className="secondary-action" disabled={!consent}>{en ? 'Find this product' : 'ابحث عن هذا المنتج'}</button>}
           {busy && <button type="button" className="secondary-action" onClick={() => controller.current?.abort()}>{en ? 'Cancel analysis' : 'ألغِ التحليل'}</button>}
         </div>
+        {productQuery && <a href={shoppingLink(productQuery)} target="_blank" rel="noopener noreferrer">{en ? 'Compare stores for' : 'قارن المتاجر لمنتج'} {productQuery}</a>}
         {error && <p role="alert">{error}</p>}
         {reply && <div className="assistant-attachment-reply">
           <button className="secondary-action" type="button" disabled={saving} onClick={savePdf}>

@@ -1710,6 +1710,7 @@ function ChatPage({ initialDraft = '' }) {
   const calendarActions = useCalendarActions(lang);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState(initialDraft);
+  const chatAttachment = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [listening, setListening] = useState(false);
@@ -1847,8 +1848,9 @@ function ChatPage({ initialDraft = '' }) {
       {error && <div style={{ color: '#fecaca', fontSize: '0.85rem', margin: '0.5rem 0' }}>⚠️ {error}</div>}
 
       <form onSubmit={send} className="chat-composer">
-        <input id="chat-compose" aria-label={lang === 'en' ? 'Message AQL' : 'رسالة لعقل'} value={input} onChange={(e) => setInput(e.target.value)} placeholder={lang === 'en' ? 'Write a message…' : 'اكتب رسالتك…'} style={{ ...fieldStyle, fontSize: '1.1rem' }} />
-        <AssistantAttachment draft={input} />
+        <input id="chat-compose" onPaste={event => chatAttachment.current?.pasteImage(event)} aria-label={lang === 'en' ? 'Message AQL' : 'رسالة لعقل'} value={input} onChange={(e) => setInput(e.target.value)} placeholder={lang === 'en' ? 'Write a message…' : 'اكتب رسالتك…'} style={{ ...fieldStyle, fontSize: '1.1rem' }} />
+        <AssistantAttachment ref={chatAttachment} draft={input} />
+        {input.trim() && <a className="secondary-action" href={`https://www.google.com/search?tbm=shop&q=${encodeURIComponent(input.trim())}`} target="_blank" rel="noopener noreferrer">{lang === 'en' ? 'Find a product' : 'ابحث عن منتج'}</a>}
         <button type="button" onClick={startListening} disabled={busy} title="تكلّم مع عَقْل"
           style={{ padding: '12px 16px', background: listening ? 'rgba(239,68,68,0.2)' : 'rgba(56,189,248,0.1)', border: `1px solid ${listening ? 'rgba(239,68,68,0.5)' : 'rgba(56,189,248,0.35)'}`, color: listening ? '#fca5a5' : '#7dd3fc', borderRadius: '10px', cursor: 'pointer', fontSize: '1.1rem', boxShadow: listening ? '0 0 18px rgba(239,68,68,0.4)' : 'none' }}>
           {listening ? '🎙️ أسمعك...' : '🎤'}

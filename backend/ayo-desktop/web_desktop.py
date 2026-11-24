@@ -1,9 +1,10 @@
 import hashlib
 import sys
+from urllib.parse import urlencode
 from pathlib import Path
 
-from PySide6.QtCore import QLockFile, QSettings, QStandardPaths, QUrl, Qt, QTimer
-from PySide6.QtGui import QCursor, QDesktopServices, QIcon
+from PySide6.QtCore import QEvent, QLockFile, QSettings, QStandardPaths, QUrl, Qt, QTimer
+from PySide6.QtGui import QCursor, QDesktopServices, QIcon, QKeySequence, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -112,6 +113,7 @@ class DesktopWindow(QMainWindow):
         self.quick_frame = None
         self.quick_capturing = False
         self.quick_waiting = False
+        self.quick_product_waiting = False
         self.quick_chat = QDialog(self, Qt.Tool | Qt.WindowStaysOnTopHint)
         self.quick_chat.setWindowTitle("اسأل جارفس")
         self.quick_chat.setFixedWidth(392)
@@ -126,7 +128,8 @@ class DesktopWindow(QMainWindow):
         )
         layout = QVBoxLayout(self.quick_chat)
         self.quick_input = QLineEdit()
-        self.quick_input.setPlaceholderText("اكتب سؤالك لجارفس…")
+        self.quick_input.setPlaceholderText("اكتب سؤالك أو الصق صورة…")
+        self.quick_input.installEventFilter(self)
         self.quick_input.setMaxLength(2000)
         self.quick_input.returnPressed.connect(self.send_quick_request)
         layout.addWidget(self.quick_input)
@@ -158,15 +161,50 @@ class DesktopWindow(QMainWindow):
         controls.addStretch()
         self.quick_send = QPushButton("إرسال")
         self.quick_send.setAutoDefault(False)
-        self.quick_send.clicked.connect(self.send_quick_request)
+        self.quick_send.clicked.connect(lambda: self.send_quick_request())
         controls.addWidget(self.quick_send)
         layout.addLayout(controls)
+        product = QPushButton("ابحث عن منتج")
+        product.setAutoDefault(False)
+        product.clicked.connect(self.open_product_search)
+        layout.addWidget(product)
         main = QPushButton("افتح عقل")
         main.setAutoDefault(False)
         main.clicked.connect(self.restore)
         layout.addWidget(main)
         self.quick_chat.finished.connect(lambda _: self.clear_quick_frame())
         self.voice.typed_answered.connect(self.show_quick_reply)
+
+    def eventFilter(self, watched, event):
+        if (watched is getattr(self, "quick_input", None) and event.type() == QEvent.Type.KeyPress
+                and event.matches(QKeySequence.StandardKey.Paste) and not self.quick_waiting):
+            image = QApplication.clipboard().image()
+            if not image.isNull():
+                self.preview_quick_frame(QPixmap.fromImage(image), "الصورة جاهزة. اكتب سؤالك واضغط إرسال.")
+                return True
+        return super().eventFilter(watched, event)
+
+    def open_product_search(self):
+        if self.quick_waiting:
+            return
+        query = self.quick_input.text().strip()
+        if self.quick_frame is not None:
+            self.send_quick_request(product=True)
+            return
+        if not query:
+            self.quick_status.setText("اكتب اسم المنتج أو موديله أولًا. إذا عندك صورة، اسأل جارفس عن الاسم.")
+            return
+        url = "https://www.google.com/search?" + urlencode({"tbm": "shop", "q": query})
+        if not QDesktopServices.openUrl(QUrl(url)):
+            self.quick_status.setText("تعذّر فتح المتصفح.")
+
+    def preview_quick_frame(self, frame, status):
+        self.quick_frame = frame
+        self.quick_preview.setPixmap(frame.scaled(300, 135, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.quick_preview.show()
+        self.quick_remove.show()
+        self.quick_status.setText(status)
+        self.quick_chat.adjustSize()
 
     def show_quick_chat(self):
         screen = self.island.screen() or self.screen()
@@ -230,25 +268,29 @@ class DesktopWindow(QMainWindow):
             self.clear_quick_frame()
             self.quick_status.setText("تعذّر أخذ لقطة للشاشة.")
         else:
-            self.quick_frame = frame
-            self.quick_preview.setPixmap(frame.scaled(300, 135, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            self.quick_preview.show()
-            self.quick_remove.show()
-            self.quick_status.setText("اللقطة جاهزة. أرسلها مع سؤالك أو اضغط إرسال لوصف الشاشة.")
+            self.preview_quick_frame(frame, "اللقطة جاهزة. أرسلها مع سؤالك أو اضغط إرسال لوصف الشاشة.")
         self.update_island()
         self.show_quick_chat()
 
-    def send_quick_request(self):
+    def send_quick_request(self, *, product=False):
         text = self.quick_input.text().strip()
         if self.quick_waiting or (not text and self.quick_frame is None):
             return
         if self.voice.busy:
             self.quick_status.setText("جارفس يرد على طلب آخر. أرسل بعد ما يخلص.")
             return
-        if not self.voice.ask(text or "صف ما يظهر على الشاشة.", frame=self.quick_frame, typed=True):
+        prompt = text or "صف ما يظهر على الشاشة."
+        if product:
+            prompt = ("حدّد المنتج الظاهر إن أمكن. ابدأ بسطر SEARCH_QUERY: ثم الاسم والموديل بكلمات البحث. "
+                      "إذا تعذّر التحديد اكتب SEARCH_QUERY: UNKNOWN. بعدها اشرح بجملة قصيرة. "
+                      "لا تختلق اسمًا أو سعرًا.")
+            if text:
+                prompt += "\nتفاصيل المستخدم: " + text
+        if not self.voice.ask(prompt, frame=self.quick_frame, typed=True):
             self.quick_status.setText("تعذّر تجهيز الطلب. جرّب مرة ثانية.")
             return
         self.quick_waiting = True
+        self.quick_product_waiting = product
         self.quick_send.setEnabled(False)
         self.quick_capture_button.setEnabled(False)
         self.quick_input.clear()
@@ -259,6 +301,16 @@ class DesktopWindow(QMainWindow):
 
     def show_quick_reply(self, text):
         self.quick_waiting = False
+        product, self.quick_product_waiting = self.quick_product_waiting, False
+        if product and text.upper().startswith("SEARCH_QUERY:"):
+            first, _, reply = text.partition("\n")
+            query = first.split(":", 1)[1].strip()
+            if 0 < len(query) <= 120 and query.upper() != "UNKNOWN" and "://" not in query:
+                if not self.quick_input.text().strip():
+                    self.quick_input.setText(query)
+                text = (reply.strip() or query) + "\n\nاضغط «ابحث عن منتج» لعرض المتاجر."
+            else:
+                text = reply.strip() or "ما قدرت أحدد اسم المنتج من الصورة."
         self.quick_send.setEnabled(True)
         self.quick_capture_button.setEnabled(True)
         self.quick_reply.setPlainText(text)
