@@ -5,6 +5,7 @@ import { createElevenSpeech } from './eleven-speech.js';
 import { createDocumentExportRouter } from './document-export.js';
 import { createLecturesRouter } from './lectures.js';
 import { createAttachmentsRouter } from './attachments.js';
+import { createDesktopAnalysisRouter } from './desktop-analysis.js';
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
@@ -44,6 +45,7 @@ app.use(cors({
 app.use('/api/device', express.json({ limit: '400kb' }));
 app.use('/api/documents/export', express.json({ limit: '1mb' }));
 app.use('/api/lectures/export', express.json({ limit: '1mb' }));
+app.use('/api/desktop/answer', express.json({ limit: '3mb' }));
 app.use(express.json());
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -126,13 +128,13 @@ async function groqChat(system, messages, tools = null, preferQwen = false) {
 }
 
 // 🌐 3. Gemini Helper (الثالث والأخير)
-async function geminiGenerate(payload, models = MODEL_FALLBACKS) {
+async function geminiGenerate(payload, models = MODEL_FALLBACKS, timeoutMs = 45000) {
   let lastError = null;
   for (const model of models) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
     try {
       const response = await fetch(url, {
-        signal: AbortSignal.timeout(45000),
+        signal: AbortSignal.timeout(timeoutMs),
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -259,6 +261,25 @@ const attachmentModels = [...new Set([
   ...(process.env.LECTURE_GEMINI_FALLBACKS || 'gemini-3.5-flash-lite,gemini-3.1-flash-lite').split(','),
 ].map(model => model.trim()).filter(Boolean))].slice(0, 3);
 app.use('/api/attachments', createAttachmentsRouter({ requireAuth, generate: payload => geminiGenerate(payload, attachmentModels) }));
+app.use('/api/desktop/answer', createDesktopAnalysisRouter({
+  requireAuth,
+  textAnswer: async (system, messages) => {
+    for (const [provider, configured] of [['groq', GROQ_API_KEY], ['cerebras', CEREBRAS_API_KEY]]) {
+      if (!configured) continue;
+      try {
+        const data = await modelChat(provider, system, messages, null, true, { timeoutMs: 4500, maxModels: 1 });
+        return { reply: data.choices?.[0]?.message?.content, provider };
+      } catch { /* Try the next configured fast provider. */ }
+    }
+    return null;
+  },
+  visionAnswer: async payload => {
+    const data = await geminiGenerate(payload, attachmentModels.slice(0, 1), 18000);
+    const reply = data.candidates?.[0]?.content?.parts?.filter(part => !part.thought).map(part => part.text || '').join('').trim();
+    return { reply, provider: 'gemini' };
+  },
+}));
+
 const activeProductSearches = new Set();
 app.post('/api/products/search', requireAuth, async (req, res) => {
   const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
@@ -1000,4 +1021,3 @@ app.post('/api/wellness', requireAuth, async (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
-

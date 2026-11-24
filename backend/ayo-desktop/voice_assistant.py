@@ -12,7 +12,7 @@ from PySide6.QtGui import QCursor
 from PySide6.QtTextToSpeech import QTextToSpeech
 from PySide6.QtWidgets import QApplication
 
-from local_reply import local_answer
+from local_reply import HYBRID, OFFLINE, desktop_answer
 
 
 SCREEN = re.compile(
@@ -167,6 +167,7 @@ class VoiceAssistant(QObject):
         if self.busy:
             return False
         image = ocr_image = None
+        mode = self.parent().analysis_mode
         sees_screen = frame is not None or (not typed and bool(SCREEN.search(request)))
         translate = bool(TRANSLATION.search(request))
         read_only = bool(READ_TEXT.search(request)) and not translate
@@ -177,7 +178,7 @@ class VoiceAssistant(QObject):
             if frame.isNull():
                 self.status.emit("تعذر أخذ لقطة للشاشة.")
                 return False
-            image = encode_frame(frame, 768)
+            image = encode_frame(frame, 1280 if mode == HYBRID else 768)
             if not image:
                 self.status.emit("تعذر تجهيز لقطة الشاشة.")
                 return False
@@ -188,11 +189,11 @@ class VoiceAssistant(QObject):
         self.request_id += 1
         request_id = self.request_id
         if not typed:
-            self.status.emit("أحلل لقطة الشاشة محليًا…" if image else "جارفس يجهز الرد…")
+            self.status.emit("أجهّز اللقطة للتحليل…" if image else "جارفس يجهز الرد…")
 
-        def run():
+        def run(token):
             try:
-                answer = local_answer(request, image, ocr_image, read_only, translate)
+                answer = desktop_answer(request, image, ocr_image, read_only, translate, mode=mode, token=token)
             except requests.Timeout:
                 answer = "انتهت مهلة النموذج المحلي. جرّب مرة ثانية."
             except requests.ConnectionError:
@@ -203,7 +204,23 @@ class VoiceAssistant(QObject):
                 answer = "تعذر الحصول على رد من Ollama المحلي."
             self.request_finished.emit(request_id, answer)
 
-        threading.Thread(target=run, daemon=True).start()
+        started = False
+        def start_worker(token=""):
+            nonlocal started
+            if started or request_id != self.request_id:
+                return
+            started = True
+            threading.Thread(target=run, args=(token,), daemon=True).start()
+
+        if mode == HYBRID and image and not read_only:
+            QTimer.singleShot(2500, start_worker)
+            self.parent().get_cloud_token(start_worker)
+        elif mode == HYBRID and image:
+            # A read-only request stays local, even if OCR cannot recognize it.
+            mode = OFFLINE
+            start_worker()
+        else:
+            start_worker()
         return True
 
     def complete(self, request_id, answer):
@@ -228,4 +245,3 @@ class VoiceAssistant(QObject):
             self.status.emit(text)
             speech = re.sub(r"(?m)^[#>*\-]+\s*", "", text)
             self.speaker.say(speech.replace("**", "").replace("`", ""))
-

@@ -4,7 +4,7 @@ from urllib.parse import urlencode
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QLockFile, QSettings, QStandardPaths, QUrl, Qt, QTimer
-from PySide6.QtGui import QCursor, QDesktopServices, QIcon, QKeySequence, QPixmap
+from PySide6.QtGui import QActionGroup, QCursor, QDesktopServices, QIcon, QKeySequence, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -14,10 +14,31 @@ from PySide6.QtWidgets import (
 )
 
 
+from local_reply import FULL_LOCAL, HYBRID, OFFLINE
+from screen_crop import crop_frame
 from voice_assistant import VoiceAssistant
 
 
 SITE = QUrl("https://aql-os-orcin.vercel.app/")
+ANALYSIS_MODES = {
+    HYBRID: ("تلقائي", "النص يُقرأ محليًا ثم يُرسل للنموذج السريع. الأسئلة البصرية ترسل الصورة إلى Gemini."),
+    OFFLINE: ("بدون اتصال", "قراءة النص وتحليله على جهازك."),
+    FULL_LOCAL: ("محلي كامل", "النص والصورة يُحلّلان على جهازك. وصف الصور قد يبطئ الكمبيوتر."),
+}
+
+READ_AQL_SESSION = """
+(() => {
+    if (location.origin !== "https://aql-os-orcin.vercel.app") return "";
+    try {
+        const keys = Object.keys(localStorage).filter(key => /^sb-[a-z0-9]+-auth-token$/.test(key));
+        if (keys.length !== 1) return "";
+        const session = JSON.parse(localStorage.getItem(keys[0]));
+        const token = session?.access_token;
+        return typeof token === "string" && /^[A-Za-z0-9_.-]{40,4096}$/.test(token)
+            && session.expires_at * 1000 > Date.now() + 10000 ? token : "";
+    } catch { return ""; }
+})()
+"""
 
 
 class DesktopWindow(QMainWindow):
@@ -25,6 +46,9 @@ class DesktopWindow(QMainWindow):
         super().__init__()
         self.settings = QSettings("AQL", "Desktop")
         self.exiting = False
+        self.analysis_mode = self.settings.value("analysisMode", HYBRID)
+        if self.analysis_mode not in ANALYSIS_MODES:
+            self.analysis_mode = HYBRID
         self.setWindowTitle("عقل | AQL")
         self.resize(1180, 800)
         self.profile = QWebEngineProfile("AQL", self)
@@ -79,6 +103,7 @@ class DesktopWindow(QMainWindow):
         self.voice.stopped.connect(self.clear_voice_toggle)
         self.voice.answered.connect(self.save_last_reply)
         self.build_quick_chat()
+        self.build_analysis_menu(self.menu.addMenu("وضع تحليل اللقطات"))
         self.last_reply = ""
         self.reply_action = self.menu.addAction("آخر رد من جارفس", self.open_last_reply)
         self.reply_action.setEnabled(False)
@@ -109,6 +134,42 @@ class DesktopWindow(QMainWindow):
         if hasattr(self, "idle_timer") and not self.exiting:
             self.idle_timer.start(10000)
 
+    def build_analysis_menu(self, menu):
+        group = QActionGroup(menu)
+        group.setExclusive(True)
+        for mode, (title, _) in ANALYSIS_MODES.items():
+            action = menu.addAction(title)
+            action.setCheckable(True)
+            group.addAction(action)
+            action.setChecked(self.analysis_mode == mode)
+            action.triggered.connect(lambda _checked, choice=mode: self.set_analysis_mode(choice))
+
+    def set_analysis_mode(self, mode):
+        self.analysis_mode = mode
+        self.settings.setValue("analysisMode", mode)
+        title, detail = ANALYSIS_MODES[mode]
+        self.quick_mode.setText(title)
+        self.quick_mode.setToolTip(detail)
+        self.quick_privacy.setText(detail)
+
+    def get_cloud_token(self, callback):
+        url = self.web.url()
+        if (url.scheme(), url.host(), url.port(443)) != (SITE.scheme(), SITE.host(), SITE.port(443)):
+            callback("")
+            return
+        page = self.web.page()
+        page.setLifecycleState(QWebEnginePage.LifecycleState.Active)
+
+        def received(token):
+            if self.exiting:
+                return
+            callback(token if isinstance(token, str) else "")
+            if not self.isVisible() or self.isMinimized():
+                self.idle_timer.start(10000)
+
+        # Isolated JS world. The token is passed only to the authenticated AQL API.
+        page.runJavaScript(READ_AQL_SESSION, 1, received)
+
     def build_quick_chat(self):
         self.quick_frame = None
         self.quick_capturing = False
@@ -138,6 +199,10 @@ class DesktopWindow(QMainWindow):
         self.quick_preview.setAlignment(Qt.AlignCenter)
         self.quick_preview.hide()
         layout.addWidget(self.quick_preview)
+        self.quick_privacy = QLabel(ANALYSIS_MODES[self.analysis_mode][1])
+        self.quick_privacy.setWordWrap(True)
+        self.quick_privacy.hide()
+        layout.addWidget(self.quick_privacy)
         self.quick_status = QLabel()
         self.quick_status.setWordWrap(True)
         self.quick_status.setTextFormat(Qt.PlainText)
@@ -158,12 +223,22 @@ class DesktopWindow(QMainWindow):
         self.quick_remove.clicked.connect(self.clear_quick_frame)
         self.quick_remove.hide()
         controls.addWidget(self.quick_remove)
+        self.quick_crop = QPushButton("قص الصورة")
+        self.quick_crop.setAutoDefault(False)
+        self.quick_crop.clicked.connect(self.crop_quick_image)
+        self.quick_crop.hide()
+        controls.addWidget(self.quick_crop)
         controls.addStretch()
         self.quick_send = QPushButton("إرسال")
         self.quick_send.setAutoDefault(False)
         self.quick_send.clicked.connect(lambda: self.send_quick_request())
         controls.addWidget(self.quick_send)
         layout.addLayout(controls)
+        self.quick_mode = QPushButton(ANALYSIS_MODES[self.analysis_mode][0])
+        self.quick_mode.setAutoDefault(False)
+        self.quick_mode.setToolTip(ANALYSIS_MODES[self.analysis_mode][1])
+        self.quick_mode.clicked.connect(self.open_analysis_menu)
+        layout.addWidget(self.quick_mode)
         product = QPushButton("ابحث عن منتج")
         product.setAutoDefault(False)
         product.clicked.connect(self.open_product_search)
@@ -198,11 +273,25 @@ class DesktopWindow(QMainWindow):
         if not QDesktopServices.openUrl(QUrl(url)):
             self.quick_status.setText("تعذّر فتح المتصفح.")
 
+    def open_analysis_menu(self):
+        menu = QMenu(self.quick_chat)
+        self.build_analysis_menu(menu)
+        menu.exec(self.quick_mode.mapToGlobal(self.quick_mode.rect().bottomLeft()))
+
+    def crop_quick_image(self):
+        if self.quick_frame is None:
+            return
+        result = crop_frame(self.quick_frame, self.quick_chat)
+        if result is not None and not result.isNull():
+            self.preview_quick_frame(result, "تم القص. أرسل الجزء المحدد مع سؤالك.")
+
     def preview_quick_frame(self, frame, status):
         self.quick_frame = frame
         self.quick_preview.setPixmap(frame.scaled(300, 135, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         self.quick_preview.show()
         self.quick_remove.show()
+        self.quick_crop.show()
+        self.quick_privacy.show()
         self.quick_status.setText(status)
         self.quick_chat.adjustSize()
 
@@ -227,6 +316,8 @@ class DesktopWindow(QMainWindow):
         self.quick_preview.clear()
         self.quick_preview.hide()
         self.quick_remove.hide()
+        self.quick_crop.hide()
+        self.quick_privacy.hide()
         if not self.quick_waiting:
             self.quick_status.clear()
         self.quick_chat.adjustSize()

@@ -4,17 +4,18 @@ export function chatModelOrder(provider, config, preferQwen = false) {
   return [...new Set(preferQwen && config.QWEN_ENABLED !== 'false' ? [qwenModels[provider], ...original] : original)];
 }
 export function createModelChat({ config = process.env, fetcher = fetch } = {}) {
-  return async (provider, system, messages, tools = null, preferQwen = false) => {
+  return async (provider, system, messages, tools = null, preferQwen = false, { timeoutMs = 45000, maxModels } = {}) => {
     if (!['cerebras','groq'].includes(provider)) throw new Error('Unsupported AI provider');
     const key = config[provider === 'cerebras' ? 'CEREBRAS_API_KEY' : 'GROQ_API_KEY'];
     if (!key) throw new Error(`${provider} API key missing`);
     let lastError;
-    for (const model of chatModelOrder(provider, config, preferQwen)) {
+    const order = chatModelOrder(provider, config, preferQwen);
+    for (const model of maxModels ? order.slice(0, maxModels) : order) {
       try {
         const body = { model, temperature: 0.7, messages: [{ role: 'system', content: system }, ...messages] };
         if (tools) { body.tools = tools; body.tool_choice = 'auto'; }
         if (provider === 'groq' && model.startsWith('qwen/')) body.reasoning_effort = 'none';
-        const response = await fetcher(provider === 'cerebras' ? 'https://api.cerebras.ai/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(body), signal: AbortSignal.timeout(45000) });
+        const response = await fetcher(provider === 'cerebras' ? 'https://api.cerebras.ai/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
         if (!response.ok) {
           lastError = Object.assign(new Error(`${provider} ${response.status} on ${model}`), { status: response.status });
           if ([401,402,403].includes(response.status)) throw lastError;
