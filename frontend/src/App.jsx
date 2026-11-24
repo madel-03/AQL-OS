@@ -2,7 +2,7 @@ import { speechLanguage, speechVoice } from './lib/speech-voice';
 import AssistantDocuments from './components/AssistantDocuments';
 import AssistantAttachment from './components/AssistantAttachment';
 import { ComposerImage, ImageConsent } from './components/ComposerImage';
-import { pastedImage, productSearchQuery, shoppingLink, wantsProduct, wantsProductLink } from './lib/composer-image';
+import { pastedImage, productSearchQuery, productSearchReply, searchProducts, shoppingLink, wantsProduct, wantsProductLink } from './lib/composer-image';
 import { requestAssistantTool } from './lib/assistant-tools';
 import { disconnectLocalDevice } from './lib/local-device';
 import { ScreenRequestDialog } from './components/ScreenRequests';
@@ -1768,19 +1768,6 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
     }); chatMic.current.start();
   };
 
-  const searchProducts = async (query, signal) => {
-    const headers = await getAuthHeaders();
-    try {
-      const response = await fetch(`${API_URL}/api/products/search`, {
-        method: 'POST', headers, signal, body: JSON.stringify({ query: query.slice(0, 300), lang }),
-      });
-      if (!response.ok) return null;
-      return await response.json();
-    } catch {
-      return null;
-    }
-  };
-
   const sendText = async (text, signal) => {
     if (!text || busy) return;
     setBusy(true); setError('');
@@ -1792,12 +1779,10 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
       const productQuery = requestedProduct || (wantsProductLink(text) ? previousProduct : '');
       if (productQuery) {
         const replyId = `shopping-${Date.now()}`;
-        const search = await searchProducts(productQuery, signal);
+        const search = await searchProducts(API_URL, productQuery, lang, await getAuthHeaders(), signal);
         const products = search?.results;
         if (signal?.aborted) return;
-        const content = products?.length
-          ? (search.reply || (lang === 'en' ? 'Here are the search results.' : 'هذي نتائج البحث حسب المواصفات اللي طلبتها.'))
-          : (lang === 'en' ? 'I couldn’t retrieve results. You can open the store search below.' : 'ما قدرت أسترجع نتائج البحث. تقدر تفتح بحث المتاجر من الرابط.');
+        const content = productSearchReply(search, lang === 'en');
         setMessages(current => [...current, { role: 'assistant', id: replyId, content, productQuery, products }]);
         if (autoSpeak) { speak(content, replyId); repliedWithSpeech = true; }
         return;
@@ -1834,7 +1819,7 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
     setError('');
   };
 
-  const sendImage = async (text, file) => {
+  const sendImage = async (text, file, productMode = wantsProduct(text)) => {
     if (!file || imageRun.current) return;
     const run = {};
     imageRun.current = run;
@@ -1843,7 +1828,7 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
     try {
       const headers = await getAuthHeaders();
       const params = new URLSearchParams({ lang });
-      if (wantsProduct(text)) params.set('mode', 'product');
+      if (productMode) params.set('mode', 'product');
       const response = await fetch(`${API_URL}/api/attachments?${params}`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-Aql-File': encodeURIComponent(file.name), 'X-Aql-Question': encodeURIComponent(text.slice(0, 600)) },
@@ -1852,9 +1837,9 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
       const result = await response.json();
       if (!response.ok || !result.reply) throw new Error('attachment');
       const replyId = `image-${Date.now()}`;
-      const search = result.productQuery ? await searchProducts(result.productQuery) : null;
+      const search = result.productQuery ? await searchProducts(API_URL, result.productQuery, lang, headers) : null;
       const products = search?.results;
-      const reply = search?.reply ? result.reply + '\n\n' + search.reply : result.reply;
+      const reply = result.productQuery ? `${result.reply}\n\n${productSearchReply(search, lang === 'en')}` : result.reply;
       setMessages(current => [...current,
         { role: 'user', content: text, image: file },
         { role: 'assistant', id: replyId, content: reply, productQuery: result.productQuery, products },
@@ -1884,7 +1869,7 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
     e.preventDefault();
     if (busy || (image && !imageConsent)) return;
     if (chatMic.current?.enabled) { chatMic.current.stop(); setListening(false); voiceState('idle'); }
-    if (image) void sendImage(input.trim(), image);
+    if (image) void sendImage(input.trim(), image, e.nativeEvent.submitter?.value === 'product' || wantsProduct(input));
     else void sendText(input.trim());
   };
   const canSend = !busy && (image ? imageConsent : Boolean(input.trim()));
@@ -1965,7 +1950,8 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
         </div>}
         <input id="chat-compose" disabled={busy} aria-label={lang === 'en' ? 'Message AQL' : 'رسالة لعقل'} value={input} onChange={(e) => setInput(e.target.value)} placeholder={lang === 'en' ? 'Write a message…' : 'اكتب رسالتك…'} style={{ ...fieldStyle, fontSize: '1.1rem' }} />
         <AssistantAttachment draft={input} />
-        {input.trim() && <a className="secondary-action" href={shoppingLink(input.trim())} target="_blank" rel="noopener noreferrer">{lang === 'en' ? 'Find a product' : 'ابحث عن منتج'}</a>}
+        {image && <button type="submit" value="product" className="secondary-action" disabled={!canSend}>{lang === 'en' ? 'Find this product' : 'ابحث عن هذا المنتج'}</button>}
+        {!image && input.trim() && <a className="secondary-action" href={shoppingLink(productSearchQuery(input) || input.trim())} target="_blank" rel="noopener noreferrer">{lang === 'en' ? 'Find a product' : 'ابحث عن منتج'}</a>}
         <button type="button" onClick={startListening} disabled={busy || Boolean(image)} title="تكلّم مع عَقْل"
           style={{ padding: '12px 16px', background: listening ? 'rgba(239,68,68,0.2)' : 'rgba(56,189,248,0.1)', border: `1px solid ${listening ? 'rgba(239,68,68,0.5)' : 'rgba(56,189,248,0.35)'}`, color: listening ? '#fca5a5' : '#7dd3fc', borderRadius: '10px', cursor: 'pointer', fontSize: '1.1rem', boxShadow: listening ? '0 0 18px rgba(239,68,68,0.4)' : 'none' }}>
           {listening ? '🎙️ أسمعك...' : '🎤'}

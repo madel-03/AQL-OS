@@ -11,7 +11,7 @@ export function pastedImage(event) {
 
 export function wantsProduct(text) {
   return Boolean(productSearchQuery(text)) || wantsProductLink(text)
-    || /ابحث (?:لي )?عن (?:هذا |هال)?(?:ال)?منتج|(?:where (?:can i|to) buy|find this product|shop for)/i.test(text);
+    || /(?:[اأ]بحث|د[وّ]*ر)\s+(?:لي\s+)?(?:عن|عل[ىي])\s+(?:(?:هذا|هال)\s*)?(?:ال)?منتج|\b(?:find this product|shop for|buy this)\b|(?:كم|وش)\s+سعر|أبغ[اى]\s+أشتري/i.test(text);
 }
 
 export function wantsProductLink(text) {
@@ -31,5 +31,24 @@ export function productSearchQuery(text) {
 
 export function shoppingLink(query) {
   return `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(query)}`;
+}
+
+export async function searchProducts(api, query, lang, headers, signal) {
+  try {
+    const response = await fetch(`${api}/api/products/search`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      signal,
+      body: JSON.stringify({ query: query.slice(0, 300), lang }),
+    });
+    return response.ok ? await response.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function productSearchReply(search, en) {
+  if (search?.results?.length) return search.reply || (en ? 'Here are the search results.' : 'هذي نتائج البحث حسب المواصفات اللي طلبتها.');
+  return en ? 'Use the shopping link below to see store results.' : 'تقدر تشوف نتائج المتاجر من رابط التسوق.';
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useLang } from '../lib/lang';
+import { productSearchReply, searchProducts, shoppingLink, wantsProduct } from '../lib/composer-image';
 import { speechLanguage } from '../lib/speech-voice';
 import { downloadAttachmentPdf } from '../lib/lecture-pdf';
 import LectureReading from './LectureReading';
@@ -12,7 +13,6 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const ACCEPT = '.jpg,.jpeg,.png,.webp,.mp3,.m4a,.wav,.ogg,.mp4,.webm,.pdf,.pptx,.txt,.md,.csv,.json';
 
 const IMAGES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
-const shoppingLink = query => `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(query)}`;
 
 export default function AssistantAttachment({ draft = '' }) {
   const { lang } = useLang();
@@ -25,6 +25,7 @@ export default function AssistantAttachment({ draft = '' }) {
   const [busy, setBusy] = useState(false);
   const [reply, setReply] = useState('');
   const [productQuery, setProductQuery] = useState('');
+  const [products, setProducts] = useState([]);
   const preview = useRef(null);
   const questionField = useRef(null);
   const picker = useRef(null);
@@ -45,6 +46,7 @@ export default function AssistantAttachment({ draft = '' }) {
     setConsent(false);
     setReply('');
     setProductQuery('');
+    setProducts([]);
     setError('');
   }
 
@@ -88,7 +90,8 @@ export default function AssistantAttachment({ draft = '' }) {
     setReply('');
     setPartial(false);
     setProductQuery('');
-    const productSearch = event.nativeEvent.submitter?.value === 'product';
+    setProducts([]);
+    const productSearch = Object.hasOwn(IMAGES, file.type) && (event.nativeEvent.submitter?.value === 'product' || wantsProduct(question));
     if (!ACCEPT.split(',').some(extension => file.name.toLowerCase().endsWith(extension)) || file.size > 12 * 1024 * 1024 || !file.size) {
       setError(en ? 'Choose a supported file up to 12 MB.' : 'اختر ملفًا بصيغة مدعومة وبحجم حتى 12 ميغابايت.');
       return;
@@ -99,10 +102,11 @@ export default function AssistantAttachment({ draft = '' }) {
     try {
       const { data } = await supabase.auth.getSession();
       if (!data.session) throw new Error('session');
+      const auth = { Authorization: `Bearer ${data.session.access_token}` };
       const response = await fetch(`${API}/api/attachments?lang=${en ? 'en' : 'ar'}${productSearch ? '&mode=product' : ''}`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${data.session.access_token}`,
+          ...auth,
           'Content-Type': 'application/octet-stream',
           'X-Aql-File': encodeURIComponent(file.name),
           'X-Aql-Question': encodeURIComponent(question.trim()),
@@ -115,8 +119,12 @@ export default function AssistantAttachment({ draft = '' }) {
       if (response.status === 413) throw new Error('invalid_file');
       const result = await response.json();
       if (!response.ok || !result.reply) throw new Error(result.error);
-      setReply(result.reply);
-      setProductQuery(typeof result.productQuery === 'string' ? result.productQuery : '');
+      const query = typeof result.productQuery === 'string' ? result.productQuery : '';
+      const search = query ? await searchProducts(API, query, lang, auth, run.signal) : null;
+      if (run.signal.aborted) return;
+      setReply(query ? `${result.reply}\n\n${productSearchReply(search, en)}` : result.reply);
+      setProductQuery(query);
+      setProducts(search?.results || []);
       setPartial(result.partial === true);
     } catch (failure) {
       if (!run.signal.aborted) {
@@ -170,6 +178,9 @@ export default function AssistantAttachment({ draft = '' }) {
           {!busy && file && Object.hasOwn(IMAGES, file.type) && <button value="product" className="secondary-action" disabled={!consent}>{en ? 'Find this product' : 'ابحث عن هذا المنتج'}</button>}
           {busy && <button type="button" className="secondary-action" onClick={() => controller.current?.abort()}>{en ? 'Cancel analysis' : 'ألغِ التحليل'}</button>}
         </div>
+        {products.length > 0 && <ul className="chat-product-results">{products.map(item => <li key={item.url}>
+          <a href={item.url} target="_blank" rel="noopener noreferrer">{item.title || item.url}</a>
+        </li>)}</ul>}
         {productQuery && <a href={shoppingLink(productQuery)} target="_blank" rel="noopener noreferrer">{en ? 'Compare stores for' : 'قارن المتاجر لمنتج'} {productQuery}</a>}
         {error && <p role="alert">{error}</p>}
         {reply && <div className="assistant-attachment-reply">
