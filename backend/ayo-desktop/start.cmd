@@ -1,8 +1,8 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-if exist "dist\local-bridge\AQL-Desktop\AQL-Desktop.exe" (
-    start "" "dist\local-bridge\AQL-Desktop\AQL-Desktop.exe"
+if exist "dist\product-links\AQL-Desktop\AQL-Desktop.exe" (
+    start "" "dist\product-links\AQL-Desktop\AQL-Desktop.exe"
     exit /b 0
 )
 if not exist ".venv\Scripts\pythonw.exe" call setup.cmd

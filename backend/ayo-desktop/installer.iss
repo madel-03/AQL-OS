@@ -11,7 +11,7 @@ SolidCompression=yes
 UninstallDisplayIcon={app}\AQL-Desktop.exe
 
 [Files]
-Source: "dist\local-bridge\AQL-Desktop\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "dist\product-links\AQL-Desktop\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{userprograms}\AQL"; Filename: "{app}\AQL-Desktop.exe"

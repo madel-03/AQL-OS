@@ -4,7 +4,7 @@ Run setup.cmd and start.cmd to open the published site inside the Windows app.
 The embedded browser has its own persistent profile, so sign in there if prompted.
 Closing the window hides it in the system tray. Use the tray menu to restore it,
 toggle the floating button during minimization, or quit. Build.cmd packages the
-desktop app into dist\local-bridge\AQL-Desktop. Use installer.iss to package that folder.
+desktop app into dist\product-links\AQL-Desktop. Use installer.iss to package that folder.
 ## Optional local assistant
 
 The native desktop client uses Python 3.12, Qt Quick Controls and SQLite. Main.qml owns the window, app.py coordinates user actions on the Qt thread, providers.py streams on a background thread, and store.py owns local persistence. Run these commands from this folder on Windows.

@@ -10,7 +10,12 @@ export function pastedImage(event) {
 }
 
 export function wantsProduct(text) {
-  return Boolean(productSearchQuery(text)) || /ابحث (?:لي )?عن (?:هذا |هال)?(?:ال)?منتج|(?:وين|من وين) (?:أ|ا)?شتري|(?:where (?:can i|to) buy|find this product|shop for)/i.test(text);
+  return Boolean(productSearchQuery(text)) || wantsProductLink(text)
+    || /ابحث (?:لي )?عن (?:هذا |هال)?(?:ال)?منتج|(?:where (?:can i|to) buy|find this product|shop for)/i.test(text);
+}
+
+export function wantsProductLink(text) {
+  return /(?:وين|من وين)\s+(?:أ|ا)?شتري(?:ه|ها)?|رابط\s+(?:الشراء|شراء|المنتج)|(?:هات|[اأ]عطني|عطيني|[اأ]رسل)\s+(?:لي\s+)?(?:ال)?رابط|where (?:can i|to) buy|(?:purchase|product|buying) link/i.test(text);
 }
 
 export function productSearchQuery(text) {

@@ -2,7 +2,7 @@ import { speechLanguage, speechVoice } from './lib/speech-voice';
 import AssistantDocuments from './components/AssistantDocuments';
 import AssistantAttachment from './components/AssistantAttachment';
 import { ComposerImage, ImageConsent } from './components/ComposerImage';
-import { pastedImage, productSearchQuery, shoppingLink, wantsProduct } from './lib/composer-image';
+import { pastedImage, productSearchQuery, shoppingLink, wantsProduct, wantsProductLink } from './lib/composer-image';
 import { requestAssistantTool } from './lib/assistant-tools';
 import { disconnectLocalDevice } from './lib/local-device';
 import { ScreenRequestDialog } from './components/ScreenRequests';
@@ -1787,7 +1787,9 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
     setMessages((m) => [...m, { role: 'user', content: text }]);
     setInput(''); let repliedWithSpeech = false;
     try {
-      const productQuery = productSearchQuery(text);
+      const requestedProduct = productSearchQuery(text);
+      const previousProduct = messages.findLast(message => message.productQuery)?.productQuery;
+      const productQuery = requestedProduct || (wantsProductLink(text) ? previousProduct : '');
       if (productQuery) {
         const replyId = `shopping-${Date.now()}`;
         const search = await searchProducts(productQuery, signal);

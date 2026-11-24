@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import sys
 from urllib.parse import urlencode, urlsplit
 from pathlib import Path
@@ -240,6 +241,7 @@ class DesktopWindow(QMainWindow):
         self.quick_capturing = False
         self.quick_waiting = False
         self.quick_product_waiting = False
+        self.quick_product_query = ''
         self.quick_chat = QDialog(self, Qt.Tool | Qt.WindowStaysOnTopHint)
         self.quick_chat.setWindowTitle("اسأل جارفس")
         self.quick_chat.setFixedWidth(392)
@@ -276,6 +278,11 @@ class DesktopWindow(QMainWindow):
         self.quick_reply.setFixedHeight(134)
         self.quick_reply.hide()
         layout.addWidget(self.quick_reply)
+        self.quick_store = QPushButton("افتح نتائج الشراء")
+        self.quick_store.setAutoDefault(False)
+        self.quick_store.clicked.connect(lambda: self.open_store_results(self.quick_product_query))
+        self.quick_store.hide()
+        layout.addWidget(self.quick_store)
 
         controls = QHBoxLayout()
         self.quick_capture_button = QPushButton("لقطة شاشة")
@@ -332,6 +339,11 @@ class DesktopWindow(QMainWindow):
             return
         if not query:
             self.quick_status.setText("اكتب اسم المنتج أو موديله أولًا. إذا عندك صورة، اسأل جارفس عن الاسم.")
+            return
+        self.open_store_results(query)
+
+    def open_store_results(self, query):
+        if not query:
             return
         url = "https://www.google.com/search?" + urlencode({"tbm": "shop", "q": query})
         if not QDesktopServices.openUrl(QUrl(url)):
@@ -433,6 +445,12 @@ class DesktopWindow(QMainWindow):
         if self.voice.busy:
             self.quick_status.setText("جارفس يرد على طلب آخر. أرسل بعد ما يخلص.")
             return
+        if self.quick_frame is not None and re.search(
+            r"[اأ]بحث|دور لي|[اأ]شتري|شراء|سعر|رابط|\b(?:buy|shop|price|find)\b", text, re.I
+        ):
+            product = True
+        self.quick_product_query = ""
+        self.quick_store.hide()
         prompt = text or "صف ما يظهر على الشاشة."
         if product:
             prompt = ("حدّد المنتج الظاهر إن أمكن. ابدأ بسطر SEARCH_QUERY: ثم الاسم والموديل بكلمات البحث. "
@@ -462,7 +480,9 @@ class DesktopWindow(QMainWindow):
             if 0 < len(query) <= 120 and query.upper() != "UNKNOWN" and "://" not in query:
                 if not self.quick_input.text().strip():
                     self.quick_input.setText(query)
-                text = (reply.strip() or query) + "\n\nاضغط «ابحث عن منتج» لعرض المتاجر."
+                self.quick_product_query = query
+                self.quick_store.show()
+                text = reply.strip() or query
             else:
                 text = reply.strip() or "ما قدرت أحدد اسم المنتج من الصورة."
         self.quick_send.setEnabled(True)
