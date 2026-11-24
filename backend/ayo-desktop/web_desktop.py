@@ -8,7 +8,7 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QHBoxLayout, QLabel, QMainWindow, QMenu, QMessageBox, QProgressBar,
+    QApplication, QDialog, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QProgressBar,
     QPushButton, QStackedWidget, QSystemTrayIcon, QTextEdit, QVBoxLayout, QWidget,
 )
 
@@ -42,7 +42,7 @@ class DesktopWindow(QMainWindow):
             " border-radius: 20px; font: bold 15px 'Segoe UI'; }"
             " QPushButton:hover { background: #32294d; }"
         )
-        self.island.clicked.connect(self.restore)
+        self.island.clicked.connect(self.toggle_quick_chat)
         self.voice_card = QLabel(self)
         self.voice_card.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.voice_card.setAttribute(Qt.WA_ShowWithoutActivating)
@@ -77,6 +77,7 @@ class DesktopWindow(QMainWindow):
         self.voice.mic_level.connect(self.mic_meter.setValue)
         self.voice.stopped.connect(self.clear_voice_toggle)
         self.voice.answered.connect(self.save_last_reply)
+        self.build_quick_chat()
         self.last_reply = ""
         self.reply_action = self.menu.addAction("آخر رد من جارفس", self.open_last_reply)
         self.reply_action.setEnabled(False)
@@ -87,6 +88,146 @@ class DesktopWindow(QMainWindow):
         self.tray.activated.connect(self.on_tray)
         self.tray.show()
         self.load_site()
+
+    def build_quick_chat(self):
+        self.quick_frame = None
+        self.quick_capturing = False
+        self.quick_waiting = False
+        self.quick_chat = QDialog(self, Qt.Tool | Qt.WindowStaysOnTopHint)
+        self.quick_chat.setWindowTitle("اسأل جارفس")
+        self.quick_chat.setFixedWidth(392)
+        self.quick_chat.setLayoutDirection(Qt.RightToLeft)
+        self.quick_chat.setStyleSheet(
+            "QDialog { background: #191a29; }"
+            "QLabel { color: #d9d0f0; }"
+            "QLineEdit, QTextEdit { color: #f2edff; background: #222337; border: 1px solid #50466f;"
+            " border-radius: 8px; padding: 8px; }"
+            "QPushButton { background: #302846; color: #f2edff; padding: 6px 10px; border-radius: 8px; }"
+            "QPushButton:hover { background: #483a65; } QPushButton:disabled { color: #a8a0b5; }"
+        )
+        layout = QVBoxLayout(self.quick_chat)
+        self.quick_input = QLineEdit()
+        self.quick_input.setPlaceholderText("اكتب سؤالك لجارفس…")
+        self.quick_input.setMaxLength(2000)
+        self.quick_input.returnPressed.connect(self.send_quick_request)
+        layout.addWidget(self.quick_input)
+
+        self.quick_preview = QLabel()
+        self.quick_preview.setAlignment(Qt.AlignCenter)
+        self.quick_preview.hide()
+        layout.addWidget(self.quick_preview)
+        self.quick_status = QLabel()
+        self.quick_status.setWordWrap(True)
+        self.quick_status.setTextFormat(Qt.PlainText)
+        layout.addWidget(self.quick_status)
+        self.quick_reply = QTextEdit()
+        self.quick_reply.setReadOnly(True)
+        self.quick_reply.setFixedHeight(134)
+        self.quick_reply.hide()
+        layout.addWidget(self.quick_reply)
+
+        controls = QHBoxLayout()
+        capture = QPushButton("لقطة شاشة")
+        capture.setAutoDefault(False)
+        capture.clicked.connect(self.capture_quick_frame)
+        controls.addWidget(capture)
+        self.quick_remove = QPushButton("إزالة اللقطة")
+        self.quick_remove.setAutoDefault(False)
+        self.quick_remove.clicked.connect(self.clear_quick_frame)
+        self.quick_remove.hide()
+        controls.addWidget(self.quick_remove)
+        controls.addStretch()
+        self.quick_send = QPushButton("إرسال")
+        self.quick_send.setAutoDefault(False)
+        self.quick_send.clicked.connect(self.send_quick_request)
+        controls.addWidget(self.quick_send)
+        layout.addLayout(controls)
+        main = QPushButton("افتح عقل")
+        main.setAutoDefault(False)
+        main.clicked.connect(self.restore)
+        layout.addWidget(main)
+        self.quick_chat.finished.connect(lambda _: self.clear_quick_frame())
+        self.voice.typed_answered.connect(self.show_quick_reply)
+
+    def show_quick_chat(self):
+        screen = self.island.screen() or self.screen()
+        area = screen.availableGeometry()
+        self.quick_chat.adjustSize()
+        self.quick_chat.move(area.center().x() - self.quick_chat.width() // 2, area.top() + 62)
+        self.quick_chat.show()
+        self.quick_chat.raise_()
+        self.quick_chat.activateWindow()
+        self.quick_input.setFocus()
+
+    def toggle_quick_chat(self):
+        if self.quick_chat.isVisible():
+            self.quick_chat.reject()
+        else:
+            self.show_quick_chat()
+
+    def clear_quick_frame(self):
+        self.quick_frame = None
+        self.quick_preview.clear()
+        self.quick_preview.hide()
+        self.quick_remove.hide()
+        if not self.quick_waiting:
+            self.quick_status.clear()
+        self.quick_chat.adjustSize()
+
+    def capture_quick_frame(self):
+        self.quick_capturing = True
+        screen = self.quick_chat.screen()
+        self.quick_chat.hide()
+        self.island.hide()
+        self.voice_card.hide()
+        QTimer.singleShot(220, lambda: self.finish_quick_capture(screen))
+
+    def finish_quick_capture(self, screen):
+        if self.exiting:
+            return
+        self.quick_capturing = False
+        if screen not in QApplication.screens():
+            screen = QApplication.primaryScreen()
+        frame = screen.grabWindow(0)
+        if frame.isNull():
+            self.clear_quick_frame()
+            self.quick_status.setText("تعذّر أخذ لقطة للشاشة.")
+        else:
+            self.quick_frame = frame
+            self.quick_preview.setPixmap(frame.scaled(300, 135, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.quick_preview.show()
+            self.quick_remove.show()
+            self.quick_status.setText("اللقطة جاهزة. أرسلها مع سؤالك أو اضغط إرسال لوصف الشاشة.")
+        self.update_island()
+        self.show_quick_chat()
+
+    def send_quick_request(self):
+        text = self.quick_input.text().strip()
+        if self.quick_waiting or (not text and self.quick_frame is None):
+            return
+        if self.voice.busy:
+            self.quick_status.setText("جارفس يرد على طلب آخر. أرسل بعد ما يخلص.")
+            return
+        if not self.voice.ask(text or "صف ما يظهر على الشاشة.", frame=self.quick_frame, typed=True):
+            self.quick_status.setText("تعذّر تجهيز الطلب. جرّب مرة ثانية.")
+            return
+        self.quick_waiting = True
+        self.quick_send.setEnabled(False)
+        self.quick_input.clear()
+        self.clear_quick_frame()
+        self.quick_status.setText("جارٍ تجهيز الرد…")
+        self.quick_reply.hide()
+        self.quick_chat.adjustSize()
+
+    def show_quick_reply(self, text):
+        self.quick_waiting = False
+        self.quick_send.setEnabled(True)
+        self.quick_reply.setPlainText(text)
+        self.quick_reply.show()
+        self.quick_status.clear()
+        self.quick_chat.adjustSize()
+        if not self.quick_chat.isVisible():
+            self.show_voice_status(text)
 
     def build_web_shell(self):
         shell = QWidget(self)
@@ -226,7 +367,7 @@ class DesktopWindow(QMainWindow):
         self.update_island()
 
     def update_island(self):
-        if self.exiting or not self.overlay.isChecked() or (self.isVisible() and not self.isMinimized()):
+        if self.exiting or self.quick_capturing or not self.overlay.isChecked() or (self.isVisible() and not self.isMinimized()):
             self.island.hide()
             return
         screen = self.screen() or QApplication.primaryScreen()
@@ -251,6 +392,7 @@ class DesktopWindow(QMainWindow):
             self.update_island()
 
     def restore(self):
+        self.quick_chat.reject()
         self.showNormal()
         self.raise_()
         self.activateWindow()
@@ -259,6 +401,7 @@ class DesktopWindow(QMainWindow):
     def quit(self):
         self.exiting = True
         self.voice.enable(False)
+        self.quick_chat.close()
         self.island.hide()
         self.voice_card.hide()
         self.tray.hide()

@@ -2,10 +2,11 @@
 setlocal
 cd /d "%~dp0"
 set "PYINSTALLER_CONFIG_DIR=%CD%\build\cache"
-.venv\Scripts\python.exe -m PyInstaller --noconfirm --onedir --distpath dist\polished --windowed --name AQL-Desktop --icon assets/aql.ico --add-data "assets/aql.ico;assets" --add-data "../jarvis-listen.py;." web_desktop.py
+.venv\Scripts\python.exe -m PyInstaller --noconfirm --onedir --distpath dist\quick-chat --windowed --name AQL-Desktop --icon assets/aql.ico --add-data "assets/aql.ico;assets" --add-data "../jarvis-listen.py;." web_desktop.py
 if errorlevel 1 exit /b 1
-copy /Y "dist\polished\AQL-Desktop\_internal\PySide6\*140*.dll" "dist\polished\AQL-Desktop\_internal\"
-if exist "dist\polished\AQL-Desktop\_internal\icuuc.dll" ren "dist\polished\AQL-Desktop\_internal\icuuc.dll" icuuc.dll.unused
+copy /Y "dist\quick-chat\AQL-Desktop\_internal\PySide6\*140*.dll" "dist\quick-chat\AQL-Desktop\_internal\"
+if exist "dist\quick-chat\AQL-Desktop\_internal\icuuc.dll" ren "dist\quick-chat\AQL-Desktop\_internal\icuuc.dll" icuuc.dll.unused
+
 
 
 

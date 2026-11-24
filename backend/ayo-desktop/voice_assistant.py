@@ -46,6 +46,7 @@ def wake_request(text):
 class VoiceAssistant(QObject):
     status = Signal(str)
     answered = Signal(str)
+    typed_answered = Signal(str)
     request_finished = Signal(int, str)
     mic_state = Signal(str)
     mic_level = Signal(int)
@@ -66,6 +67,7 @@ class VoiceAssistant(QObject):
         self.speaker.setPitch(-0.08)
         self.enabled = False
         self.busy = False
+        self.typed_request = False
         self.request_id = 0
         self.listener_failure = None
         self.listener_stopping = False
@@ -82,8 +84,9 @@ class VoiceAssistant(QObject):
         self.enabled = enabled
         self.awaiting_request = False
         if not enabled:
-            self.request_id += 1
-            self.busy = False
+            if not self.typed_request:
+                self.request_id += 1
+                self.busy = False
             self.followup.stop()
             self.listener_stopping = self.listener.state() != QProcess.NotRunning
             self.listener.kill()
@@ -160,28 +163,33 @@ class VoiceAssistant(QObject):
                 self.followup.start(10000)
                 self.reply("سمّ، وش تحتاج؟")
 
-    def ask(self, request):
+    def ask(self, request, *, frame=None, typed=False):
+        if self.busy:
+            return False
         image = ocr_image = None
-        sees_screen = bool(SCREEN.search(request))
+        sees_screen = frame is not None or (not typed and bool(SCREEN.search(request)))
         translate = bool(TRANSLATION.search(request))
         read_only = bool(READ_TEXT.search(request)) and not translate
         if sees_screen:
-            screen = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
-            frame = screen.grabWindow(0)
+            if frame is None:
+                screen = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
+                frame = screen.grabWindow(0)
             if frame.isNull():
-                self.reply("تعذر أخذ لقطة للشاشة.")
-                return
+                self.status.emit("تعذر أخذ لقطة للشاشة.")
+                return False
             image = encode_frame(frame, 1120)
             if not image:
-                self.reply("تعذر تجهيز لقطة الشاشة.")
-                return
+                self.status.emit("تعذر تجهيز لقطة الشاشة.")
+                return False
             if translate or read_only:
                 ocr_image = encode_frame(frame, 2560)
 
         self.busy = True
+        self.typed_request = typed
         self.request_id += 1
         request_id = self.request_id
-        self.status.emit("أحلل لقطة الشاشة محليًا…" if image else "جارفس يجهز الرد…")
+        if not typed:
+            self.status.emit("أحلل لقطة الشاشة محليًا…" if image else "جارفس يجهز الرد…")
 
         def run():
             try:
@@ -197,11 +205,18 @@ class VoiceAssistant(QObject):
             self.request_finished.emit(request_id, answer)
 
         threading.Thread(target=run, daemon=True).start()
+        return True
 
     def complete(self, request_id, answer):
-        if request_id == self.request_id and self.enabled:
+        if request_id != self.request_id:
+            return
+        if self.typed_request:
+            self.typed_request = False
+            self.busy = False
+            self.typed_answered.emit(answer)
+        else:
             self.reply(answer)
-            self.answered.emit(answer)
+        self.answered.emit(answer)
 
     def preview_voice(self):
         if not self.busy:
