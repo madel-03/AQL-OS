@@ -2,7 +2,7 @@ import { speechLanguage, speechVoice } from './lib/speech-voice';
 import AssistantDocuments from './components/AssistantDocuments';
 import AssistantAttachment from './components/AssistantAttachment';
 import { ComposerImage, ImageConsent } from './components/ComposerImage';
-import { pastedImage, shoppingLink, wantsProduct } from './lib/composer-image';
+import { pastedImage, productSearchQuery, shoppingLink, wantsProduct } from './lib/composer-image';
 import { requestAssistantTool } from './lib/assistant-tools';
 import { ScreenRequestDialog } from './components/ScreenRequests';
 import { ComputerResult } from './components/ComputerCompanion';
@@ -1767,12 +1767,38 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
     }); chatMic.current.start();
   };
 
+  const searchProducts = async (query, signal) => {
+    const headers = await getAuthHeaders();
+    try {
+      const response = await fetch(`${API_URL}/api/products/search`, {
+        method: 'POST', headers, signal, body: JSON.stringify({ query: query.slice(0, 300), lang }),
+      });
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    }
+  };
+
   const sendText = async (text, signal) => {
     if (!text || busy) return;
     setBusy(true); setError('');
     setMessages((m) => [...m, { role: 'user', content: text }]);
     setInput(''); let repliedWithSpeech = false;
     try {
+      const productQuery = productSearchQuery(text);
+      if (productQuery) {
+        const replyId = `shopping-${Date.now()}`;
+        const search = await searchProducts(productQuery, signal);
+        const products = search?.results;
+        if (signal?.aborted) return;
+        const content = products?.length
+          ? (search.reply || (lang === 'en' ? 'Here are the search results.' : 'هذي نتائج البحث حسب المواصفات اللي طلبتها.'))
+          : (lang === 'en' ? 'I couldn’t retrieve results. You can open the store search below.' : 'ما قدرت أسترجع نتائج البحث. تقدر تفتح بحث المتاجر من الرابط.');
+        setMessages(current => [...current, { role: 'assistant', id: replyId, content, productQuery, products }]);
+        if (autoSpeak) { speak(content, replyId); repliedWithSpeech = true; }
+        return;
+      }
       const actionReply = await requestAssistantTool(text, lang === 'en', signal) ?? openMusicRequest(text, lang === 'en') ?? await calendarConversation(text, calendarActions, lang === 'en', signal);
       if (signal?.aborted) return;
       if (actionReply !== null) {
@@ -1823,14 +1849,17 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
       const result = await response.json();
       if (!response.ok || !result.reply) throw new Error('attachment');
       const replyId = `image-${Date.now()}`;
+      const search = result.productQuery ? await searchProducts(result.productQuery) : null;
+      const products = search?.results;
+      const reply = search?.reply ? result.reply + '\n\n' + search.reply : result.reply;
       setMessages(current => [...current,
         { role: 'user', content: text, image: file },
-        { role: 'assistant', id: replyId, content: result.reply, productQuery: result.productQuery },
+        { role: 'assistant', id: replyId, content: reply, productQuery: result.productQuery, products },
       ]);
       setImage(null);
       setImageConsent(false);
       setInput('');
-      if (autoSpeak) speak(result.reply, replyId);
+      if (autoSpeak) speak(reply, replyId);
     } catch {
       setError(lang === 'en' ? 'Could not analyze the image. You can try again.' : 'تعذّر تحليل الصورة. تقدر تعيد المحاولة.');
     } finally {
@@ -1903,6 +1932,12 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
             <div key={mid} className={`chat-bubble ${m.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-assistant'}`}>
               {m.image && <ComposerImage file={m.image} en={lang === 'en'} />}
               <span data-skip-i18n="1">{m.content}</span>
+              {m.products?.length > 0 && <ul className="chat-product-results">
+                {m.products.map((item, index) => <li key={`${item.url}-${index}`}>
+                  <a href={item.url} target="_blank" rel="noopener noreferrer">{item.title || item.url}</a>
+                  {item.snippet && <p dir="auto">{item.snippet}</p>}
+                </li>)}
+              </ul>}
               {m.productQuery && <div><a href={shoppingLink(m.productQuery)} target="_blank" rel="noopener noreferrer">{lang === 'en' ? 'Find stores' : 'شوف المتاجر'} · {m.productQuery}</a></div>}
               {m.role === 'assistant' && (
                 <div style={{ marginTop: '6px' }}>

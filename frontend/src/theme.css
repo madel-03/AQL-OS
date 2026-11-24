@@ -129,3 +129,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .composer-image { display: flex; align-items: flex-start; gap: .6rem; margin-block-end: .35rem; }
 .composer-image img { display: block; max-width: min(100%, 10rem); max-height: 6rem; object-fit: contain; border-radius: .55rem; }
 .composer-image-consent { display: flex; align-items: center; gap: .5rem; font-size: .8rem; }
+
+.chat-product-results { display: grid; gap: .75rem; padding-inline-start: 1.25rem; }
+.chat-product-results p { margin: .25rem 0 0; overflow-wrap: anywhere; }
