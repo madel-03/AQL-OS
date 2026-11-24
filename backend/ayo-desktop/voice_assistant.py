@@ -7,7 +7,7 @@ import threading
 import unicodedata
 
 import requests
-from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QObject, QProcess, QTimer, Signal
+from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QObject, QProcess, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtTextToSpeech import QTextToSpeech
 from PySide6.QtWidgets import QApplication
@@ -22,12 +22,12 @@ TRANSLATION = re.compile(r"ترجم|ترجمة|translate", re.I)
 READ_TEXT = re.compile(r"وش\s+مكتوب|اقر[اأ]|أقر[اأ]|\bread\b", re.I)
 
 
-def encode_frame(frame, max_width):
+def encode_frame(frame, max_edge):
     data = QByteArray()
     buffer = QBuffer(data)
     buffer.open(QIODevice.WriteOnly)
-    if frame.width() > max_width:
-        frame = frame.scaledToWidth(max_width)
+    if max(frame.width(), frame.height()) > max_edge:
+        frame = frame.scaled(max_edge, max_edge, Qt.KeepAspectRatio, Qt.SmoothTransformation)
     return base64.b64encode(bytes(data)).decode("ascii") if frame.save(buffer, "JPG", 88) else None
 
 
@@ -177,12 +177,11 @@ class VoiceAssistant(QObject):
             if frame.isNull():
                 self.status.emit("تعذر أخذ لقطة للشاشة.")
                 return False
-            image = encode_frame(frame, 1120)
+            image = encode_frame(frame, 768)
             if not image:
                 self.status.emit("تعذر تجهيز لقطة الشاشة.")
                 return False
-            if translate or read_only:
-                ocr_image = encode_frame(frame, 2560)
+            ocr_image = encode_frame(frame, 1920)
 
         self.busy = True
         self.typed_request = typed
@@ -193,7 +192,7 @@ class VoiceAssistant(QObject):
 
         def run():
             try:
-                answer = local_answer(request, image, ocr_image, read_only)
+                answer = local_answer(request, image, ocr_image, read_only, translate)
             except requests.Timeout:
                 answer = "انتهت مهلة النموذج المحلي. جرّب مرة ثانية."
             except requests.ConnectionError:

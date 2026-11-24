@@ -4,7 +4,7 @@ Run setup.cmd and start.cmd to open the published site inside the Windows app.
 The embedded browser has its own persistent profile, so sign in there if prompted.
 Closing the window hides it in the system tray. Use the tray menu to restore it,
 toggle the floating button during minimization, or quit. Build.cmd packages the
-desktop app into dist\quick-chat\AQL-Desktop. Use installer.iss to package that folder.
+desktop app into dist\lighter-vision\AQL-Desktop. Use installer.iss to package that folder.
 ## Optional local assistant
 
 The native desktop client uses Python 3.12, Qt Quick Controls and SQLite. Main.qml owns the window, app.py coordinates user actions on the Qt thread, providers.py streams on a background thread, and store.py owns local persistence. Run these commands from this folder on Windows.
@@ -68,5 +68,10 @@ For a read-screen request, recognized text is also available directly via Window
 
 Click the floating island to open quick chat. Send text with the microphone off.
 The screenshot button hides the assistant briefly, previews one frame from the
-island's display, and attaches it only when you press Send. Closing the dialog
+selected display, and attaches it only when you press Send. Closing the dialog
 or removing the attachment clears the preview. Use Open AQL for the main window.
+
+With multiple displays the screenshot button offers a display picker. Image
+analysis uses a bounded request and unloads the vision model after the reply.
+If it times out, the assistant returns the visible text when Windows OCR can
+read it. The website can pause while minimized when WebEngine allows it.

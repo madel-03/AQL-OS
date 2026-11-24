@@ -47,35 +47,44 @@ def windows_ocr(image):
         return ""
 
 
-def local_answer(request, image=None, ocr_image=None, read_only=False):
+def local_answer(request, image=None, ocr_image=None, read_only=False, translate=False):
+    extracted = windows_ocr(ocr_image) if ocr_image else ""
+    if extracted and read_only:
+        return extracted
+
     model = TEXT_MODEL
     message = {"role": "user", "content": request}
-    if image:
-        extracted = windows_ocr(ocr_image) if ocr_image else ""
-        if extracted and read_only:
-            return extracted
-        if extracted:
-            message["content"] = (
-                f"{request}\nترجم النص التالي إلى اللغة المطلوبة مع الحفاظ على المعنى.\n"
-                f"<نص_الشاشة>\n{extracted[:5000]}\n</نص_الشاشة>"
-            )
-        else:
-            model = VISION_MODEL
-            message["images"] = [image]
-    with requests.Session() as session:
-        session.trust_env = False
-        response = session.post(
-            OLLAMA,
-            json={
-                "model": model, "stream": False, "think": False,
-                "options": {"num_ctx": 4096, "num_predict": 512 if image else 256, "temperature": 0.15},
-                "messages": [{"role": "system", "content": SYSTEM_PROMPT}, message],
-            },
-            timeout=(4, 120 if model == VISION_MODEL else 65),
-            allow_redirects=False,
+    if extracted and translate:
+        message["content"] = (
+            f"{request}\nترجم النص الظاهر وحافظ على الأسماء والأرقام.\n"
+            f"<نص_الشاشة>\n{extracted[:3000]}\n</نص_الشاشة>"
         )
-        if response.status_code == 404:
-            return f"نموذج {model} غير مثبت في Ollama."
-        response.raise_for_status()
-        return response.json()["message"]["content"].strip() or "النموذج خلص من دون رد."
+    elif image:
+        model = VISION_MODEL
+        message["images"] = [image]
 
+    vision = model == VISION_MODEL
+    try:
+        with requests.Session() as session:
+            session.trust_env = False
+            response = session.post(
+                OLLAMA,
+                json={
+                    "model": model, "stream": False, "think": False,
+                    "keep_alive": 0 if vision else "30s",
+                    "options": {"num_ctx": 2048, "num_predict": 160 if vision else 256, "temperature": 0.15},
+                    "messages": [{"role": "system", "content": SYSTEM_PROMPT}, message],
+                },
+                timeout=(4, 40 if vision else 45),
+                allow_redirects=False,
+            )
+            if response.status_code == 404:
+                return f"نموذج {model} غير مثبت في Ollama."
+            response.raise_for_status()
+            return response.json()["message"]["content"].strip() or "النموذج خلص من دون رد."
+    except requests.ReadTimeout:
+        if vision and extracted:
+            return "تحليل الصورة أخذ وقتًا طويلًا. هذا النص اللي قدرت أقرأه من اللقطة:\n\n" + extracted[:3000]
+        if vision:
+            return "تحليل الصورة أخذ وقتًا طويلًا، وما قدرت أقرأ نص واضح من اللقطة."
+        raise

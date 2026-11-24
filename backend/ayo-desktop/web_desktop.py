@@ -87,7 +87,26 @@ class DesktopWindow(QMainWindow):
         self.tray.setContextMenu(self.menu)
         self.tray.activated.connect(self.on_tray)
         self.tray.show()
+        self.idle_timer = QTimer(self)
+        self.idle_timer.setSingleShot(True)
+        self.idle_timer.timeout.connect(self.freeze_idle_website)
         self.load_site()
+
+    def freeze_idle_website(self):
+        page = self.web.page()
+        if (not self.isVisible() or self.isMinimized()) and page.recommendedState() != QWebEnginePage.LifecycleState.Active:
+            page.setLifecycleState(QWebEnginePage.LifecycleState.Frozen)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, "idle_timer"):
+            self.idle_timer.stop()
+            self.web.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        if hasattr(self, "idle_timer") and not self.exiting:
+            self.idle_timer.start(10000)
 
     def build_quick_chat(self):
         self.quick_frame = None
@@ -127,10 +146,10 @@ class DesktopWindow(QMainWindow):
         layout.addWidget(self.quick_reply)
 
         controls = QHBoxLayout()
-        capture = QPushButton("لقطة شاشة")
-        capture.setAutoDefault(False)
-        capture.clicked.connect(self.capture_quick_frame)
-        controls.addWidget(capture)
+        self.quick_capture_button = QPushButton("لقطة شاشة")
+        self.quick_capture_button.setAutoDefault(False)
+        self.quick_capture_button.clicked.connect(self.choose_capture_screen)
+        controls.addWidget(self.quick_capture_button)
         self.quick_remove = QPushButton("إزالة اللقطة")
         self.quick_remove.setAutoDefault(False)
         self.quick_remove.clicked.connect(self.clear_quick_frame)
@@ -174,16 +193,34 @@ class DesktopWindow(QMainWindow):
             self.quick_status.clear()
         self.quick_chat.adjustSize()
 
-    def capture_quick_frame(self):
+    def choose_capture_screen(self):
+        screens = QApplication.screens()
+        if len(screens) == 1:
+            self.capture_quick_frame(screens[0])
+            return
+        menu = QMenu(self.quick_chat)
+        menu.setTitle("اختر الشاشة")
+        choices = {}
+        for index, screen in enumerate(screens, 1):
+            size = screen.size()
+            label = f"الشاشة {index} · {screen.name()} · {size.width()} × {size.height()}"
+            if screen is self.quick_chat.screen():
+                label += " (شاشة جارفس)"
+            choices[menu.addAction(label)] = screen
+        position = self.quick_capture_button.mapToGlobal(self.quick_capture_button.rect().bottomLeft())
+        selected = menu.exec(position)
+        if selected is not None:
+            self.capture_quick_frame(choices[selected])
+
+    def capture_quick_frame(self, screen):
         self.quick_capturing = True
-        screen = self.quick_chat.screen()
         self.quick_chat.hide()
         self.island.hide()
         self.voice_card.hide()
         QTimer.singleShot(220, lambda: self.finish_quick_capture(screen))
 
     def finish_quick_capture(self, screen):
-        if self.exiting:
+        if self.exiting or not self.quick_capturing:
             return
         self.quick_capturing = False
         if screen not in QApplication.screens():
@@ -213,6 +250,7 @@ class DesktopWindow(QMainWindow):
             return
         self.quick_waiting = True
         self.quick_send.setEnabled(False)
+        self.quick_capture_button.setEnabled(False)
         self.quick_input.clear()
         self.clear_quick_frame()
         self.quick_status.setText("جارٍ تجهيز الرد…")
@@ -222,6 +260,7 @@ class DesktopWindow(QMainWindow):
     def show_quick_reply(self, text):
         self.quick_waiting = False
         self.quick_send.setEnabled(True)
+        self.quick_capture_button.setEnabled(True)
         self.quick_reply.setPlainText(text)
         self.quick_reply.show()
         self.quick_status.clear()
@@ -377,6 +416,12 @@ class DesktopWindow(QMainWindow):
 
     def changeEvent(self, event):
         super().changeEvent(event)
+        if hasattr(self, "idle_timer") and event.type() == event.Type.WindowStateChange:
+            if self.isMinimized():
+                self.idle_timer.start(10000)
+            elif self.isVisible():
+                self.idle_timer.stop()
+                self.web.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
         if hasattr(self, "overlay"):
             QTimer.singleShot(0, self.update_island)
 
@@ -392,6 +437,7 @@ class DesktopWindow(QMainWindow):
             self.update_island()
 
     def restore(self):
+        self.quick_capturing = False
         self.quick_chat.reject()
         self.showNormal()
         self.raise_()
