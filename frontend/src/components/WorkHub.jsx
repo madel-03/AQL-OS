@@ -1,5 +1,7 @@
 import LectureStudio from './LectureStudio';
 import AssistantAttachment from './AssistantAttachment';
+import { ComposerImage, ImageConsent } from './ComposerImage';
+import { pastedImage } from '../lib/composer-image';
 import { requestDocument } from '../lib/assistant-documents';
 import { requestAssistantTool } from '../lib/assistant-tools';
 import { TodayCard } from './ProductivityTools';
@@ -84,6 +86,21 @@ export default function WorkHub({ displayName, onCompose, onNavigate, compact = 
   const { lang } = useLang(); const en = lang === 'en';
   const { tasks, active, loading, error, creating, startTask, refresh } = useResearch();
   const [command, setCommand] = useState('');
+  const [image, setImage] = useState(null);
+  const [imageConsent, setImageConsent] = useState(false);
+  const [imageError, setImageError] = useState('');
+
+  function paste(event) {
+    const file = pastedImage(event);
+    if (!file) return;
+    if (!file.size || file.size > 12 * 1024 * 1024) {
+      setImageError(en ? 'Paste an image up to 12 MB.' : 'الصق صورة بحجم حتى 12 ميغابايت.');
+      return;
+    }
+    setImage(file);
+    setImageConsent(false);
+    setImageError('');
+  }
   const [draft, setDraft] = useState(''); const [mode, setMode] = useState('research');
   const [filter, setFilter] = useState('all'); const [search, setSearch] = useState('');
   const completed = tasks.filter((task) => task.status === 'completed');
@@ -100,16 +117,25 @@ export default function WorkHub({ displayName, onCompose, onNavigate, compact = 
       <div className="hero-copy">
         <p className="personal-greeting">{en ? 'Hey' : 'أهلًا'} <bdi>{displayName?.split('@')[0]}</bdi></p>
         <h1 id="home-assistant-title">{en ? 'What shall we do' : 'وش ننجز'} <em>{en ? 'today?' : 'اليوم؟'}</em></h1>
-        <form className="task-launcher" onSubmit={async event => {
+        <form className="task-launcher" onPaste={paste} onSubmit={async event => {
           event.preventDefault();
           const text = command.trim();
+          if (image) {
+            if (imageConsent) onCompose(text, image);
+            return;
+          }
           if (!text) return;
           setCommand('');
           if (!await requestAssistantTool(text, en)) onCompose(text);
         }}>
           <label className="sr-only" htmlFor="home-assistant-input">{en ? 'Ask AQL' : 'اطلب من عقل'}</label>
           <textarea id="home-assistant-input" maxLength={1500} value={command} onChange={event => setCommand(event.target.value)} placeholder={en ? 'Try: show my daily report…' : 'جرّب: طلع لي تقرير اليوم…'} />
-          <div className="launcher-bottom"><AssistantAttachment draft={command} /><button className="launch-button" disabled={!command.trim()}>{en ? 'Ask AQL' : 'اطلب من عقل'} ↗</button></div>
+          {image && <div className="composer-image-row">
+            <ComposerImage file={image} en={en} onRemove={() => { setImage(null); setImageConsent(false); setImageError(''); }} />
+            <ImageConsent checked={imageConsent} onChange={setImageConsent} en={en} />
+          </div>}
+          {imageError && <p role="alert">{imageError}</p>}
+          <div className="launcher-bottom"><AssistantAttachment draft={command} /><button className="launch-button" disabled={image ? !imageConsent : !command.trim()}>{en ? 'Ask AQL' : 'اطلب من عقل'} ↗</button></div>
         </form>
       </div>
       <div id="aql-voice-stage" className="voice-stage-slot" />
@@ -124,7 +150,7 @@ export default function WorkHub({ displayName, onCompose, onNavigate, compact = 
         {compact && <p className="personal-greeting">{en ? 'Hey' : 'أهلًا'} <bdi>{displayName?.split('@')[0]}</bdi> ✧</p>}
         {compact ? <h1>{en ? 'What shall we' : 'وش ننجز'} <em>{en ? 'make happen?' : 'اليوم؟'}</em></h1> : <h3>{en ? 'Research and reports' : 'البحث والتقارير'}</h3>}
         <p className="hero-subtitle">{en ? 'Bring the idea. I’ll help with the next step.' : 'هات الفكرة، ونرتّب الخطوة اللي بعدها سوا.'}</p>
-        <form className="task-launcher" onSubmit={submit}><label htmlFor={compact ? 'chat-task-prompt' : 'home-task-prompt'} className="sr-only">{en ? 'What would you like to accomplish?' : 'ماذا تريد إنجازه؟'}</label><textarea id={compact ? 'chat-task-prompt' : 'home-task-prompt'} maxLength={500} minLength={3} required value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={mode === 'plan' ? (en ? 'A goal you want to turn into a real plan…' : 'هدف تبغى تحوّله لخطة واضحة…') : mode === 'file' ? (en ? 'What should your PDF or Word report cover?' : 'وش موضوع تقرير PDF أو Word اللي تحتاجه؟') : (en ? 'A question to research, a comparison to explore…' : 'سؤال نبحثه، أو خيارات محتار بينها…')} /><div className="launcher-bottom"><span>{mode === 'plan' ? (en ? 'We’ll plan together in chat' : 'نرتّب الخطة سوا في المحادثة') : (en ? 'Web research → cited PDF & Word' : 'بحث ومصادر ← تقرير PDF وWord')}</span><button className="launch-button" disabled={creating || (mode !== 'plan' && !!active.length) || draft.trim().length < 3}>{creating ? (en ? 'Starting…' : 'أبدأ…') : (en ? 'Let’s do it' : 'يلا نبدأ')} <span aria-hidden="true">↗</span></button></div></form>
+        <form className="task-launcher" onPaste={paste} onSubmit={submit}><label htmlFor={compact ? 'chat-task-prompt' : 'home-task-prompt'} className="sr-only">{en ? 'What would you like to accomplish?' : 'ماذا تريد إنجازه؟'}</label><textarea id={compact ? 'chat-task-prompt' : 'home-task-prompt'} maxLength={500} minLength={3} required value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={mode === 'plan' ? (en ? 'A goal you want to turn into a real plan…' : 'هدف تبغى تحوّله لخطة واضحة…') : mode === 'file' ? (en ? 'What should your PDF or Word report cover?' : 'وش موضوع تقرير PDF أو Word اللي تحتاجه؟') : (en ? 'A question to research, a comparison to explore…' : 'سؤال نبحثه، أو خيارات محتار بينها…')} /><div className="launcher-bottom"><span>{mode === 'plan' ? (en ? 'We’ll plan together in chat' : 'نرتّب الخطة سوا في المحادثة') : (en ? 'Web research → cited PDF & Word' : 'بحث ومصادر ← تقرير PDF وWord')}</span><button className="launch-button" disabled={creating || (mode !== 'plan' && !!active.length) || draft.trim().length < 3}>{creating ? (en ? 'Starting…' : 'أبدأ…') : (en ? 'Let’s do it' : 'يلا نبدأ')} <span aria-hidden="true">↗</span></button></div></form>
         <div className="quick-modes" role="group" aria-label={en ? 'Task type' : 'نوع المهمة'}>{quickModes.map(([id, icon, label]) => <button key={id} aria-pressed={mode === id} className={mode === id ? 'mode-active' : ''} onClick={() => setMode(id)}><span aria-hidden="true">{icon}</span>{label}</button>)}</div>
         {!!active.length && <p className="launcher-hint">{en ? 'AQL is already researching. You can view progress below or plan something in chat.' : 'عقل يبحث الآن. تابع التقدم تحت، أو خطّط لشيء ثاني في المحادثة.'}</p>}
       </div>

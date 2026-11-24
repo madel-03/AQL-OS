@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useLang } from '../lib/lang';
@@ -14,7 +14,7 @@ const ACCEPT = '.jpg,.jpeg,.png,.webp,.mp3,.m4a,.wav,.ogg,.mp4,.webm,.pdf,.pptx,
 const IMAGES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const shoppingLink = query => `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(query)}`;
 
-export default function AssistantAttachment({ draft = '', ref }) {
+export default function AssistantAttachment({ draft = '' }) {
   const { lang } = useLang();
   const en = lang === 'en';
   const dialog = useRef(null);
@@ -48,14 +48,13 @@ export default function AssistantAttachment({ draft = '', ref }) {
     setError('');
   }
 
-  function pasteImage(event, fromComposer = false) {
+  function pasteImage(event) {
     if (controller.current) return;
     const image = Array.from(event.clipboardData?.files || []).find(item => Object.hasOwn(IMAGES, item.type))
       || Array.from(event.clipboardData?.items || []).find(item => item.kind === 'file' && Object.hasOwn(IMAGES, item.type))?.getAsFile();
     if (!image) return;
     event.preventDefault();
     event.stopPropagation();
-    if (fromComposer) setQuestion(draft.slice(0, 600));
     if (!dialog.current.open) dialog.current.showModal();
     if (!image.size || image.size > 12 * 1024 * 1024) {
       setError(en ? 'Paste an image up to 12 MB.' : 'الصق صورة حجمها حتى 12 ميغابايت.');
@@ -66,7 +65,6 @@ export default function AssistantAttachment({ draft = '', ref }) {
     questionField.current.focus();
   }
 
-  useImperativeHandle(ref, () => ({ pasteImage: event => pasteImage(event, true) }));
 
 
   async function savePdf() {
@@ -144,14 +142,13 @@ export default function AssistantAttachment({ draft = '', ref }) {
     }
   }
 
-  const pasteImageInDialog = event => pasteImage(event);
   return <>
     <button className="secondary-action attachment-trigger" type="button" onClick={() => {
       if (!file) setQuestion(draft.slice(0, 600));
       dialog.current.showModal();
     }}>{en ? 'Attach a file' : 'أرفق ملف'}</button>
     {createPortal(<dialog ref={dialog} dir={en ? 'ltr' : 'rtl'} className="assistant-attachment" aria-label={en ? 'Ask about a file' : 'اسأل عن ملف'}>
-      <form onSubmit={submit} onPaste={pasteImageInDialog}>
+      <form onSubmit={submit} onPaste={pasteImage}>
         <div className="assistant-attachment-heading">
           <h2>{en ? 'Ask about a file' : 'اسأل عن ملف'}</h2>
           <button type="button" className="secondary-action" onClick={() => dialog.current.close()}>{en ? 'Close' : 'إغلاق'}</button>

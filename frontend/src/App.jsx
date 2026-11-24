@@ -1,6 +1,8 @@
 import { speechLanguage, speechVoice } from './lib/speech-voice';
 import AssistantDocuments from './components/AssistantDocuments';
 import AssistantAttachment from './components/AssistantAttachment';
+import { ComposerImage, ImageConsent } from './components/ComposerImage';
+import { pastedImage, shoppingLink, wantsProduct } from './lib/composer-image';
 import { requestAssistantTool } from './lib/assistant-tools';
 import { ScreenRequestDialog } from './components/ScreenRequests';
 import { ComputerResult } from './components/ComputerCompanion';
@@ -1703,14 +1705,17 @@ function ProfilePage({ displayName, email, onLogout }) {
 }
 
 /* ========== اتصال مباشر ========== */
-function ChatPage({ initialDraft = '' }) {
+function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
   const messageList = useRef(null);
   const { memoryForChat } = useStudio();
   const { lang } = useLang();
   const calendarActions = useCalendarActions(lang);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState(initialDraft);
-  const chatAttachment = useRef(null);
+  const [image, setImage] = useState(initialImage);
+  const [imageConsent, setImageConsent] = useState(Boolean(initialImage));
+  const imageRun = useRef(null);
+  const sentInitialImage = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [listening, setListening] = useState(false);
@@ -1722,14 +1727,16 @@ function ChatPage({ initialDraft = '' }) {
   const [voiceName, setVoiceName] = useState(() => speechVoice(lang));
 
   useEffect(() => {
+    let active = true;
     (async () => {
       try {
         const headers = await getAuthHeaders();
         const response = await fetch(`${API_URL}/api/chat`, { headers });
         const json = await response.json();
-        if (response.ok) setMessages(json.messages || []);
+        if (active && response.ok) setMessages(current => [...(json.messages || []), ...current]);
       } catch (err) { /* نتجاهل */ }
     })();
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -1784,7 +1791,71 @@ function ChatPage({ initialDraft = '' }) {
     } catch (err) { if (!signal?.aborted) setError(err.message); } finally { setBusy(false); if (!repliedWithSpeech) voiceState('idle'); }
   };
 
-  const send = (e) => { e.preventDefault(); if (chatMic.current?.enabled) { chatMic.current.stop(); setListening(false); voiceState('idle'); } sendText(input.trim()); };
+  const paste = event => {
+    if (busy) return;
+    const file = pastedImage(event);
+    if (!file) return;
+    if (!file.size || file.size > 12 * 1024 * 1024) {
+      setError(lang === 'en' ? 'Paste an image up to 12 MB.' : 'الصق صورة بحجم حتى 12 ميغابايت.');
+      return;
+    }
+    if (chatMic.current?.enabled) { chatMic.current.stop(); setListening(false); voiceState('idle'); }
+    setImage(file);
+    setImageConsent(false);
+    setError('');
+  };
+
+  const sendImage = async (text, file) => {
+    if (!file || imageRun.current) return;
+    const run = {};
+    imageRun.current = run;
+    setBusy(true);
+    setError('');
+    try {
+      const headers = await getAuthHeaders();
+      const params = new URLSearchParams({ lang });
+      if (wantsProduct(text)) params.set('mode', 'product');
+      const response = await fetch(`${API_URL}/api/attachments?${params}`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-Aql-File': encodeURIComponent(file.name), 'X-Aql-Question': encodeURIComponent(text.slice(0, 600)) },
+        body: file,
+      });
+      const result = await response.json();
+      if (!response.ok || !result.reply) throw new Error('attachment');
+      const replyId = `image-${Date.now()}`;
+      setMessages(current => [...current,
+        { role: 'user', content: text, image: file },
+        { role: 'assistant', id: replyId, content: result.reply, productQuery: result.productQuery },
+      ]);
+      setImage(null);
+      setImageConsent(false);
+      setInput('');
+      if (autoSpeak) speak(result.reply, replyId);
+    } catch {
+      setError(lang === 'en' ? 'Could not analyze the image. You can try again.' : 'تعذّر تحليل الصورة. تقدر تعيد المحاولة.');
+    } finally {
+      imageRun.current = null;
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!initialImage || sentInitialImage.current) return;
+    sentInitialImage.current = true;
+    onConsumeImage(initialImage);
+    void sendImage(initialDraft.trim(), initialImage);
+    // The home composer starts this request once after explicit consent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDraft, initialImage]);
+
+  const send = (e) => {
+    e.preventDefault();
+    if (busy || (image && !imageConsent)) return;
+    if (chatMic.current?.enabled) { chatMic.current.stop(); setListening(false); voiceState('idle'); }
+    if (image) void sendImage(input.trim(), image);
+    else void sendText(input.trim());
+  };
+  const canSend = !busy && (image ? imageConsent : Boolean(input.trim()));
 
   return (
     <>
@@ -1830,7 +1901,9 @@ function ChatPage({ initialDraft = '' }) {
           const mid = m.id || i;
           return (
             <div key={mid} className={`chat-bubble ${m.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-assistant'}`}>
+              {m.image && <ComposerImage file={m.image} en={lang === 'en'} />}
               <span data-skip-i18n="1">{m.content}</span>
+              {m.productQuery && <div><a href={shoppingLink(m.productQuery)} target="_blank" rel="noopener noreferrer">{lang === 'en' ? 'Find stores' : 'شوف المتاجر'} · {m.productQuery}</a></div>}
               {m.role === 'assistant' && (
                 <div style={{ marginTop: '6px' }}>
                   <button onClick={() => (speakingId === mid ? stopSpeaking() : speak(m.content, mid))}
@@ -1847,16 +1920,20 @@ function ChatPage({ initialDraft = '' }) {
 
       {error && <div style={{ color: '#fecaca', fontSize: '0.85rem', margin: '0.5rem 0' }}>⚠️ {error}</div>}
 
-      <form onSubmit={send} className="chat-composer">
-        <input id="chat-compose" onPaste={event => chatAttachment.current?.pasteImage(event)} aria-label={lang === 'en' ? 'Message AQL' : 'رسالة لعقل'} value={input} onChange={(e) => setInput(e.target.value)} placeholder={lang === 'en' ? 'Write a message…' : 'اكتب رسالتك…'} style={{ ...fieldStyle, fontSize: '1.1rem' }} />
-        <AssistantAttachment ref={chatAttachment} draft={input} />
-        {input.trim() && <a className="secondary-action" href={`https://www.google.com/search?tbm=shop&q=${encodeURIComponent(input.trim())}`} target="_blank" rel="noopener noreferrer">{lang === 'en' ? 'Find a product' : 'ابحث عن منتج'}</a>}
-        <button type="button" onClick={startListening} disabled={busy} title="تكلّم مع عَقْل"
+      <form onSubmit={send} className="chat-composer" onPaste={paste}>
+        {image && <div className="composer-image-row">
+          <ComposerImage file={image} en={lang === 'en'} disabled={busy} onRemove={() => { setImage(null); setImageConsent(false); }} />
+          <ImageConsent checked={imageConsent} onChange={setImageConsent} disabled={busy} en={lang === 'en'} />
+        </div>}
+        <input id="chat-compose" disabled={busy} aria-label={lang === 'en' ? 'Message AQL' : 'رسالة لعقل'} value={input} onChange={(e) => setInput(e.target.value)} placeholder={lang === 'en' ? 'Write a message…' : 'اكتب رسالتك…'} style={{ ...fieldStyle, fontSize: '1.1rem' }} />
+        <AssistantAttachment draft={input} />
+        {input.trim() && <a className="secondary-action" href={shoppingLink(input.trim())} target="_blank" rel="noopener noreferrer">{lang === 'en' ? 'Find a product' : 'ابحث عن منتج'}</a>}
+        <button type="button" onClick={startListening} disabled={busy || Boolean(image)} title="تكلّم مع عَقْل"
           style={{ padding: '12px 16px', background: listening ? 'rgba(239,68,68,0.2)' : 'rgba(56,189,248,0.1)', border: `1px solid ${listening ? 'rgba(239,68,68,0.5)' : 'rgba(56,189,248,0.35)'}`, color: listening ? '#fca5a5' : '#7dd3fc', borderRadius: '10px', cursor: 'pointer', fontSize: '1.1rem', boxShadow: listening ? '0 0 18px rgba(239,68,68,0.4)' : 'none' }}>
           {listening ? '🎙️ أسمعك...' : '🎤'}
         </button>
-        <button type="submit" disabled={busy || !input.trim()}
-          style={{ padding: '12px 26px', fontSize: '1.05rem', background: 'linear-gradient(90deg,#0284c7,#6366f1)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '700', cursor: busy || !input.trim() ? 'not-allowed' : 'pointer', opacity: busy || !input.trim() ? 0.6 : 1 }}>
+        <button type="submit" disabled={!canSend}
+          style={{ padding: '12px 26px', fontSize: '1.05rem', background: 'linear-gradient(90deg,#0284c7,#6366f1)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '700', cursor: canSend ? 'pointer' : 'not-allowed', opacity: canSend ? 1 : 0.6 }}>
           إرسال 📨
         </button>
       </form>
@@ -2487,7 +2564,7 @@ function LifeOSPage() {
 /* ========== التطبيق ========== */
 function App() {
   const { lang } = useLang();
-  const [chatDraft, setChatDraft] = useState('');
+  const [chatDraft, setChatDraft] = useState({ text: '', image: null, key: 0 });
   const [showBalance, setShowBalance] = useState(false);
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(false);
@@ -2523,7 +2600,7 @@ function App() {
   if (!session) return (<><FloatingLangButton /><AuthScreen /></>);
 
   const displayName = session.user.user_metadata?.full_name?.trim() || session.user.email;
-  const compose = (draft) => { setChatDraft(draft); setPage('chat'); };
+  const compose = (text, image = null) => { setChatDraft(previous => ({ text, image, key: previous.key + 1 })); setPage('chat'); };
 
   return (
     <ResearchProvider key={session.user.id} userId={session.user.id}>
@@ -2533,7 +2610,7 @@ function App() {
       {page === 'investigate' && <InvestigatePage commitments={commitments} onSaved={fetchCommitments} />}
       {page === 'commitments' && <CommitmentsPage commitments={commitments} refresh={fetchCommitments} />}
       {page === 'history' && <HistoryPage />}
-      {page === 'chat' && <ChatPage key={chatDraft} initialDraft={chatDraft} />}
+      {page === 'chat' && <ChatPage key={chatDraft.key} initialDraft={chatDraft.text} initialImage={chatDraft.image} onConsumeImage={file => setChatDraft(current => current.image === file ? { ...current, image: null } : current)} />}
       {page === 'goals' && <GoalsPage />}
       {page === 'reports' && <ReportsPage />}
       {page === 'achievements' && <AchievementsPage />}
