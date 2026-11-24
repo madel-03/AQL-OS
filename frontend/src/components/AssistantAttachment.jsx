@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useLang } from '../lib/lang';
-import { productSearchReply, searchProducts, shoppingLink, wantsProduct } from '../lib/composer-image';
+import { pastedImage, productSearchReply, searchProducts, shoppingLink, wantsProduct } from '../lib/composer-image';
 import { speechLanguage } from '../lib/speech-voice';
 import { downloadAttachmentPdf } from '../lib/lecture-pdf';
 import LectureReading from './LectureReading';
@@ -52,10 +52,8 @@ export default function AssistantAttachment({ draft = '' }) {
 
   function pasteImage(event) {
     if (controller.current) return;
-    const image = Array.from(event.clipboardData?.files || []).find(item => Object.hasOwn(IMAGES, item.type))
-      || Array.from(event.clipboardData?.items || []).find(item => item.kind === 'file' && Object.hasOwn(IMAGES, item.type))?.getAsFile();
+    const image = pastedImage(event);
     if (!image) return;
-    event.preventDefault();
     event.stopPropagation();
     if (!dialog.current.open) dialog.current.showModal();
     if (!image.size || image.size > 12 * 1024 * 1024) {
@@ -63,7 +61,7 @@ export default function AssistantAttachment({ draft = '' }) {
       return;
     }
     picker.current.value = '';
-    selectFile(new File([image], `clipboard.${IMAGES[image.type]}`, { type: image.type }));
+    selectFile(image);
     questionField.current.focus();
   }
 

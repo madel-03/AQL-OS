@@ -91,13 +91,6 @@ function normalizeCommitment(row) {
   };
 }
 
-function riskLabel(totalHours) {
-  if (totalHours > 110) return 'Critical';
-  if (totalHours > 90) return 'High';
-  if (totalHours > 75) return 'Medium';
-  return 'Low';
-}
-
 async function requireAuth(req, res, next) {
   try {
     const token = (req.headers.authorization || '').replace('Bearer ', '');
