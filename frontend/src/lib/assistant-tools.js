@@ -2,6 +2,7 @@ import { requestDocument } from './assistant-documents.js';
 import { normalizeVoice, wakeMatch } from './wake-listener.js';
 import { companionCommand } from './companion';
 import { screenIntent } from './screen-intent.js';
+import { hasLocalDevice, localDeviceAction, localFolderIntent } from './local-device.js';
 
 export function requestAssistantTool(text, en, signal) {
   const local = text.trim().match(/^(?:(?:يا جارفس|hey jarvis)[،,]?\s+)?(?:اسأل|اسال|ask)\s+(?:ollama|[أا]و\s?ل[اأ]م[اةه])[\s:،,]+(.+)$/isu);
@@ -10,6 +11,13 @@ export function requestAssistantTool(text, en, signal) {
       reply ?? (en ? 'Enable computer mode in Device services.' : 'فعّل «وجّه المحادثة للكمبيوتر» من خدمات الجهاز.'));
   }
   const command = normalizeVoice(wakeMatch(text, 'جارفس') ?? text);
+  const folder = hasLocalDevice() && localFolderIntent(command);
+  if (folder) {
+    return localDeviceAction({ action: 'open_folder', folder }, signal).then(
+      () => en ? 'I opened the folder on this computer.' : 'فتحت المجلد على هذا الكمبيوتر.',
+      () => en ? 'Could not open the folder. Check the local connection.' : 'تعذّر فتح المجلد. تحقّق من الربط المحلي.',
+    );
+  }
   const visual = screenIntent(text) || screenIntent(command);
   if (visual?.action && sessionStorage.getItem('aql-companion-mode')) {
     return companionCommand(visual.action, signal, true, visual.steamView);
@@ -19,7 +27,9 @@ export function requestAssistantTool(text, en, signal) {
   if (visual?.standalone || (capture.test(command) && /(?:شاش[ةه]|سكرين شوت|\bscreen(?:shot)?\b)/u.test(command))) {
     if (signal?.aborted) return null;
     window.dispatchEvent(new CustomEvent('aql-screen-compose', { detail: 'خذ لقطة من شاشة الكمبيوتر' }));
-    return en ? 'Requesting a screenshot from your computer.' : 'أطلب لك لقطة من الكمبيوتر.';
+    return hasLocalDevice()
+      ? (en ? 'Taking a screenshot on this computer.' : 'ألتقط لقطة على هذا الكمبيوتر.')
+      : (en ? 'Requesting a screenshot from your computer.' : 'أطلب لك لقطة من الكمبيوتر.');
   }
   return sessionStorage.getItem('aql-companion-mode')
     ? companionCommand(text, signal).then(reply => reply ?? requestDocument(text, en, signal))

@@ -175,7 +175,19 @@ function publicJob(job) {
   return { id: job.id, done: !!job.done, succeeded: !!job.succeeded && !job.note && !job.stopped, results: job.results, note: job.note || '' };
 }
 
+const STEP_FIELDS = {
+  local_answer: ['type', 'question'],
+  steam: ['type'],
+  steam_downloads: ['type'],
+  steam_updates: ['type'],
+  folder: ['type', 'path', 'location'],
+  inspect: ['type', 'path', 'location'],
+  note: ['type', 'path', 'location', 'content'],
+};
+
 export function validStep(step) {
+  if (!step || typeof step !== 'object' || Array.isArray(step) || !Object.hasOwn(STEP_FIELDS, step.type)) return false;
+  if (!Object.keys(step).every(key => STEP_FIELDS[step.type].includes(key))) return false;
   if (step?.type === 'local_answer') return typeof step.question === 'string' && !!step.question.trim() && step.question.length <= 1500;
   if (step?.location !== undefined && step.location !== 'workspace' && !(step.location === 'desktop' && ['folder', 'note'].includes(step.type))) return false;
   if (['steam', 'steam_downloads', 'steam_updates'].includes(step?.type)) return true;

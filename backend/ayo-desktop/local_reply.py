@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import re
+import os
 
 import requests
 from winrt.runtime import ApartmentType, init_apartment, uninit_apartment
@@ -65,7 +66,7 @@ def brief_screen_text(extracted):
     return "قرأت أجزاء من النص، وما ظهر عنوان واضح يكفي عشان أوصف اللقطة."
 
 
-DESKTOP_API = "https://aql-os.onrender.com/api/desktop/answer"
+DESKTOP_API = os.environ.get("AQL_DESKTOP_API_URL", "https://aql-os.onrender.com/api/desktop/answer")
 HYBRID = "hybrid"
 OFFLINE = "offline"
 FULL_LOCAL = "full_local"
@@ -94,8 +95,10 @@ def cloud_answer(question, token, *, text=None, jpeg=None):
     payload = {"question": question[:2400]}
     if jpeg:
         payload["jpeg"] = jpeg
-    else:
+    elif text is not None:
         payload["text"] = text[:14000]
+    else:
+        payload["questionOnly"] = True
     with requests.Session() as session:
         session.trust_env = False
         response = session.post(
@@ -114,7 +117,14 @@ def cloud_answer(question, token, *, text=None, jpeg=None):
 
 def desktop_answer(question, image=None, ocr_image=None, read_only=False, translate=False, *, mode, token=""):
     if not image:
-        return local_answer(question)
+        if mode != HYBRID:
+            return local_answer(question)
+        if not token:
+            return "سجّل دخولك في نافذة عقل، أو اختر وضع بدون اتصال."
+        try:
+            return cloud_answer(question, token)
+        except (requests.RequestException, ValueError, KeyError):
+            return "تعذّر الرد السحابي. جرّب الاتصال أو اختر وضع بدون اتصال."
     extracted = windows_ocr(ocr_image) if ocr_image else ""
     route = screen_route(question, extracted, read_only)
     if route == "read":

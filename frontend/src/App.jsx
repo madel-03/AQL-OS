@@ -4,6 +4,7 @@ import AssistantAttachment from './components/AssistantAttachment';
 import { ComposerImage, ImageConsent } from './components/ComposerImage';
 import { pastedImage, productSearchQuery, shoppingLink, wantsProduct } from './lib/composer-image';
 import { requestAssistantTool } from './lib/assistant-tools';
+import { disconnectLocalDevice } from './lib/local-device';
 import { ScreenRequestDialog } from './components/ScreenRequests';
 import { ComputerResult } from './components/ComputerCompanion';
 import { ContextReminder } from './components/ContextNotes';
@@ -2608,7 +2609,10 @@ function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true); });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'SIGNED_OUT') disconnectLocalDevice();
+      setSession(s);
+    });
     return () => subscription.unsubscribe();
   }, []);
 
@@ -2626,6 +2630,7 @@ function App() {
   useEffect(() => { fetchCommitments(); }, [fetchCommitments]);
 
   const handleLogout = async () => {
+    disconnectLocalDevice();
     await supabase.auth.signOut();
     setCommitments([]);
     setPage('dashboard');

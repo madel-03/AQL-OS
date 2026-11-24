@@ -212,7 +212,7 @@ class VoiceAssistant(QObject):
             started = True
             threading.Thread(target=run, args=(token,), daemon=True).start()
 
-        if mode == HYBRID and image and not read_only:
+        if mode == HYBRID and not read_only:
             QTimer.singleShot(2500, start_worker)
             self.parent().get_cloud_token(start_worker)
         elif mode == HYBRID and image:

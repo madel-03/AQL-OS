@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useLang } from '../lib/lang';
+import { hasLocalDevice, localDeviceAction } from '../lib/local-device';
 
 const API = (import.meta.env.VITE_API_URL || 'http://localhost:5000') + '/api/device/screens';
 
@@ -48,6 +49,15 @@ async function takeScreenshot(stream) {
 }
 
 async function requestFresh(message) {
+  if (hasLocalDevice()) {
+    try {
+      const { image } = await localDeviceAction({ action: 'screenshot' });
+      if (!image?.startsWith('data:image/jpeg;base64,')) throw new Error('capture_failed');
+      return { local: true, image };
+    } catch {
+      throw new Error('local_capture_failed');
+    }
+  }
   const post = () => call('', { method: 'POST', body: { message } });
   try { return await post(); } catch (failure) {
     if (failure.message !== 'request_exists') throw failure;
@@ -154,6 +164,7 @@ export default function ScreenRequests({ initialMessage = '', request }) {
   }
 
   const errors = {
+    local_capture_failed: en ? 'Local capture failed. Check the Windows app and local connection.' : 'تعذّر أخذ اللقطة محليًا. تأكد من تطبيق ويندوز والربط المحلي.',
     session: en ? 'Sign in on both devices.' : 'سجّل الدخول على الجهازين.',
     request_expired: en ? 'The request expired or was cancelled.' : 'انتهت مهلة الطلب أو تم إلغاؤه.',
     request_exists: en ? 'There is already a request on this account.' : 'فيه طلب قائم على هذا الحساب.',
@@ -192,7 +203,8 @@ export default function ScreenRequests({ initialMessage = '', request }) {
       {outgoing.image ? <img src={outgoing.image} alt={en ? 'Computer screenshot' : 'لقطة شاشة الكمبيوتر'} style={{ maxWidth: '100%' }} />
         : <p role="status">{en ? 'Waiting for your computer. Keep screen sharing active there.' : 'بانتظار اللقطة. تأكد أن مشاركة الشاشة مفعّلة على الكمبيوتر.'}</p>}
       <button type="button" className="studio-text-button" disabled={busy} onClick={() => void run(async () => {
-        await call(`/${outgoing.id}`, { method: 'DELETE' }); setOutgoing(null);
+        if (!outgoing.local) await call(`/${outgoing.id}`, { method: 'DELETE' });
+        setOutgoing(null);
       })}>{outgoing.image ? (en ? 'Delete screenshot' : 'احذف اللقطة') : (en ? 'Cancel request' : 'ألغِ الطلب')}</button>
     </div>}
     {error && <p role="alert" className="studio-warning">{Object.hasOwn(errors, error) ? errors[error] : (en ? 'Screen sharing failed. Try again.' : 'تعذّرت مشاركة الشاشة. جرّب مجددًا.')}</p>}

@@ -7,9 +7,12 @@ export function createDesktopAnalysisRouter({ requireAuth, textAnswer, visionAns
   const active = new Set();
 
   router.post('/', requireAuth, async (req, res) => {
-    const { question, text, jpeg } = req.body || {};
+    const { question, text, jpeg, questionOnly } = req.body || {};
+    const textOnly = questionOnly === true;
+    const hasText = typeof text === 'string';
+    const hasImage = typeof jpeg === 'string';
     if (typeof question !== 'string' || !question.trim() || question.length > 2400
-        || (typeof text === 'string') === (typeof jpeg === 'string')
+        || Number(textOnly) + Number(hasText) + Number(hasImage) !== 1
         || (typeof text === 'string' && (!text.trim() || text.length > 14000))
         || (typeof jpeg === 'string' && (jpeg.length > 2_500_000 || !/^\/9j\/[A-Za-z0-9+/]+=*$/.test(jpeg)))) {
       return res.status(400).json({ error: 'invalid_input' });
@@ -20,8 +23,8 @@ export function createDesktopAnalysisRouter({ requireAuth, textAnswer, visionAns
     active.add(user);
     try {
       const started = performance.now();
-      const result = typeof text === 'string'
-        ? await textAnswer(DESKTOP_PROMPT, [{ role: 'user', content: JSON.stringify({ question, screenText: text }) }])
+      const result = !hasImage
+        ? await textAnswer(DESKTOP_PROMPT, [{ role: 'user', content: JSON.stringify({ question, ...(hasText && { screenText: text }) }) }])
         : await visionAnswer({
           systemInstruction: { parts: [{ text: DESKTOP_PROMPT }] },
           contents: [{ role: 'user', parts: [{ text: question }, { inlineData: { mimeType: 'image/jpeg', data: jpeg } }] }],

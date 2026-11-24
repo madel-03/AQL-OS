@@ -30,8 +30,13 @@ export async function performStep(root, step, desktop) {
   const displayPath = step.location === 'desktop' ? 'سطح المكتب/' + step.path : step.path;
   if (['steam', 'steam_downloads', 'steam_updates'].includes(step.type)) {
     if (process.platform !== 'win32') throw Error('يتطلب فتح Steam جهاز ويندوز');
-    const exe = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Steam', 'steam.exe');
-    await fs.access(exe);
+    const folders = [...new Set([process.env['ProgramFiles(x86)'], process.env.ProgramFiles].filter(Boolean))];
+    let exe;
+    for (const folder of folders) {
+      const candidate = path.join(folder, 'Steam', 'steam.exe');
+      try { await fs.access(candidate); exe = candidate; break; } catch { /* Look in the other Windows program folder. */ }
+    }
+    if (!exe) throw Error('ما لقيت Steam في مجلد برامج ويندوز.');
     const args = step.type === 'steam' ? [] : ['steam://open/downloads'];
     const processHandle = spawn(exe, args, { detached: true, stdio: 'ignore', shell: false });
     await new Promise((resolve, reject) => { processHandle.once('spawn', resolve); processHandle.once('error', reject); });

@@ -1,9 +1,11 @@
 import hashlib
+import json
+import os
 import sys
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QLockFile, QSettings, QStandardPaths, QUrl, Qt, QTimer
+from PySide6.QtCore import QEvent, QLockFile, QSettings, QStandardPaths, QUrl, Qt, QTimer, Signal
 from PySide6.QtGui import QActionGroup, QCursor, QDesktopServices, QIcon, QKeySequence, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
@@ -14,21 +16,24 @@ from PySide6.QtWidgets import (
 )
 
 
+from local_bridge import LocalBridge
 from local_reply import FULL_LOCAL, HYBRID, OFFLINE
 from screen_crop import crop_frame
-from voice_assistant import VoiceAssistant
+from voice_assistant import VoiceAssistant, encode_frame
 
 
-SITE = QUrl("https://aql-os-orcin.vercel.app/")
+SITE = QUrl(os.environ.get("AQL_SITE_URL", "https://aql-os-orcin.vercel.app/"))
+_site = urlsplit(SITE.toString())
+SITE_ORIGIN = f"{_site.scheme}://{_site.netloc}"
 ANALYSIS_MODES = {
-    HYBRID: ("تلقائي", "النص يُقرأ محليًا ثم يُرسل للنموذج السريع. الأسئلة البصرية ترسل الصورة إلى Gemini."),
+    HYBRID: ("تلقائي", "الأسئلة والنص المقروء من اللقطة تُرسل إلى Groq أو Cerebras. الأسئلة البصرية ترسل الصورة إلى Gemini."),
     OFFLINE: ("بدون اتصال", "قراءة النص وتحليله على جهازك."),
     FULL_LOCAL: ("محلي كامل", "النص والصورة يُحلّلان على جهازك. وصف الصور قد يبطئ الكمبيوتر."),
 }
 
 READ_AQL_SESSION = """
 (() => {
-    if (location.origin !== "https://aql-os-orcin.vercel.app") return "";
+    if (location.origin !== __AQL_ORIGIN__) return "";
     try {
         const keys = Object.keys(localStorage).filter(key => /^sb-[a-z0-9]+-auth-token$/.test(key));
         if (keys.length !== 1) return "";
@@ -42,10 +47,14 @@ READ_AQL_SESSION = """
 
 
 class DesktopWindow(QMainWindow):
+    bridge_request = Signal(str, object, object)
+
     def __init__(self, icon):
         super().__init__()
         self.settings = QSettings("AQL", "Desktop")
         self.exiting = False
+        self.bridge = None
+        self.bridge_request.connect(self.run_bridge_action)
         self.analysis_mode = self.settings.value("analysisMode", HYBRID)
         if self.analysis_mode not in ANALYSIS_MODES:
             self.analysis_mode = HYBRID
@@ -109,6 +118,9 @@ class DesktopWindow(QMainWindow):
         self.reply_action.setEnabled(False)
         self.menu.addAction("جرّب صوت جارفس", self.voice.preview_voice)
         self.menu.addSeparator()
+        local = self.menu.addMenu("ربط الموقع محليًا")
+        local.addAction("انسخ مفتاح الربط", self.copy_bridge_key)
+        local.addAction("ألغِ الربط المحلي", self.revoke_bridge)
         self.menu.addAction("خروج من عقل", self.quit)
         self.tray.setContextMenu(self.menu)
         self.tray.activated.connect(self.on_tray)
@@ -117,6 +129,59 @@ class DesktopWindow(QMainWindow):
         self.idle_timer.setSingleShot(True)
         self.idle_timer.timeout.connect(self.freeze_idle_website)
         self.load_site()
+
+    def copy_bridge_key(self):
+        prompt = ("يسمح المفتاح لموقع عقل على هذا الكمبيوتر بفتح المجلدات المحددة وطلب لقطة شاشة. "
+                  "الصق المفتاح في خدمات الجهاز داخل موقع عقل. تقدر تلغي الربط من هذه القائمة.")
+        if QMessageBox.question(self, "ربط الموقع محليًا", prompt) != QMessageBox.Yes:
+            return
+        if self.bridge is None:
+            try:
+                port = int(os.environ.get("AQL_LOCAL_BRIDGE_PORT", "8765"))
+                if not 1 <= port <= 65535:
+                    raise ValueError("Invalid port")
+                self.bridge = LocalBridge(port, SITE_ORIGIN, self.bridge_request.emit)
+                self.bridge.start()
+            except (ValueError, OSError):
+                self.bridge = None
+                self.show_voice_status("تعذّر تشغيل الربط المحلي. تحقق من المنفذ.")
+                return
+        QApplication.clipboard().setText(self.bridge.new_key())
+        self.show_voice_status("تم نسخ مفتاح الربط المحلي.")
+
+    def revoke_bridge(self):
+        if self.bridge:
+            self.bridge.key = ""
+        self.show_voice_status("تم إلغاء الربط المحلي.")
+
+    def run_bridge_action(self, key, action, result):
+        if not result.set_running_or_notify_cancel():
+            return
+        if self.exiting or self.bridge is None or not self.bridge.authorized(key):
+            result.set_result({"error": "invalid_key"})
+            return
+        name, folder = action
+        try:
+            if name == "open_folder":
+                places = {
+                    "desktop": QStandardPaths.DesktopLocation,
+                    "documents": QStandardPaths.DocumentsLocation,
+                    "downloads": QStandardPaths.DownloadLocation,
+                }
+                location = QStandardPaths.writableLocation(places[folder])
+                opened = bool(location and Path(location).is_dir()
+                              and QDesktopServices.openUrl(QUrl.fromLocalFile(location)))
+                result.set_result({"ok": True} if opened else {"error": "folder_unavailable"})
+            elif name == "screenshot":
+                screen = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
+                frame = screen.grabWindow(0) if screen else None
+                image = encode_frame(frame, 1280) if frame is not None and not frame.isNull() else None
+                result.set_result({"ok": True, "image": "data:image/jpeg;base64," + image}
+                                  if image else {"error": "capture_failed"})
+            else:
+                result.set_result({"error": "unsupported_action"})
+        except (KeyError, OSError, RuntimeError):
+            result.set_result({"error": "action_failed"})
 
     def freeze_idle_website(self):
         page = self.web.page()
@@ -168,7 +233,7 @@ class DesktopWindow(QMainWindow):
                 self.idle_timer.start(10000)
 
         # Isolated JS world. The token is passed only to the authenticated AQL API.
-        page.runJavaScript(READ_AQL_SESSION, 1, received)
+        page.runJavaScript(READ_AQL_SESSION.replace('__AQL_ORIGIN__', json.dumps(SITE_ORIGIN)), 1, received)
 
     def build_quick_chat(self):
         self.quick_frame = None
@@ -201,7 +266,6 @@ class DesktopWindow(QMainWindow):
         layout.addWidget(self.quick_preview)
         self.quick_privacy = QLabel(ANALYSIS_MODES[self.analysis_mode][1])
         self.quick_privacy.setWordWrap(True)
-        self.quick_privacy.hide()
         layout.addWidget(self.quick_privacy)
         self.quick_status = QLabel()
         self.quick_status.setWordWrap(True)
@@ -317,7 +381,6 @@ class DesktopWindow(QMainWindow):
         self.quick_preview.hide()
         self.quick_remove.hide()
         self.quick_crop.hide()
-        self.quick_privacy.hide()
         if not self.quick_waiting:
             self.quick_status.clear()
         self.quick_chat.adjustSize()
@@ -589,6 +652,8 @@ class DesktopWindow(QMainWindow):
 
     def quit(self):
         self.exiting = True
+        if self.bridge:
+            self.bridge.stop()
         self.voice.enable(False)
         self.quick_chat.close()
         self.island.hide()
@@ -640,4 +705,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

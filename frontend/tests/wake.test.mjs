@@ -165,10 +165,29 @@ test('calendar action and explicit confirmation are distinguished from conversat
   assert.equal(voiceIntent('متى أؤكد الموعد').type, 'chat');
   assert.equal(voiceIntent('احذف موعد اليوم').type, 'review-required');
 });
-test('clarification outcomes allow one bounded conversational follow-up', async () => {
-  const calls = []; const { engine, instances } = fixture(async command => { calls.push(command); return { followUp: calls.length === 1 }; });
-  engine.start(); instances[0].result('يا جارفس أضف موعد'); await tick(); instances.at(-1).result('بكرة الخامسة مساء'); await tick(); instances.at(-1).result('محادثة جانبية');
-  assert.deepEqual(calls, ['اضف موعد', 'بكرة الخامسة مساء']); engine.stop();
+test('clarification outcomes allow one bounded conversational follow-up', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const calls = [];
+  const { engine, instances } = fixture(async command => {
+    calls.push(command);
+    return { followUp: calls.length === 1 };
+  });
+  try {
+    engine.start();
+    instances[0].result('يا جارفس أضف موعد');
+    await Promise.resolve();
+    t.mock.timers.tick(2);
+    assert.equal(instances.length, 2);
+    instances[1].result('بكرة الخامسة مساء');
+    await Promise.resolve();
+    t.mock.timers.tick(2);
+    assert.equal(instances.length, 3);
+    instances[2].result('محادثة جانبية');
+    assert.deepEqual(calls, ['اضف موعد', 'بكرة الخامسة مساء']);
+  } finally {
+    engine.stop();
+    t.mock.timers.reset();
+  }
 });
 
 test('task execution requires explicit task confirmation', () => {

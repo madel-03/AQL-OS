@@ -4,7 +4,7 @@ Run setup.cmd and start.cmd to open the published site inside the Windows app.
 The embedded browser has its own persistent profile, so sign in there if prompted.
 Closing the window hides it in the system tray. Use the tray menu to restore it,
 toggle the floating button during minimization, or quit. Build.cmd packages the
-desktop app into dist\hybrid-analysis\AQL-Desktop. Use installer.iss to package that folder.
+desktop app into dist\local-bridge\AQL-Desktop. Use installer.iss to package that folder.
 ## Optional local assistant
 
 The native desktop client uses Python 3.12, Qt Quick Controls and SQLite. Main.qml owns the window, app.py coordinates user actions on the Qt thread, providers.py streams on a background thread, and store.py owns local persistence. Run these commands from this folder on Windows.
@@ -86,4 +86,20 @@ server with the corresponding provider keys.
 Use Crop Image before Send to share only the selected rectangle. Choose
 Offline to use local OCR and Qwen for text, or Full Local to allow the heavier
 local vision model. The mode applies to desktop quick chat and desktop wake
-requests. Plain desktop questions still use the lightweight local Qwen.
+requests. Automatic mode sends plain desktop questions through the authenticated fast text route.
+
+## Same-computer connection
+
+From the Windows tray choose the local connection menu and copy a key. In
+the website open Device services and paste it in the Local connection panel.
+The token is retained in that tab's memory. Copying a new key or revoking
+the connection invalidates the old key. The bridge listens on 127.0.0.1
+only, defaults to port 8765, and accepts the configured website origin.
+Supported actions are status, a single screenshot, and Desktop, Documents,
+or Downloads folders. With no local link the website uses its existing
+remote screenshot flow.
+
+For a custom deployment set AQL_SITE_URL and AQL_DESKTOP_API_URL in the
+Windows app environment. To change the bridge port set both
+AQL_LOCAL_BRIDGE_PORT in Windows and VITE_AQL_LOCAL_BRIDGE_PORT before
+building the frontend.
