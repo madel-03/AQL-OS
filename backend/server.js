@@ -10,6 +10,7 @@ import { createDesktopAnalysisRouter } from './desktop-analysis.js';
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
+import { setTimeout as delay } from 'node:timers/promises';
 import { createClient } from '@supabase/supabase-js';
 import { synthesizeSpeech } from './edge-speech.js';
 import { createResearchRouter } from './research.js';
@@ -33,6 +34,9 @@ import { createSpeechRouter } from './speech.js';
 import { AGENT_TOOLS, getOpenAITools, runAgentTool, liveWebSearch } from './agent-tools.js';
 
 const app = express();
+app.disable('x-powered-by');
+const configuredWebOrigins = (process.env.AQL_WEB_ORIGINS || '').split(',')
+  .map(value => value.trim()).filter(value => /^https?:\/\/[^/?#@\s]+$/.test(value));
 app.use(cors({
   origin: [
     'http://localhost:5173',
@@ -40,14 +44,23 @@ app.use(cors({
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
     'https://aql-os-orcin.vercel.app',
-    /^https:\/\/.*\.vercel\.app$/,
+    ...configuredWebOrigins,
   ],
 }));
+app.use('/api', (_req, res, next) => {
+  res.set({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+  next();
+});
 app.use('/api/device', express.json({ limit: '400kb' }));
 app.use('/api/documents/export', express.json({ limit: '1mb' }));
 app.use('/api/lectures/export', express.json({ limit: '1mb' }));
 app.use('/api/desktop/answer', express.json({ limit: '3mb' }));
 app.use(express.json());
+app.use((error, _req, res, next) => {
+  const messages = { 400: 'invalid_request_body', 413: 'request_too_large', 415: 'unsupported_request_encoding' };
+  if (res.headersSent || !Object.hasOwn(messages, error.status)) return next(error);
+  return res.status(error.status).json({ error: messages[error.status] });
+});
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -93,13 +106,13 @@ function normalizeCommitment(row) {
 
 async function requireAuth(req, res, next) {
   try {
-    const token = (req.headers.authorization || '').replace('Bearer ', '');
+    const token = /^Bearer ([^\s,]+)$/i.exec(req.get('Authorization') || '')?.[1];
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data.user) return res.status(401).json({ error: 'Unauthorized' });
     req.user = data.user;
     next();
-  } catch (err) {
+  } catch {
     res.status(401).json({ error: 'Unauthorized' });
   }
 }
@@ -122,28 +135,27 @@ async function groqChat(system, messages, tools = null, preferQwen = false) {
 }
 
 // 🌐 3. Gemini Helper (الثالث والأخير)
-async function geminiGenerate(payload, models = MODEL_FALLBACKS, timeoutMs = 45000) {
+async function geminiGenerate(payload, models = MODEL_FALLBACKS, timeoutMs = 45000, signal) {
   let lastError = null;
   for (const model of models) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+    signal?.throwIfAborted();
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    const timeout = AbortSignal.timeout(timeoutMs);
     try {
       const response = await fetch(url, {
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
         body: JSON.stringify(payload),
       });
-      if (response.status === 503 || response.status === 429 || response.status === 404) {
-      lastError = Object.assign(new Error(`Gemini ${response.status} on ${model}`), { providerStatus: response.status });
-      if (response.status === 429) await new Promise((r) => setTimeout(r, 1200));
-      continue;
-      }
       if (!response.ok) {
-        const t = await response.text();
-        throw Object.assign(new Error(`Gemini ${response.status}: ${t}`), { providerStatus: response.status });
+        await response.body?.cancel();
+        if (response.status === 429) await delay(1200, undefined, { signal });
+        throw Object.assign(new Error(`Gemini ${response.status}`), { providerStatus: response.status });
       }
       return await response.json();
     } catch (err) {
+      signal?.throwIfAborted();
       lastError = err;
     }
   }
@@ -254,7 +266,7 @@ const attachmentModels = [...new Set([
   process.env.LECTURE_GEMINI_MODEL || 'gemini-3.5-flash',
   ...(process.env.LECTURE_GEMINI_FALLBACKS || 'gemini-3.5-flash-lite,gemini-3.1-flash-lite').split(','),
 ].map(model => model.trim()).filter(Boolean))].slice(0, 3);
-app.use('/api/attachments', createAttachmentsRouter({ requireAuth, generate: payload => geminiGenerate(payload, attachmentModels) }));
+app.use('/api/attachments', createAttachmentsRouter({ requireAuth, generate: (payload, signal) => geminiGenerate(payload, attachmentModels, 45000, signal) }));
 app.use('/api/desktop/answer', createDesktopAnalysisRouter({
   requireAuth,
   textAnswer: async (system, messages) => {

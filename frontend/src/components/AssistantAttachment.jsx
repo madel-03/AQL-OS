@@ -153,7 +153,7 @@ export default function AssistantAttachment({ draft = '' }) {
       if (!file) setQuestion(draft.slice(0, 600));
       dialog.current.showModal();
     }}>{en ? 'Attach a file' : 'أرفق ملف'}</button>
-    {createPortal(<dialog ref={dialog} dir={en ? 'ltr' : 'rtl'} className="assistant-attachment" aria-label={en ? 'Ask about a file' : 'اسأل عن ملف'}>
+    {createPortal(<dialog ref={dialog} dir={en ? 'ltr' : 'rtl'} className="assistant-attachment" aria-label={en ? 'Ask about a file' : 'اسأل عن ملف'} onClose={() => controller.current?.abort()}>
       <form onSubmit={submit} onPaste={pasteImage}>
         <div className="assistant-attachment-heading">
           <h2>{en ? 'Ask about a file' : 'اسأل عن ملف'}</h2>

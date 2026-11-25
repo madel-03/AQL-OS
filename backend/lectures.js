@@ -6,7 +6,7 @@ const MAX = 12 * 1024 * 1024;
 const TYPES = { pdf: 'application/pdf', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', mp4: 'video/mp4', webm: 'video/webm' };
 export function lectureType(name, bytes) {
   const ext = String(name).toLowerCase().split('.').pop();
-  if (!TYPES[ext] || !Buffer.isBuffer(bytes) || bytes.length < 12 || bytes.length > MAX) throw new Error('اختر PDF أو PPTX أو تسجيل MP3/M4A/WAV/OGG/MP4/WebM بحجم حتى 12MB.');
+  if (!Object.hasOwn(TYPES, ext) || !Buffer.isBuffer(bytes) || bytes.length < 12 || bytes.length > MAX) throw new Error('اختر PDF أو PPTX أو تسجيل MP3/M4A/WAV/OGG/MP4/WebM بحجم حتى 12MB.');
   if (ext === 'pdf' && !bytes.subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new Error('ملف PDF غير صالح.');
   if (ext === 'pptx' && bytes.readUInt16LE(0) !== 0x4b50) throw new Error('ملف PowerPoint غير صالح.');
   return { ext, mime: TYPES[ext] };
@@ -111,8 +111,18 @@ export function createLecturesRouter({ requireAuth, config = process.env, fetche
     if (!config.GEMINI_API_KEY || !config.GROQ_API_KEY) return res.status(503).json({ error: 'يلزم إعداد GEMINI_API_KEY وGROQ_API_KEY في الخادم لاستخدام نموذجين.' });
     if (active.size >= 3 && !active.has(req.user.id)) return res.status(429).json({ error: 'مساحة المحاضرات مشغولة الآن. أعد المحاولة بعد قليل.' });
     if (active.has(req.user.id)) return res.status(429).json({ error: 'تحليل آخر جارٍ لحسابك. انتظر أو ألغِه.' });
-    active.add(req.user.id); res.on('close', () => active.delete(req.user.id)); next();
-  }, raw({ type: 'application/octet-stream', limit: MAX }), async (req, res) => {
+    const userId = req.user.id;
+    active.add(userId);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      active.delete(userId);
+    };
+    res.locals.releaseLecture = release;
+    res.once('close', release);
+    next();
+  }, raw({ type: 'application/octet-stream', limit: MAX, inflate: false }), async (req, res) => {
     const controller = new AbortController(); const deadline = setTimeout(() => controller.abort(), 480000); let heartbeat; const abort = () => controller.abort(); req.on('aborted', abort); res.on('close', abort);
     try {
       const name = decodeURIComponent(req.get('X-Lecture-Name') || ''); lectureType(name, req.body);
@@ -130,8 +140,12 @@ export function createLecturesRouter({ requireAuth, config = process.env, fetche
     } catch (error) {
       const message = error instanceof SyntaxError ? 'لم يُرجع أحد النماذج محتوى صالحًا. أعد المحاولة.' : error.message;
       if (!res.destroyed) { if (res.headersSent) res.end(JSON.stringify({ error: message }) + '\n'); else res.status(400).json({ error: message }); }
-    } finally { clearInterval(heartbeat); clearTimeout(deadline); active.delete(req.user.id); req.off('aborted', abort); res.off('close', abort); }
+    } finally { clearInterval(heartbeat); clearTimeout(deadline); res.locals.releaseLecture(); req.off('aborted', abort); res.off('close', abort); }
   });
-  router.use((error, req, res, next) => { void next; active.delete(req.user?.id); res.status(error.type === 'entity.too.large' ? 413 : 400).json({ error: 'الملف غير صالح أو حجمه أكبر من 12MB.' }); });
+  router.use((error, req, res, next) => {
+    res.locals.releaseLecture?.();
+    if (res.headersSent) return next(error);
+    if (!res.destroyed) res.status(error.type === 'entity.too.large' ? 413 : 400).json({ error: 'الملف غير صالح أو حجمه أكبر من 12MB.' });
+  });
   return router;
 }

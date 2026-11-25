@@ -1,6 +1,7 @@
 import { speechLanguage, speechVoice } from './lib/speech-voice';
 import AssistantDocuments from './components/AssistantDocuments';
 import AssistantAttachment from './components/AssistantAttachment';
+import AuthChallenge from './components/AuthChallenge';
 import { ComposerImage, ImageConsent } from './components/ComposerImage';
 import { pastedImage, productSearchQuery, productSearchReply, searchProducts, shoppingLink, wantsProduct, wantsProductLink } from './lib/composer-image';
 import { requestAssistantTool } from './lib/assistant-tools';
@@ -40,6 +41,7 @@ import { useStudio } from './lib/studio-context';
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY?.trim() || '';
 
 const emptyCommitment = { title: '', hours_per_week: 10, type: 'personal', intensity: 'medium', timeSlot: 'morning', flexible: true };
 const typeLabels = { study: 'دراسة', work: 'عمل', health: 'صحة', personal: 'شخصي', sleep: 'نوم' };
@@ -293,6 +295,7 @@ function FloatingLangButton() {
 /* ========== شاشة الدخول ========== */
 function AuthScreen() {
   const { lang, t } = useLang();
+  const en = lang === 'en';
   const [mode, setMode] = useState('login');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -302,6 +305,16 @@ function AuthScreen() {
   const [message, setMessage] = useState('');
   const [otpStep, setOtpStep] = useState(false);
   const [otp, setOtp] = useState('');
+  const [challengeAttempt, setChallengeAttempt] = useState(0);
+  const [challenge, setChallenge] = useState(null);
+  const submitting = useRef(false);
+  const challengeId = `${lang}:${challengeAttempt}`;
+  const receiveToken = useCallback(token => setChallenge({ id: challengeId, token }), [challengeId]);
+  const captchaToken = challenge?.id === challengeId ? challenge.token : '';
+  const challengeRequired = Boolean(TURNSTILE_SITE_KEY);
+  const challengePending = challengeRequired && !captchaToken;
+  const resetChallenge = () => setChallengeAttempt(attempt => attempt + 1);
+  const challengeWidget = challengeRequired && <AuthChallenge key={challengeId} siteKey={TURNSTILE_SITE_KEY} lang={lang} onToken={receiveToken} onRetry={resetChallenge} />;
 
   const box = (kind) => ({
     background: kind === 'err' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
@@ -310,39 +323,73 @@ function AuthScreen() {
     borderRadius: '10px', padding: '0.8rem 1rem', marginBottom: '1rem', fontSize: '0.9rem',
   });
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const runAuth = async (action, onSuccess, needsChallenge = true) => {
+    if (submitting.current || (needsChallenge && challengePending)) return;
+    submitting.current = true;
     setBusy(true); setError(''); setMessage('');
     try {
-      if (mode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
-        if (error) throw error;
-        if (!data.session) { setOtpStep(true); setMessage(`📬 أرسلنا رمز تفعيل مكونًا من 6 أرقام إلى: ${email}`); }
+      const { data, error } = await action(captchaToken ? { captchaToken } : {});
+      if (error) throw error;
+      onSuccess(data);
+    } catch (err) {
+      if (err.status === 429) {
+        setError(en ? 'Too many attempts. Wait a little and try again.' : 'المحاولات كثيرة. انتظر شوي وجرّب مجددًا.');
+      } else if (err.code === 'captcha_failed') {
+        setError(en ? 'Verification failed. Complete the new check and try again.' : 'تعذّر التحقق. أكمل التحقق الجديد وجرّب مرة ثانية.');
+      } else if (err.message === 'AQL_SIGNUP_DISPOSABLE_EMAIL') {
+        setError(en ? 'Use a permanent email address you can access.' : 'استخدم بريدًا دائمًا تقدر تفتحه.');
+      } else if (err.message === 'AQL_SIGNUP_NAME_INVALID') {
+        setError(en ? 'Enter a display name of 2–80 characters.' : 'أدخل اسم عرض من حرفين إلى 80 حرفًا.');
+      } else if (err.code === 'email_not_confirmed') {
+        setEmail(email.trim());
+        setPassword('');
+        setOtpStep(true);
+        setMessage(en ? 'Confirm your email using the code. You can request a new one below.' : 'فعّل بريدك بالرمز. تقدر تطلب رمزًا جديدًا من هنا.');
+      } else if (!needsChallenge) {
+        setError(en ? 'The code is incorrect or expired. Try again.' : 'الرمز غير صحيح أو منتهي الصلاحية. جرّب مرة ثانية.');
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        setError(en ? 'Could not complete the request. Check your details and try again.' : 'تعذّر إكمال الطلب. راجع بياناتك وجرّب مرة ثانية.');
       }
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
+    } finally {
+      if (needsChallenge) resetChallenge();
+      submitting.current = false;
+      setBusy(false);
+    }
   };
 
-  const handleVerifyOtp = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    setBusy(true); setError(''); setMessage('');
-    try {
-      const { error } = await supabase.auth.verifyOtp({ email, token: otp.trim(), type: 'signup' });
-      if (error) throw error;
-      setMessage('✅ تم تفعيل الحساب! جاري تسجيل الدخول...');
-    } catch (err) { setError('الرمز غير صحيح أو منتهي الصلاحية، حاول مجددًا.'); } finally { setBusy(false); }
+    const address = email.trim();
+    const name = fullName.trim();
+    if (mode === 'signup') {
+      const nameLength = Array.from(name).length;
+      if (nameLength < 2 || nameLength > 80 || /\p{Cc}/u.test(name) || !/\p{L}/u.test(name)) {
+        setError(en ? 'Enter a display name with letters (2–80 characters).' : 'أدخل اسم عرض فيه حروف وطوله من حرفين إلى 80 حرفًا.');
+        return;
+      }
+      void runAuth(options => supabase.auth.signUp({ email: address, password, options: { ...options, data: { full_name: name } } }), data => {
+        if (data.session) return;
+        setEmail(address);
+        setPassword('');
+        setOtpStep(true);
+        setMessage(en ? 'Check your email for the verification code.' : 'راجع بريدك للحصول على رمز التفعيل.');
+      });
+    } else {
+      void runAuth(options => supabase.auth.signInWithPassword({ email: address, password, options }), () => {});
+    }
   };
 
-  const resendOtp = async () => {
-    setBusy(true); setError(''); setMessage('');
-    try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email });
-      if (error) throw error;
-      setMessage('📬 تمت إعادة إرسال رمز جديد.');
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  const handleVerifyOtp = (e) => {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(otp)) return;
+    void runAuth(() => supabase.auth.verifyOtp({ email, token: otp, type: 'signup' }), () => {
+      setMessage(en ? 'Email verified. Signing in…' : 'تم تفعيل بريدك. جارٍ تسجيل الدخول…');
+    }, false);
   };
+
+  const resendOtp = () => runAuth(options => supabase.auth.resend({ type: 'signup', email, options }), () => {
+    setMessage(en ? 'A new verification code was requested.' : 'تم طلب رمز تفعيل جديد.');
+  });
 
   const dir = lang === 'ar' ? 'rtl' : 'ltr';
 
@@ -358,15 +405,16 @@ function AuthScreen() {
           {error && <div style={box('err')}>⚠️ {error}</div>}
           {message && <div style={box('ok')}>{message}</div>}
           <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <input inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))} placeholder="——————"
+            <input aria-label={en ? 'Verification code' : 'رمز التفعيل'} autoComplete="one-time-code" dir="ltr" inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/[٠-٩۰-۹]/g, digit => String(digit.charCodeAt(0) - (digit <= '٩' ? '٠' : '۰').charCodeAt(0))).replace(/\D/g, ''))} placeholder="——————"
               style={{ ...fieldStyle, textAlign: 'center', letterSpacing: '10px', fontSize: '1.4rem', fontWeight: 800 }} />
             <button type="submit" disabled={busy || otp.length !== 6} style={{ padding: '13px', background: 'linear-gradient(90deg,#059669,#10b981)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '700', cursor: busy || otp.length !== 6 ? 'not-allowed' : 'pointer', opacity: otp.length !== 6 ? 0.6 : 1 }}>
               {busy ? t('⏳ جاري التحقق...') : t('✅ تفعيل الحساب')}
             </button>
           </form>
+          {challengeWidget}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1.2rem' }}>
-            <button onClick={resendOtp} disabled={busy} style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', fontWeight: '700', fontSize: '0.9rem', padding: 0 }}>{t('📬 إعادة إرسال الرمز')}</button>
-            <button onClick={() => { setOtpStep(false); setOtp(''); setError(''); setMessage(''); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontWeight: '700', fontSize: '0.9rem', padding: 0 }}>{t('← رجوع')}</button>
+            <button onClick={resendOtp} disabled={busy || challengePending} style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', fontWeight: '700', fontSize: '0.9rem', padding: 0 }}>{t('📬 إعادة إرسال الرمز')}</button>
+            <button disabled={busy} onClick={() => { setOtpStep(false); setOtp(''); setError(''); setMessage(''); resetChallenge(); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontWeight: '700', fontSize: '0.9rem', padding: 0 }}>{t('← رجوع')}</button>
           </div>
         </div>
       </div>
@@ -387,20 +435,21 @@ function AuthScreen() {
         {message && <div style={box('ok')}>{message}</div>}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {mode === 'signup' && (
-            <div><label style={labelStyle}>{t('الاسم الكامل')}</label>
-              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} style={fieldStyle} placeholder="اسمك" /></div>
+            <div><label htmlFor="auth-name" style={labelStyle}>{en ? 'Display name' : 'اسم العرض'}</label>
+              <input id="auth-name" type="text" required autoComplete="name" maxLength={80} value={fullName} onChange={(e) => setFullName(e.target.value)} style={fieldStyle} placeholder={en ? 'Your name' : 'اسمك'} /></div>
           )}
-          <div><label style={labelStyle}>{t('البريد الإلكتروني')}</label>
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} style={fieldStyle} placeholder="you@example.com" /></div>
-          <div><label style={labelStyle}>{t('كلمة المرور')}</label>
-            <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} style={fieldStyle} placeholder="••••••••" /></div>
-          <button type="submit" disabled={busy} style={{ padding: '13px', background: 'linear-gradient(90deg,#0284c7,#6366f1)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '700', cursor: busy ? 'not-allowed' : 'pointer' }}>
+          <div><label htmlFor="auth-email" style={labelStyle}>{t('البريد الإلكتروني')}</label>
+            <input id="auth-email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} style={fieldStyle} placeholder="you@example.com" /></div>
+          <div><label htmlFor="auth-password" style={labelStyle}>{t('كلمة المرور')}</label>
+            <input id="auth-password" type="password" required minLength={6} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={(e) => setPassword(e.target.value)} style={fieldStyle} placeholder="••••••••" /></div>
+          {challengeWidget}
+          <button type="submit" disabled={busy || challengePending} style={{ padding: '13px', background: 'linear-gradient(90deg,#0284c7,#6366f1)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '700', cursor: busy || challengePending ? 'not-allowed' : 'pointer' }}>
             {busy ? t('⏳ لحظة...') : mode === 'login' ? t('🔓 تسجيل الدخول') : t('🧾 إنشاء حساب')}
           </button>
         </form>
         <p style={{ color: '#94a3b8', fontSize: '0.9rem', textAlign: 'center', marginTop: '1.2rem', marginBottom: 0 }}>
           {mode === 'login' ? t('ما عندك حساب؟') : t('عندك حساب بالفعل؟')}{' '}
-          <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setMessage(''); }}
+          <button disabled={busy} onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setMessage(''); resetChallenge(); }}
             style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', fontWeight: '700', fontSize: '0.9rem', padding: 0 }}>
             {mode === 'login' ? t('أنشئ حسابًا') : t('سجّل الدخول')}
           </button>
@@ -481,21 +530,22 @@ function Donut({ data, hs }) {
   const total = data.reduce((s, d) => s + d.value, 0) || 1;
   const R = 45;
   const C = 2 * Math.PI * R;
-  let acc = 0;
+  let offset = 0;
+  const slices = [];
+  for (const segment of data.filter(item => item.value > 0)) {
+    const length = segment.value / total * C;
+    slices.push({ ...segment, length, offset });
+    offset += length;
+  }
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem', flexWrap: 'wrap', justifyContent: 'center' }}>
       <svg width="150" height="150" viewBox="0 0 150 150" style={{ transform: 'rotate(-90deg)' }}>
         <circle cx="75" cy="75" r={R} fill="none" stroke="rgba(0,229,255,0.08)" strokeWidth="16" />
-        {data.filter((d) => d.value > 0).map((d) => {
-          const frac = d.value / total;
-          const el = (
-            <circle key={d.label} cx="75" cy="75" r={R} fill="none" stroke={d.color} strokeWidth="16"
-              strokeDasharray={`${frac * C} ${C}`} strokeDashoffset={-acc * C}
-              style={{ filter: `drop-shadow(0 0 6px ${d.color})`, transition: 'all 1s cubic-bezier(.4,0,.2,1)' }} />
-          );
-          acc += frac;
-          return el;
-        })}
+        {slices.map((d) => (
+          <circle key={d.label} cx="75" cy="75" r={R} fill="none" stroke={d.color} strokeWidth="16"
+            strokeDasharray={`${d.length} ${C}`} strokeDashoffset={-d.offset}
+            style={{ filter: `drop-shadow(0 0 6px ${d.color})`, transition: 'all 1s cubic-bezier(.4,0,.2,1)' }} />
+        ))}
       </svg>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {data.map((d) => (
@@ -607,7 +657,7 @@ function MindChamber({ commitments }) {
         const sj = s.ok ? await s.json() : null; const lgj = lg.ok ? await lg.json() : null;
         setLife({ finance: fj || null, wellness: wj?.logs?.[0] || null, relationships: rj?.people || [], home: hj?.tasks || [], studyMinutes: sj?.total_minutes || 0 });
         setLogs(lgj?.logs || []);
-      } catch (e) { /* نتجاهل */ }
+      } catch { /* نتجاهل */ }
     })();
   }, [commitments]);
 
@@ -765,7 +815,7 @@ useEffect(() => {
       setLastEngine(json.engine || 'rules');
       setFullThought(reply);
       jarvisSpeak(reply, lang);
-    } catch (e) { setFullThought(lang === 'ar' ? 'حدث خلل لحظي يا سيدي.' : 'A momentary glitch, sir.'); }
+    } catch { setFullThought(lang === 'ar' ? 'حدث خلل لحظي يا سيدي.' : 'A momentary glitch, sir.'); }
     setBusy(false);
   };
   const startListening = () => {
@@ -782,7 +832,7 @@ useEffect(() => {
     rec.onend = () => { releaseMic(); voiceState('idle'); setListening(false); };
     rec.onerror = () => setListening(false);
     setListening(true);
-    try { rec.start(); } catch (e) { setListening(false); }
+    try { rec.start(); } catch { setListening(false); }
   };
   const engineMeta = lastEngine === 'gemini' || lastEngine === 'cerebras'
     ? { color: '#c4b5fd', label: lang === 'ar' ? 'تفكير عميق' : 'DEEP THINK' }
@@ -1156,7 +1206,7 @@ function HistoryPage() {
         const response = await fetch(`${API_URL}/api/analysis-logs`, { headers });
         const json = await response.json();
         if (response.ok) setLogs(json.logs || []);
-      } catch (err) { /* تجاهل */ }
+      } catch { /* تجاهل */ }
       setLoaded(true);
     })();
   }, []);
@@ -1203,6 +1253,7 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
   const [imageConsent, setImageConsent] = useState(Boolean(initialImage));
   const imageRun = useRef(null);
   const sentInitialImage = useRef(false);
+  useEffect(() => () => imageRun.current?.abort(), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [listening, setListening] = useState(false);
@@ -1221,7 +1272,7 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
         const response = await fetch(`${API_URL}/api/chat`, { headers });
         const json = await response.json();
         if (active && response.ok) setMessages(current => [...(json.messages || []), ...current]);
-      } catch (err) { /* نتجاهل */ }
+      } catch { /* نتجاهل */ }
     })();
     return () => { active = false; };
   }, []);
@@ -1307,7 +1358,7 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
 
   const sendImage = async (text, file, productMode = wantsProduct(text)) => {
     if (!file || imageRun.current) return;
-    const run = {};
+    const run = new AbortController();
     imageRun.current = run;
     setBusy(true);
     setError('');
@@ -1319,11 +1370,14 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-Aql-File': encodeURIComponent(file.name), 'X-Aql-Question': encodeURIComponent(text.slice(0, 600)) },
         body: file,
+        signal: run.signal,
       });
       const result = await response.json();
-      if (!response.ok || !result.reply) throw new Error('attachment');
+      if (run.signal.aborted) return;
+      if (!response.ok || !result.reply) throw new Error(result.error || 'attachment');
       const replyId = `image-${Date.now()}`;
-      const search = result.productQuery ? await searchProducts(API_URL, result.productQuery, lang, headers) : null;
+      const search = result.productQuery ? await searchProducts(API_URL, result.productQuery, lang, headers, run.signal) : null;
+      if (run.signal.aborted) return;
       const products = search?.results;
       const reply = result.productQuery ? `${result.reply}\n\n${productSearchReply(search, lang === 'en')}` : result.reply;
       setMessages(current => [...current,
@@ -1334,8 +1388,16 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
       setImageConsent(false);
       setInput('');
       if (autoSpeak) speak(reply, replyId);
-    } catch {
-      setError(lang === 'en' ? 'Could not analyze the image. You can try again.' : 'تعذّر تحليل الصورة. تقدر تعيد المحاولة.');
+    } catch (error) {
+      if (run.signal.aborted) return;
+      const english = lang === 'en';
+      if (error.message === 'invalid_file') {
+        setError(english ? 'Use a valid PNG, JPEG, or WebP image up to 12 MB.' : 'تأكد أن الصورة بصيغة PNG أو JPEG أو WebP وحجمها حتى 12 ميغابايت.');
+      } else if (error.message === 'busy' || error.message === 'provider_limit') {
+        setError(english ? 'Image analysis is busy. Try again shortly.' : 'تحليل الصور مشغول حاليًا. جرّب بعد شوي.');
+      } else {
+        setError(english ? 'Could not analyze the image. You can try again.' : 'تعذّر تحليل الصورة. تقدر تعيد المحاولة.');
+      }
     } finally {
       imageRun.current = null;
       setBusy(false);
@@ -1344,10 +1406,12 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
 
   useEffect(() => {
     if (!initialImage || sentInitialImage.current) return;
-    sentInitialImage.current = true;
-    onConsumeImage(initialImage);
-    void sendImage(initialDraft.trim(), initialImage);
-    // The home composer starts this request once after explicit consent.
+    const start = setTimeout(() => {
+      sentInitialImage.current = true;
+      onConsumeImage(initialImage);
+      void sendImage(initialDraft.trim(), initialImage);
+    }, 0);
+    return () => clearTimeout(start);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDraft, initialImage]);
 
@@ -1711,7 +1775,7 @@ function ReportsPage() {
         const lJson = await lRes.json();
         if (cRes.ok) setCommitments(cJson.commitments || []);
         if (lRes.ok) setLogs(lJson.logs || []);
-      } catch (err) { /* نتجاهل */ }
+      } catch { /* نتجاهل */ }
       setLoaded(true);
     })();
   }, []);
@@ -1820,7 +1884,7 @@ function AchievementsPage() {
           hasRigid: commitments.some((c) => !c.flexible),
           risk: riskOf(totalHours).label,
         });
-      } catch (err) {
+      } catch {
         setData({ commitments: [], goals: [], logsCount: 0, chatCount: 0, linkedCount: 0, totalHours: 0, morningHours: 0, lateHours: 0, hasFlexible: false, hasRigid: false, risk: 'Low' });
       }
     })();
@@ -1906,7 +1970,7 @@ function LifeOSPage() {
       if (h.ok) setHome(await h.json());
       if (r.ok) setPeople(await r.json());
       if (w.ok) setWellness(await w.json());
-    } catch (e) { /* نتجاهل */ }
+    } catch { /* نتجاهل */ }
     setLoaded(true);
   }, []);
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -1926,7 +1990,7 @@ function LifeOSPage() {
       const headers = await getAuthHeaders();
       await fetch(`${API_URL}/api/home/${id}`, { method: 'PATCH', headers, body: JSON.stringify({ status }) });
       await loadAll();
-    } catch (e) { /* نتجاهل */ }
+    } catch { /* نتجاهل */ }
   };
 
   const L = (ar, en) => (lang === 'ar' ? ar : en);
@@ -2072,51 +2136,68 @@ function LifeOSPage() {
 
 /* ========== التطبيق ========== */
 function App() {
+  const [session, setSession] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let receivedAuthEvent = false;
+    let userId;
+    const updateSession = next => {
+      if (userId && userId !== next?.user.id) disconnectLocalDevice();
+      userId = next?.user.id;
+      setSession(next);
+      setAuthReady(true);
+    };
+    supabase.auth.getSession().then(({ data }) => {
+      if (active && !receivedAuthEvent) updateSession(data.session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      receivedAuthEvent = true;
+      if (event === 'SIGNED_OUT') disconnectLocalDevice();
+      if (active) updateSession(s);
+    });
+    return () => { active = false; subscription.unsubscribe(); };
+  }, []);
+
+  if (!authReady) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>⏳ عَقْل يتحقق من الهوية...</div>;
+  if (!session) return (<><FloatingLangButton /><AuthScreen /></>);
+  return <AccountApp key={session.user.id} session={session} />;
+}
+
+function AccountApp({ session }) {
   const { lang } = useLang();
   const [chatDraft, setChatDraft] = useState({ text: '', image: null, key: 0 });
   const [showBalance, setShowBalance] = useState(false);
-  const [session, setSession] = useState(null);
-  const [authReady, setAuthReady] = useState(false);
   const [page, setPage] = useState('dashboard');
   const [commitments, setCommitments] = useState([]);
+  const token = session.access_token;
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true); });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-      if (event === 'SIGNED_OUT') disconnectLocalDevice();
-      setSession(s);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchCommitments = useCallback(async () => {
-    if (!session) { setCommitments([]); return; }
+  const fetchCommitments = useCallback(async (signal) => {
     try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`${API_URL}/api/commitments`, { headers });
+      const response = await fetch(`${API_URL}/api/commitments`, { headers: { Authorization: `Bearer ${token}` }, signal });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'تعذر جلب الالتزامات');
-      setCommitments(data.commitments || []);
-    } catch (err) { console.error(err.message); }
-  }, [session]);
+      if (!signal?.aborted) setCommitments(data.commitments || []);
+    } catch (err) { if (!signal?.aborted) console.error(err.message); }
+  }, [token]);
 
-  useEffect(() => { fetchCommitments(); }, [fetchCommitments]);
+  useEffect(() => {
+    const load = new AbortController();
+    void fetchCommitments(load.signal);
+    return () => load.abort();
+  }, [fetchCommitments]);
 
   const handleLogout = async () => {
     disconnectLocalDevice();
     await supabase.auth.signOut();
-    setCommitments([]);
-    setPage('dashboard');
   };
-
-  if (!authReady) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>⏳ عَقْل يتحقق من الهوية...</div>;
-  if (!session) return (<><FloatingLangButton /><AuthScreen /></>);
 
   const displayName = session.user.user_metadata?.full_name?.trim() || session.user.email;
   const compose = (text, image = null) => { setChatDraft(previous => ({ text, image, key: previous.key + 1 })); setPage('chat'); };
 
   return (
-    <ResearchProvider key={session.user.id} userId={session.user.id}>
+    <ResearchProvider userId={session.user.id}>
     <StudioProvider userId={session.user.id}>
     <Layout page={page} setPage={setPage} displayName={displayName} onLogout={handleLogout} onCompose={compose}>
       {page === 'dashboard' && <><WorkHub displayName={displayName} onCompose={compose} onNavigate={setPage} /><details className="balance-disclosure" onToggle={(event) => setShowBalance(event.currentTarget.open)}><summary>{lang === 'ar' ? 'توازن حياتك ومؤشراتك' : 'Your life balance & metrics'}</summary>{showBalance && <MindChamber commitments={commitments} />}</details></>}

@@ -42,7 +42,7 @@ function translateDom(lang, origMap) {
         if (orig) el.setAttribute('placeholder', orig);
       }
     });
-  } catch (err) {
+  } catch {
     // لا نكسر الواجهة
   }
 }

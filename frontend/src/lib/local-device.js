@@ -1,14 +1,18 @@
 const configuredPort = Number(import.meta.env?.VITE_AQL_LOCAL_BRIDGE_PORT || 8765);
 const PORT = Number.isInteger(configuredPort) && configuredPort >= 1 && configuredPort <= 65535 ? configuredPort : 8765;
 const ENDPOINT = `http://127.0.0.1:${PORT}/v1/action`;
-let deviceKey = '';
+let paired = null;
+let pairing = null;
 
 export function hasLocalDevice() {
-  return Boolean(deviceKey);
+  return Boolean(paired);
 }
 
 export function disconnectLocalDevice() {
-  deviceKey = '';
+  pairing?.abort();
+  paired?.controller.abort();
+  pairing = null;
+  paired = null;
 }
 
 async function call(key, payload, signal) {
@@ -30,13 +34,23 @@ async function call(key, payload, signal) {
 export async function connectLocalDevice(key) {
   const value = key.trim();
   if (!/^[A-Za-z0-9_-]{43}$/.test(value)) throw new Error('invalid_key');
-  await call(value, { action: 'status' });
-  deviceKey = value;
+  pairing?.abort();
+  const controller = new AbortController();
+  pairing = controller;
+  try {
+    await call(value, { action: 'status' }, controller.signal);
+    controller.signal.throwIfAborted();
+    paired?.controller.abort();
+    paired = { key: value, controller };
+  } finally {
+    if (pairing === controller) pairing = null;
+  }
 }
 
 export function localDeviceAction(payload, signal) {
-  if (!deviceKey) throw new Error('local_device_unpaired');
-  return call(deviceKey, payload, signal);
+  if (!paired) throw new Error('local_device_unpaired');
+  const connection = paired.controller.signal;
+  return call(paired.key, payload, signal ? AbortSignal.any([connection, signal]) : connection);
 }
 
 export function localFolderIntent(command) {

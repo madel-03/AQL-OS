@@ -26,16 +26,25 @@ Frontend variables:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_API_URL` (default: http://localhost:5000)
+- `VITE_TURNSTILE_SITE_KEY` (public Cloudflare Turnstile site key)
 
 Backend variables:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_KEY` (server only)
 - `CEREBRAS_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`
 - `PORT` (default: 5000)
+- `AQL_WEB_ORIGINS` (optional comma-separated origins, for example `https://preview.example.com`). The production site and local development on ports 5173 and 5174 are already allowed. Add custom domains and preview deployments by their exact origin, without a path or trailing slash.
 
 Run `npm start` in backend and `npm run dev` in frontend.
-The project requires its Supabase tables and authentication configuration;
-database migrations are not included.
+The project requires its Supabase tables and authentication configuration. Apply the SQL migrations referenced by each feature's setup instructions.
+
+## Signup protection
+
+1. Create a Managed widget in Cloudflare Turnstile for the deployed AQL hostname. Set the public site key as `VITE_TURNSTILE_SITE_KEY` and redeploy the frontend. Keep the secret in the dashboard. [Cloudflare widget setup](https://developers.cloudflare.com/turnstile/get-started/widget-management/dashboard/)
+2. In Supabase Authentication, enable **CAPTCHA protection** with the Turnstile secret, enable **Confirm email**, and disable anonymous sign-ins if they are enabled. Configure the **Confirm signup** email to include `{{ .Token }}` for AQL's verification field. Review signup, resend and verification quotas under **Authentication → Rate Limits**. Test signup, sign-in, code entry and resend on the website and in AQL for Windows before enabling the settings on a live project. [CAPTCHA setup](https://supabase.com/docs/guides/auth/auth-captcha) · [Email templates](https://supabase.com/docs/guides/auth/auth-email-templates) · [Rate limits](https://supabase.com/docs/guides/auth/rate-limits)
+3. Run `backend/migrations/signup-protection.sql` in the project's SQL Editor. Register `public.aql_before_user_created` under **Authentication → Hooks → Before User Created**. Update the starter list of temporary email domains in `aql_auth_private.blocked_signup_domains` through the SQL Editor. Test an allowed signup and a blocked domain on a test project. [Before User Created hook](https://supabase.com/docs/guides/auth/auth-hooks/before-user-created-hook)
+
+Use **Authentication → Users** and **Logs** in Supabase for account review. Email confirmation demonstrates access to the address. A display name remains self-reported. The temporary-domain rules cover domains in the configured list and their subdomains.
 
 ## Checks
 

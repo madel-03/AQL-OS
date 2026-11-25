@@ -81,16 +81,22 @@ class BridgeHandler(BaseHTTPRequestHandler):
             return
         lengths = self.headers.get_all("Content-Length")
         length = lengths[0] if lengths and len(lengths) == 1 else ""
-        if (self.headers.get_content_type() != "application/json" or self.headers.get("Transfer-Encoding")
+        content_types = self.headers.get_all("Content-Type") or []
+        if (len(content_types) != 1 or self.headers.get_content_type() != "application/json"
+                or self.headers.get("Transfer-Encoding") is not None
                 or not re.fullmatch(r"[0-9]{1,4}", length) or not 0 < int(length) <= MAX_REQUEST):
             self.respond(400, {"error": "invalid_request"}, cors=True)
             return
         try:
-            action = allowed_action(json.loads(self.rfile.read(int(length))))
+            body = self.rfile.read(int(length))
+            action = allowed_action(json.loads(body.decode("utf-8"))) if len(body) == int(length) else None
         except (ValueError, OSError):
             action = None
         if not action:
             self.respond(400, {"error": "unsupported_action"}, cors=True)
+            return
+        if not self.server.authorized(supplied):
+            self.respond(401, {"error": "invalid_key"}, cors=True)
             return
         if action[0] == "status":
             self.respond(200, {"ok": True}, cors=True)

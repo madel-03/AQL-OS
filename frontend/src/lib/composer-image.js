@@ -11,7 +11,7 @@ export function pastedImage(event) {
 
 export function wantsProduct(text) {
   return Boolean(productSearchQuery(text)) || wantsProductLink(text)
-    || /(?:[اأ]بحث|د[وّ]*ر)\s+(?:لي\s+)?(?:عن|عل[ىي])\s+(?:(?:هذا|هال)\s*)?(?:ال)?منتج|\b(?:find this product|shop for|buy this)\b|(?:كم|وش)\s+سعر|أبغ[اى]\s+أشتري/i.test(text);
+    || /(?:[اأ]بحث|د(?:و|ّ)*ر)\s+(?:لي\s+)?(?:عن|عل[ىي])\s+(?:(?:هذا|هال)\s*)?(?:ال)?منتج|\b(?:find this product|shop for|buy this)\b|(?:كم|وش)\s+سعر|أبغ[اى]\s+أشتري/i.test(text);
 }
 
 export function wantsProductLink(text) {
@@ -23,7 +23,7 @@ export function productSearchQuery(text) {
   if (!request) return '';
   const explicit = /^(?:لو سمحت[،,]?\s+)?(?:ابحث (?:لي )?عن (?:عرض|عروض|سعر|اسعار|أسعار|منتج)(?:\s+(?:على|عن|ل))?|(?:من وين|وين) (?:أ|ا)?شتري|where (?:can i|to) buy|shop for)\s+(.+)$/i.exec(request);
   if (explicit) return explicit[1].trim();
-  const lookup = /^(?:لو سمحت[،,]?\s+)?(?:[اأ]بحث (?:لي )?عن|د[وّ]*ر (?:لي )?على|find me|look for)\s+(.+)$/i.exec(request);
+  const lookup = /^(?:لو سمحت[،,]?\s+)?(?:[اأ]بحث (?:لي )?عن|د(?:و|ّ)*ر (?:لي )?على|find me|look for)\s+(.+)$/i.exec(request);
   if (!lookup) return '';
   const query = lookup[1].trim();
   return /حامل(?:ات)?\s+(?:الشاش[ةه]|الشاشات|شاش[ةه]|شاشات)|ذراع (?:الشاش[ةه]|شاش[ةه])|\bmonitor\s+(?:stand|arm|mount)\b/i.test(query) ? query : '';
