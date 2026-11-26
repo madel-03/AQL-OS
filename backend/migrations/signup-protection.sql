@@ -9,6 +9,14 @@ create table if not exists aql_auth_private.blocked_signup_domains (
 );
 revoke all on aql_auth_private.blocked_signup_domains from public, anon, authenticated;
 grant select on aql_auth_private.blocked_signup_domains to supabase_auth_admin;
+alter table aql_auth_private.blocked_signup_domains enable row level security;
+
+drop policy if exists auth_admin_read_blocked_signup_domains on aql_auth_private.blocked_signup_domains;
+create policy auth_admin_read_blocked_signup_domains
+  on aql_auth_private.blocked_signup_domains
+  for select
+  to supabase_auth_admin
+  using (true);
 
 insert into aql_auth_private.blocked_signup_domains (domain)
 values ('mailinator.com'), ('yopmail.com'), ('guerrillamail.com'), ('temp-mail.org'), ('10minutemail.com')

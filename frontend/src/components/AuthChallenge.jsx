@@ -52,7 +52,7 @@ export default function AuthChallenge({ siteKey, lang, onToken, onRetry }) {
         sitekey: siteKey,
         language: lang,
         size: 'flexible',
-        appearance: 'interaction-only',
+        appearance: 'always',
         'response-field': false,
         callback: token => { if (!disposed) { setStatus('ready'); onToken(token); } },
         'expired-callback': clear,
