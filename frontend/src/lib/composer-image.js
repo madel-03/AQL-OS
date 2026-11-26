@@ -21,6 +21,9 @@ export function wantsProductLink(text) {
 export function productSearchQuery(text) {
   const request = text.trim().replace(/[؟?!.]+$/, '');
   if (!request) return '';
+  const steam = /\bsteam\b|ستيم/i.test(request);
+  const deal = /خصم|عروض|تخفيض|مجاني|\b(?:deals?|discounts?|free|giveaways?)\b|[%٪]/i.test(request);
+  if (steam && deal) return request;
   const explicit = /^(?:لو سمحت[،,]?\s+)?(?:ابحث (?:لي )?عن (?:عرض|عروض|سعر|اسعار|أسعار|منتج)(?:\s+(?:على|عن|ل))?|(?:من وين|وين) (?:أ|ا)?شتري|where (?:can i|to) buy|shop for)\s+(.+)$/i.exec(request);
   if (explicit) return explicit[1].trim();
   const lookup = /^(?:لو سمحت[،,]?\s+)?(?:[اأ]بحث (?:لي )?عن|د(?:و|ّ)*ر (?:لي )?على|find me|look for)\s+(.+)$/i.exec(request);
