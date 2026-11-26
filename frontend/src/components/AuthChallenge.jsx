@@ -3,29 +3,33 @@ import { useEffect, useRef, useState } from 'react';
 const scriptUrl = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
 let pendingScript;
 
-function loadTurnstile() {
+function loadTurnstileScript() {
   if (window.turnstile?.render) return Promise.resolve(window.turnstile);
-  if (!pendingScript) {
-    pendingScript = new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      const fail = () => {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    const fail = () => {
+      clearTimeout(timeout);
+      script.remove();
+      reject(new Error('Turnstile unavailable'));
+    };
+    const timeout = setTimeout(fail, 12000);
+    script.src = scriptUrl;
+    script.async = true;
+    script.onerror = fail;
+    script.onload = () => {
+      if (!window.turnstile?.ready) return fail();
+      window.turnstile.ready(() => {
         clearTimeout(timeout);
-        script.remove();
-        reject(new Error('Turnstile unavailable'));
-      };
-      const timeout = setTimeout(fail, 12000);
-      script.src = scriptUrl;
-      script.async = true;
-      script.onerror = fail;
-      script.onload = () => {
-        if (!window.turnstile?.ready) return fail();
-        window.turnstile.ready(() => {
-          clearTimeout(timeout);
-          resolve(window.turnstile);
-        });
-      };
-      document.head.append(script);
-    }).catch(error => {
+        resolve(window.turnstile);
+      });
+    };
+    document.head.append(script);
+  });
+}
+
+function loadTurnstile() {
+  if (!pendingScript) {
+    pendingScript = loadTurnstileScript().catch(() => loadTurnstileScript()).catch(error => {
       pendingScript = undefined;
       throw error;
     });
