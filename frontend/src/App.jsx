@@ -3,7 +3,7 @@ import AssistantDocuments from './components/AssistantDocuments';
 import AssistantAttachment from './components/AssistantAttachment';
 import AuthChallenge from './components/AuthChallenge';
 import { ComposerImage, ImageConsent } from './components/ComposerImage';
-import { pastedImage, productSearchQuery, productSearchReply, searchProducts, shoppingLink, wantsProduct, wantsProductLink } from './lib/composer-image';
+import { pastedImage, productSearchQuery, productSearchReply, searchProducts, shoppingLink, wantsProduct } from './lib/composer-image';
 import { requestAssistantTool } from './lib/assistant-tools';
 import { disconnectLocalDevice } from './lib/local-device';
 import { ScreenRequestDialog } from './components/ScreenRequests';
@@ -1244,7 +1244,7 @@ function ProfilePage({ displayName, email, onLogout }) {
 /* ========== اتصال مباشر ========== */
 function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
   const messageList = useRef(null);
-  const { memoryForChat } = useStudio();
+  const { memoryForChat, saveMemory } = useStudio();
   const { lang } = useLang();
   const calendarActions = useCalendarActions(lang);
   const [messages, setMessages] = useState([]);
@@ -1311,19 +1311,6 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
     setMessages((m) => [...m, { role: 'user', content: text }]);
     setInput(''); let repliedWithSpeech = false;
     try {
-      const requestedProduct = productSearchQuery(text);
-      const previousProduct = messages.findLast(message => message.productQuery)?.productQuery;
-      const productQuery = requestedProduct || (wantsProductLink(text) ? previousProduct : '');
-      if (productQuery) {
-        const replyId = `shopping-${Date.now()}`;
-        const search = await searchProducts(API_URL, productQuery, lang, await getAuthHeaders(), signal);
-        const products = search?.results;
-        if (signal?.aborted) return;
-        const content = productSearchReply(search, lang === 'en');
-        setMessages(current => [...current, { role: 'assistant', id: replyId, content, productQuery, products }]);
-        if (autoSpeak) { speak(content, replyId); repliedWithSpeech = true; }
-        return;
-      }
       const actionReply = await requestAssistantTool(text, lang === 'en', signal) ?? openMusicRequest(text, lang === 'en') ?? await calendarConversation(text, calendarActions, lang === 'en', signal);
       if (signal?.aborted) return;
       if (actionReply !== null) {
@@ -1333,11 +1320,20 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
         return;
       }
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_URL}/api/chat`, { method: 'POST', headers, signal, body: JSON.stringify({ message: text, lang, memory: memoryForChat }) });
+      const previousSearch = messages.findLast(message => message.searchQuery || message.productQuery);
+      const response = await fetch(`${API_URL}/api/chat`, { method: 'POST', headers, signal, body: JSON.stringify({
+        message: text, lang, memory: memoryForChat, smartRouting: true,
+        previousSearch: previousSearch?.searchQuery || previousSearch?.productQuery,
+      }) });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || 'تعذر إرسال الرسالة');
       const replyId = `live-${Date.now()}`;
-      setMessages((m) => [...m, { role: 'assistant', content: json.reply, id: replyId }]);
+      if (signal?.aborted) return;
+      setMessages((m) => [...m, {
+        role: 'assistant', content: json.reply, id: replyId,
+        products: json.results, productQuery: json.productQuery, searchQuery: json.searchQuery,
+        memorySuggestion: json.memorySuggestion,
+      }]);
       if (autoSpeak) { speak(json.reply, replyId); repliedWithSpeech = true; }
     } catch (err) { if (!signal?.aborted) setError(err.message); } finally { setBusy(false); if (!repliedWithSpeech) voiceState('idle'); }
   };
@@ -1470,6 +1466,13 @@ function ChatPage({ initialDraft = '', initialImage = null, onConsumeImage }) {
             <div key={mid} className={`chat-bubble ${m.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-assistant'}`}>
               {m.image && <ComposerImage file={m.image} en={lang === 'en'} />}
               <span data-skip-i18n="1">{m.content}</span>
+              {m.memorySuggestion && <div>
+                <p dir="auto" data-skip-i18n="1">{m.memorySuggestion}</p>
+                <button type="button" className="secondary-action" disabled={m.memorySaved} onClick={() => {
+                  saveMemory(m.id, m.memorySuggestion);
+                  setMessages(current => current.map(item => item.id === m.id ? { ...item, memorySaved: true } : item));
+                }}>{m.memorySaved ? (lang === 'en' ? 'Saved' : 'تم الحفظ') : (lang === 'en' ? 'Save preference' : 'احفظ التفضيل')}</button>
+              </div>}
               {m.products?.length > 0 && <ul className="chat-product-results">
                 {m.products.map((item, index) => <li key={`${item.url}-${index}`}>
                   <a href={item.url} target="_blank" rel="noopener noreferrer">{item.title || item.url}</a>
